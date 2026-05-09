@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{TITLE}} | AlphaCore 智库</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/styles.css">
+    <style>
+        .report-header { padding: 120px 24px 60px; max-width: 800px; margin: 0 auto; text-align: left; }
+        .report-content { max-width: 800px; margin: 0 auto; padding: 0 24px 80px; font-size: 1.1rem; color: #d1d5db; }
+        .report-content h2 { margin: 40px 0 20px; color: #fff; font-size: 1.8rem; }
+        .report-content p { margin-bottom: 24px; line-height: 1.8; }
+        .report-content blockquote { border-left: 4px solid var(--accent-primary); padding-left: 20px; font-style: italic; margin: 30px 0; background: rgba(0,240,255,0.05); padding: 20px; border-radius: 0 8px 8px 0; }
+        .report-content code { background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 4px; font-family: monospace; }
+        .author-meta { display: flex; align-items: center; gap: 16px; margin-top: 24px; border-top: 1px solid var(--glass-border); padding-top: 24px; }
+        .author-avatar { width: 48px; height: 48px; border-radius: 50%; background: linear-gradient(135deg, var(--accent-secondary), var(--accent-primary)); }
+    </style>
+</head>
+<body>
+    <nav class="navbar glass">
+        <div class="nav-container">
+            <div class="logo">
+                <span class="logo-icon"></span>
+                <span class="logo-text">AlphaCore <span class="highlight">Insights</span></span>
+            </div>
+            <div class="nav-links">
+                <a href="/">&larr; 返回主页</a>
+            </div>
+        </div>
+    </nav>
+
+    <main>
+        <div class="report-header">
+            <div class="badge">{{TAG}}</div>
+            <h1 class="hero-title" style="font-size: 3rem; margin-top: 16px;">{{TITLE}}</h1>
+            <div class="author-meta">
+                <div class="author-avatar"></div>
+                <div>
+                    <strong>AlphaCore 投研团队</strong><br>
+                    <span style="color: var(--text-secondary); font-size: 0.9rem;">发布时间: {{DATE}}</span>
+                </div>
+            </div>
+        </div>
+
+        <article class="report-content">
+            {{CONTENT}}
+        </article>
+    </main>
+</body>
+</html>

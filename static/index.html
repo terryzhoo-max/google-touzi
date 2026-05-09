@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AlphaCore 智库 | 机构级量化投资决策系统</title>
+    <meta name="description" content="专为进阶投资者打造的宏观对冲逻辑、量化信号解析与独家数据模型。">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;700&family=Outfit:wght@500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css?v=4">
+    <!-- ECharts & Marked.js -->
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
+</head>
+<body>
+    <!-- Background glowing orbs -->
+    <div class="glow-orb orb-1"></div>
+    <div class="glow-orb orb-2"></div>
+
+    <nav class="navbar glass">
+        <div class="nav-container">
+            <div class="logo">
+                <span class="logo-icon"></span>
+                <span class="logo-text">AlphaCore <span class="highlight">Insights</span></span>
+            </div>
+            <div class="nav-links">
+                <a href="#models">数据模型</a>
+                <a href="#insights">深度研报</a>
+            </div>
+        </div>
+    </nav>
+
+    <main>
+        <!-- ═══ Live Decision Dashboard (replaces static Hero) ═══ -->
+        <section id="dashboard" class="dashboard-section">
+            <div class="dashboard-grid-3col">
+                <div class="dashboard-card signal-card" id="dash-signal">
+                    <div class="dash-label">综合决策信号</div>
+                    <div class="signal-ring" id="signal-ring">
+                        <svg viewBox="0 0 120 120"><circle cx="60" cy="60" r="52" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="8"/><circle id="signal-arc" cx="60" cy="60" r="52" fill="none" stroke="#fbbf24" stroke-width="8" stroke-linecap="round" stroke-dasharray="327" stroke-dashoffset="327" transform="rotate(-90 60 60)"/></svg>
+                        <div class="signal-text" id="signal-text">--</div>
+                    </div>
+                    <div class="signal-label" id="signal-label">计算中…</div>
+                </div>
+                <div class="dashboard-card" id="dash-regime">
+                    <div class="dash-label">当前宏观象限</div>
+                    <div class="regime-badge" id="regime-badge">--</div>
+                    <div class="regime-detail" id="regime-detail"></div>
+                </div>
+                <div class="dashboard-card" id="dash-alloc">
+                    <div class="dash-label">建议仓位</div>
+                    <div class="alloc-bars" id="alloc-bars"></div>
+                    <div class="alloc-detail" id="alloc-detail"></div>
+                </div>
+            </div>
+            <!-- Data freshness + health -->
+            <div style="text-align:center;margin-top:10px;">
+                <span id="freshness-indicator" style="font-size:0.7rem;color:#64748b;">数据刷新中…</span>
+            </div>
+
+            <!-- Global Cross-Asset Dashboard -->
+            <div class="global-assets-panel glass-card" style="margin-top:16px;max-width:1200px;margin-left:auto;margin-right:auto;">
+                <div class="card-header"><h3>🌍 全球跨资产一览 (Global Cross-Asset)</h3><span id="ga-indicator" class="status-indicator">拉取中...</span></div>
+                <div id="global-assets-table" style="overflow-x:auto;font-size:0.8rem;margin-top:8px;"><div class="skeleton" style="height:200px;"></div></div>
+            </div>
+
+            <!-- Alert Banner -->
+            <div class="alert-banner" id="alert-banner" style="display:none;">
+                <div class="alert-banner-header">
+                    <span class="alert-dot"></span>
+                    <span id="alert-count">0</span> 条活跃警示
+                </div>
+                <div id="alert-list"></div>
+            </div>
+        </section>
+
+        <!-- ═══ Model Panels (collapsible groups) ═══ -->
+        <section class="section-container">
+
+            <!-- Group: Macro Radar -->
+            <details class="panel-group" open>
+                <summary class="panel-group-header">
+                    <span class="panel-group-icon">📡</span> 宏观雷达
+                    <span class="panel-group-badge" id="macro-alert-badge" style="display:none;">⚠</span>
+                </summary>
+                <div class="dashboard-grid">
+                    <div class="glass-card chart-card">
+                        <div class="card-header"><h3>美国10年期国债收益率 (10Y)</h3><span id="tnx-indicator" class="status-indicator">模型研判中...</span></div>
+                        <p id="tnx-insight" class="card-desc">正在拉取机构量化模型洞察...</p>
+                        <div id="erp-chart" class="chart-container"><div class="skeleton"></div></div>
+                    </div>
+                    <div class="glass-card chart-card">
+                        <div class="card-header"><h3>标普500波动率指数 (VIX)</h3><span id="vix-indicator" class="status-indicator">模型研判中...</span></div>
+                        <p id="vix-insight" class="card-desc">正在拉取机构量化模型洞察...</p>
+                        <div id="spread-chart" class="chart-container"><div class="skeleton"></div></div>
+                    </div>
+                </div>
+                <div class="yieldcurve-panel glass-card" style="margin-top: 24px;">
+                    <div class="card-header"><h3>利率期限结构 (Yield Curve)</h3><span id="yc-indicator" class="status-indicator">拉取曲线数据中...</span></div>
+                    <p id="yc-insight" class="card-desc">监控 2s10s 利差——全球金融市场最核心的衰退先行指标。</p>
+                    <div id="yieldcurve-chart" class="chart-container" style="height:400px;"><div class="skeleton"></div></div>
+                </div>
+
+                <!-- Heatmap Grid -->
+                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 24px; margin-top: 24px;">
+                    <!-- Shenwan Sector Rotation -->
+                    <div class="sector-panel glass-card">
+                        <div class="card-header"><h3 style="font-size: 1.1rem;">🇨🇳 申万一级行业轮动</h3><span id="sr-indicator" class="status-indicator">拉取31行业...</span></div>
+                        <p id="sr-insight" class="card-desc" style="min-height: 20px;">31 个申万一级行业近 20 日涨跌幅热力图。</p>
+                        <div id="sector-chart" class="chart-container" style="height:350px;"><div class="skeleton"></div></div>
+                    </div>
+                    
+                    <!-- Theme Rotation -->
+                    <div class="sector-panel glass-card">
+                        <div class="card-header"><h3 style="font-size: 1.1rem;">🚀 十五五政策驱动产业</h3><span id="tr-indicator" class="status-indicator">拉取政策主线...</span></div>
+                        <p id="tr-insight" class="card-desc" style="min-height: 20px;">新质生产力与政策主线热点追踪。</p>
+                        <div id="theme-chart" class="chart-container" style="height:350px;"><div class="skeleton"></div></div>
+                    </div>
+
+                    <!-- Domestic Broad ETF -->
+                    <div class="sector-panel glass-card">
+                        <div class="card-header"><h3 style="font-size: 1.1rem;">🇨🇳 A股核心宽基 ETF</h3><span id="de-indicator" class="status-indicator">拉取A股宽基...</span></div>
+                        <p id="de-insight" class="card-desc" style="min-height: 20px;">实盘 ETF 溢价追踪，红色下跌、绿色上涨。</p>
+                        <div id="domestic-etf-chart" class="chart-container" style="height:350px;"><div class="skeleton"></div></div>
+                    </div>
+
+                    <!-- Global Broad ETF -->
+                    <div class="sector-panel glass-card">
+                        <div class="card-header"><h3 style="font-size: 1.1rem;">🌍 海外核心宽基 ETF</h3><span id="ge-indicator" class="status-indicator">拉取全球宽基...</span></div>
+                        <p id="ge-insight" class="card-desc" style="min-height: 20px;">QDII 实盘 ETF 跟踪全球流动性。</p>
+                        <div id="global-etf-chart" class="chart-container" style="height:350px;"><div class="skeleton"></div></div>
+                    </div>
+                </div>
+
+                <!-- China Macro Indicators -->
+                <div class="china-macro-panel glass-card" style="margin-top:24px;">
+                    <div class="card-header"><h3>🇨🇳 中国宏观指标 (China Macro)</h3><span id="cm-indicator" class="status-indicator">拉取宏观数据...</span></div>
+                    <p id="cm-insight" class="card-desc">CPI / PMI / M2 同比 / GDP 增速，近 24 个月走势。</p>
+                    <div id="china-macro-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:12px;">
+                        <div class="skeleton" style="height:180px;"></div><div class="skeleton" style="height:180px;"></div>
+                        <div class="skeleton" style="height:180px;"></div><div class="skeleton" style="height:180px;"></div>
+                    </div>
+                </div>
+
+                <!-- Fed Rate Monitor -->
+                <div class="fed-panel glass-card" style="margin-top:24px;">
+                    <div class="card-header"><h3>🇺🇸 美联储利率监测 (Fed Rate Monitor)</h3><span id="fed-indicator" class="status-indicator">拉取利率数据...</span></div>
+                    <p id="fed-insight" class="card-desc">当前联邦基金利率区间 + 市场隐含利率方向，CME FedWatch 风格。</p>
+                    <div id="fed-chart" class="chart-container" style="height:280px;"><div class="skeleton"></div></div>
+                </div>
+
+                <!-- Valuation Thermometer -->
+                <div class="valuation-panel glass-card" style="margin-top:24px;">
+                    <div class="card-header"><h3>🇨🇳 估值温度计 (Valuation Thermometer)</h3><span id="val-indicator" class="status-indicator">拉取估值数据...</span></div>
+                    <p id="val-insight" class="card-desc">沪深300 / 中证500 / 创业板指 PE/PB 近 10 年分位数，一眼看穿贵还是便宜。</p>
+                    <div id="valuation-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:15px;margin-top:15px;"><div class="skeleton" style="height:160px;"></div><div class="skeleton" style="height:160px;"></div><div class="skeleton" style="height:160px;"></div></div>
+                </div>
+
+                <!-- Market Breadth -->
+                <div class="breadth-panel glass-card" style="margin-top:24px;">
+                    <div class="card-header"><h3>🇨🇳 北向资金流向 (North-bound Flow)</h3><span id="mb-indicator" class="status-indicator">拉取资金数据...</span></div>
+                    <p id="mb-insight" class="card-desc">北向资金累计净流入 + 每日净额，反映外资对A股的真实态度。</p>
+                    <div id="breadth-chart" class="chart-container" style="height:300px;"><div class="skeleton"></div></div>
+                </div>
+            </details>
+
+            <!-- Group: Risk Analysis -->
+            <details class="panel-group" open>
+                <summary class="panel-group-header">
+                    <span class="panel-group-icon">⚠️</span> 风险分析
+                    <span class="panel-group-badge" id="risk-alert-badge" style="display:none;">⚠</span>
+                </summary>
+                <div class="correlation-panel glass-card">
+                    <div class="card-header"><h3>大类资产相关性风险矩阵</h3><span id="corr-indicator" class="status-indicator">矩阵演算中...</span></div>
+                    <p id="corr-insight" class="card-desc">基于过去180天真实日收益率的皮尔逊相关性测算。</p>
+                    <div id="corr-action-banner" style="display:none;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.4);border-radius:8px;padding:15px;margin-top:15px;">
+                        <div style="font-size:0.9rem;color:#ef4444;font-weight:bold;display:flex;align-items:center;gap:8px;">⚠ 极端系统性风险警示</div>
+                        <div id="corr-extreme-action" style="font-size:1rem;color:#f8fafc;font-weight:500;">--</div>
+                    </div>
+                    <div id="correlation-chart" class="chart-container" style="height:500px;"><div class="skeleton"></div></div>
+                </div>
+                <div class="montecarlo-panel glass-card" style="margin-top:24px;">
+                    <div class="card-header"><h3>蒙特卡洛压力测试推演</h3><span id="mc-indicator" class="status-indicator">算力涌现中...</span></div>
+                    <p id="mc-insight" class="card-desc">对核心组合进行未来252个交易日的平行宇宙走势测算。</p>
+                    <div id="mc-chart" class="chart-container" style="height:400px;"><div class="skeleton"></div></div>
+                </div>
+                <div class="scenario-panel glass-card" style="margin-top:24px;">
+                    <div class="card-header"><h3>历史极端情景压力测试</h3><span id="sc-indicator" class="status-indicator">推演中...</span></div>
+                    <p id="sc-insight" class="card-desc">将当前仓位穿透至三大历史危机中，测算策略在极端环境下的生存能力。</p>
+                    <div id="scenario-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:15px;margin-top:15px;"><div class="skeleton" style="height:200px;"></div><div class="skeleton" style="height:200px;"></div><div class="skeleton" style="height:200px;"></div></div>
+                </div>
+            </details>
+
+            <!-- Group: Portfolio Optimization -->
+            <details class="panel-group">
+                <summary class="panel-group-header">
+                    <span class="panel-group-icon">📐</span> 组合优化
+                </summary>
+                <div class="allocation-panel glass-card">
+                    <div class="card-header"><h3>智能资产配置沙盘</h3><span id="alloc-indicator" class="status-indicator">拉取量化信号中...</span></div>
+                    <p id="alloc-insight" class="card-desc">基于实时宏观锚点交叉推演的最优大类资产仓位分布。</p>
+                    <div id="allocation-chart" class="chart-container" style="height:400px;"><div class="skeleton"></div></div>
+                </div>
+                <div class="frontier-panel glass-card" style="margin-top:24px;">
+                    <div class="card-header"><h3>Markowitz 有效前沿</h3><span id="ef-indicator" class="status-indicator">优化中...</span></div>
+                    <p id="ef-insight" class="card-desc">基于 SPY/TLT/GLD 均值-协方差矩阵，计算最优组合配置地图。</p>
+                    <div id="frontier-chart" class="chart-container" style="height:420px;"><div class="skeleton"></div></div>
+                </div>
+                <div class="backtest-panel glass-card" style="margin-top:24px;">
+                    <div class="card-header"><h3>Alpha 策略回测与历史自证</h3><span id="bt-indicator" class="status-indicator">拉取18年时序数据中...</span></div>
+                    <div id="live-signal-banner" style="display:none;background:rgba(0,240,255,0.05);border:1px solid rgba(0,240,255,0.2);border-radius:8px;padding:15px;margin-top:15px;align-items:center;justify-content:space-between;">
+                        <div><div style="font-size:0.85rem;color:#9ca3af;">【AlphaCore 今日量化执行指令】( <span id="signal-date">--</span> )</div><div style="font-size:1.2rem;font-weight:bold;color:#fff;">当前宏观象限：<span id="signal-regime" style="color:#4ade80;">--</span></div></div>
+                        <div style="text-align:right;"><div style="font-size:0.85rem;color:#9ca3af;">系统目标极简配比</div><div id="signal-weights" style="font-family:var(--font-mono);font-size:1.1rem;">股 --% | 债 --% | 金 --% | 现金 --%</div></div>
+                    </div>
+                    <div id="asset-strategies-grid" style="display:grid;grid-template-columns:repeat(2,1fr);gap:15px;margin-bottom:25px;display:none;"></div>
+                    <p id="bt-insight" class="card-desc">对比 AlphaCore 四资产动态对冲策略与死拿标普500在过去18年的净值曲线。</p>
+                    <div class="backtest-metrics-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:15px;margin-top:15px;margin-bottom:20px;">
+                        <div class="metric-box"><div style="font-size:0.8rem;color:#94a3b8;">年化收益率 (CAGR)</div><div id="bt-cagr" style="font-size:1.5rem;font-family:var(--font-mono);font-weight:bold;">--%</div></div>
+                        <div class="metric-box"><div style="font-size:0.8rem;color:#94a3b8;">最大回撤 (MDD)</div><div id="bt-mdd" style="font-size:1.5rem;font-family:var(--font-mono);font-weight:bold;color:#ef4444;">--%</div></div>
+                        <div class="metric-box"><div style="font-size:0.8rem;color:#94a3b8;">夏普比率</div><div id="bt-sharpe" style="font-size:1.5rem;font-family:var(--font-mono);font-weight:bold;color:#00F0FF;">--</div></div>
+                    </div>
+                    <div id="backtest-chart" class="chart-container" style="height:350px;"><div class="skeleton"></div></div>
+                    <h4 style="margin-top:30px;margin-bottom:15px;color:#e2e8f0;font-size:1.1rem;padding-top:20px;border-top:1px solid rgba(255,255,255,0.05);">宏观预警信号精准复盘</h4>
+                    <p class="card-desc" style="margin-bottom:15px;">标普500历史价格走势，红绿标记代表AlphaCore自动发出的<strong>[清仓避险]</strong>与<strong>[解除警报]</strong>指令。</p>
+                    <div id="signal-chart" style="height:500px;width:100%;position:relative;border:1px solid rgba(255,255,255,0.05);border-radius:8px;overflow:hidden;background:rgba(0,0,0,0.2);"><div class="skeleton"></div></div>
+                </div>
+            </details>
+
+            <!-- AI CIO -->
+            <div class="ai-cio-section glass-card" style="margin-top:24px;border-left:4px solid #7000FF;">
+                <div class="card-header"><h3>AI 首席量化决策中心</h3><span id="ai-indicator" class="status-indicator live">脑力风暴中...</span></div>
+                <div id="ai-typewriter" class="card-desc" style="min-height:80px;font-family:var(--font-mono);color:#e2e8f0;font-size:1.1rem;line-height:1.6;margin-top:15px;"><div id="ai-text">正在同步并组装实时宏观因子…</div></div>
+            </div>
+
+        </section>
+
+        <!-- Insights Section -->
+        <section id="insights" class="section-container">
+            <div class="section-header">
+                <h2>宏观对冲与策略推演</h2>
+                <p>将硬核量化信号降维转化为极具实操价值的投资策略研报。</p>
+            </div>
+            <div class="insights-grid">
+                <div class="insight-card glass-card">
+                    <div class="tag">宏观策略</div>
+                    <h4>穿越流动性陷阱：一种量化视角</h4>
+                    <p>当收益率曲线倒挂与利率剧烈波动并存时，我们的动态资产配置模型如何进行防御性切换。</p>
+                    <a href="reports/liquidity_trap.html" class="read-more" target="_blank">阅读研报 &rarr;</a>
+                </div>
+                <div class="insight-card glass-card">
+                    <div class="tag">信号解析</div>
+                    <h4>解构 AH 股溢价的均值回归</h4>
+                    <p>从机构视角剖析两地上市资产的历史回归规律，以及捕捉绝佳右侧买点的量化阈值。</p>
+                    <a href="reports/ah_premium.html" class="read-more" target="_blank">阅读研报 &rarr;</a>
+                </div>
+                <div class="insight-card glass-card">
+                    <div class="tag">风险管理</div>
+                    <h4>基于 VIX 衍生品的尾部风险对冲</h4>
+                    <p>如何构建具备凸性的投资组合，在抵御 3-Sigma 极端黑天鹅事件的同时，不牺牲长期复利 (CAGR)。</p>
+                    <a href="reports/vix_hedging.html" class="read-more" target="_blank">阅读研报 &rarr;</a>
+                </div>
+            </div>
+        </section>
+
+
+
+
+    </main>
+
+    <footer>
+        <div class="footer-container">
+            <div class="footer-brand">
+                <span class="logo-text">AlphaCore <span class="highlight">Insights</span></span>
+                <p>专为聪明的投资者打造的量化决策引擎。</p>
+            </div>
+            <div class="footer-links">
+                <a href="#">服务条款</a>
+                <a href="#">隐私政策</a>
+                <a href="#">合规披露</a>
+            </div>
+        </div>
+        
+        <div class="institutional-disclaimer">
+            <p style="color: #ef4444; margin-bottom: 5px; font-weight: bold; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                机构级风控与免责声明 (Risk Disclaimer)
+            </p>
+            <p style="text-align: justify;">AlphaCore 平台提供的数据、量化模型推演、AI 生成的洞察以及研报内容仅供学术研究和信息参考，不构成针对任何个人或机构的具体投资建议。金融市场受多种不可预测因素影响，过去的回测业绩（如 8.58% 年化）<strong>绝不代表未来真实收益，也不提供任何策略穿透的数学保证</strong>。在极端黑天鹅事件、系统性流动性丧失或宏观范式发生结构性转移时，量化模型可能发生完全失效，并遭遇不可预见的尾部风险（Tail Risk）。大语言模型生成的投资大纲亦可能存在逻辑幻觉。本平台不对任何人因依赖上述指令或信息而产生的直接或间接本金损失负责。投资者应当在做出任何决策前独立判断。<strong>量化有风险，下场需敬畏。</strong></p>
+        </div>
+
+        <div class="copyright">
+            &copy; 2026 AlphaCore Institutional. 版权所有。<br>
+        </div>
+    </footer>
+
+    <script src="main.js?v=4"></script>
+</body>
+</html>

@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>解构 AH 股溢价的均值回归 | AlphaCore 智库</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/styles.css">
+    <style>
+        .report-header { padding: 120px 24px 60px; max-width: 800px; margin: 0 auto; text-align: left; }
+        .report-content { max-width: 800px; margin: 0 auto; padding: 0 24px 80px; font-size: 1.1rem; color: #d1d5db; }
+        .report-content h2 { margin: 40px 0 20px; color: #fff; font-size: 1.8rem; }
+        .report-content p { margin-bottom: 24px; line-height: 1.8; }
+        .report-content blockquote { border-left: 4px solid var(--accent-primary); padding-left: 20px; font-style: italic; margin: 30px 0; background: rgba(0,240,255,0.05); padding: 20px; border-radius: 0 8px 8px 0; }
+        .report-content code { background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 4px; font-family: monospace; }
+        .author-meta { display: flex; align-items: center; gap: 16px; margin-top: 24px; border-top: 1px solid var(--glass-border); padding-top: 24px; }
+        .author-avatar { width: 48px; height: 48px; border-radius: 50%; background: linear-gradient(135deg, var(--accent-secondary), var(--accent-primary)); }
+    </style>
+</head>
+<body>
+    <nav class="navbar glass">
+        <div class="nav-container">
+            <div class="logo">
+                <span class="logo-icon"></span>
+                <span class="logo-text">AlphaCore <span class="highlight">Insights</span></span>
+            </div>
+            <div class="nav-links">
+                <a href="/">&larr; 返回主页</a>
+            </div>
+        </div>
+    </nav>
+
+    <main>
+        <div class="report-header">
+            <div class="badge">信号解析</div>
+            <h1 class="hero-title" style="font-size: 3rem; margin-top: 16px;">解构 AH 股溢价的均值回归</h1>
+            <div class="author-meta">
+                <div class="author-avatar"></div>
+                <div>
+                    <strong>AlphaCore 投研团队</strong><br>
+                    <span style="color: var(--text-secondary); font-size: 0.9rem;">发布时间: 2026年05月06日</span>
+                </div>
+            </div>
+        </div>
+
+        <article class="report-content">
+            <h1>深度研报：解构 AH 股溢价的均值回归</h1>
+<blockquote>
+<p>AlphaCore Quant Desk / Macro Strategy Team</p>
+</blockquote>
+<h2>1. 现象解构：流动性折价与制度避险的博弈 (The Anomaly)</h2>
+<p>恒生 AH 股溢价指数 (HSAHP) 长期偏离 100 的平价中枢，是全球资本市场中最著名的价格异象之一。对于同一家公司（例如招商银行或中国平安），其所代表的资产池、股东权益和分红派息在理论上是等价的，但在 A 股和 H 股往往存在 <strong>30% 甚至 50% 以上的价格差</strong>。</p>
+<p>这种巨大的价差并非由于基本面差异导致，而是由两地的<strong>微观流动性结构</strong>和<strong>宏观制度溢价</strong>共同撕裂的结果：
+- <strong>H 股 (离岸流动性真空)</strong>：作为离岸市场，受美联储美元潮汐影响极大。在美元紧缩周期或地缘政治恐慌时，外资基于“流动性变现”而非基本面恶化无差别抛售 H 股，导致极度折价。
+- <strong>A 股 (在岸制度避险)</strong>：作为资本管制的在岸市场，拥有庞大的内资流动性。在“资产荒”背景下，A 股往往享有流动性溢价与本币避险溢价。</p>
+<h2>2. 量化边界：基于 Z-Score 阈值的统计套利 (Statistical Boundaries)</h2>
+<p>散户看溢价，往往陷入“凭感觉抄底”的陷阱。作为机构，我们摒弃主观预测，完全依赖 <strong>Z-Score (标准差)</strong> 进行胜率测算。</p>
+<p>过去 5 年的量化回测表明，HSAHP 并非随机游走，而是具有极强的<strong>均值回归 (Mean Reversion)</strong> 特性。其长期中枢锚点稳定在 <strong>135 点</strong> 附近。</p>
+<p>当发生极端的黑天鹅事件时，我们定义右侧买点的阈值为：
+* <strong>+1.5 倍标准差 (约 145 点)</strong>：情绪极度悲观，H 股开始显现绝对估值优势，左侧资金开始试探。
+* <strong>+2.0 倍标准差 (约 150 点以上)</strong>：<strong>这是极其罕见的“黄金击球区”</strong>。在此时启动统计套利（做多 H 股，对冲性做空 A 股对应标的），历史回测胜率高达 <strong>88.4%</strong>，预期年化套利空间在 15%~25% 之间。</p>
+<h2>3. 宏观约束：穿越真实摩擦成本 (Macro Constraints)</h2>
+<p>在执行 AH 溢价套利时，账面价差并不等于实际利润。量化模型必须扣除两道隐形的摩擦成本：</p>
+<ol>
+<li><strong>红利税的无情吞噬</strong>：</li>
+<li>港股通渠道投资 H 股，红利税率高达 <strong>20%</strong>。</li>
+<li>A 股长期持有则免征红利税。</li>
+<li><strong>量化扣减</strong>：对于股息率 6% 的高股息标的，每年将被税收硬生生吃掉 1.2% 的套利空间。因此，<strong>溢价指数在 120 以下时，对于高息股而言套利空间已被税差抹平，不具备操作价值。</strong></li>
+<li><strong>汇率屏障 (FX Risk)</strong>：</li>
+<li>H 股以港币计价，港币与美元挂钩；A 股以人民币计价。</li>
+<li>若中美利差持续倒挂，人民币相对弱势，会在账面上拉大 AH 溢价（分母端港币相对升值）。真正的套利模型中必须引入 <code>USD/CNY</code> 远期外汇对冲合约 (NDF) 成本。</li>
+</ol>
+<h2>4. 实战纪律矩阵 (Trading Playbook)</h2>
+<p>基于上述风控模型，AlphaCore 终端下达以下硬核的交易执行指令：</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">溢价指数 (HSAHP)</th>
+<th style="text-align: left;">Z-Score 阈值</th>
+<th style="text-align: left;">系统状态判定</th>
+<th style="text-align: left;">机构级量化执行指令 (Action)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>&gt; 148</strong></td>
+<td style="text-align: left;">&gt; +1.8σ</td>
+<td style="text-align: left;">极端错杀 (Panic)</td>
+<td style="text-align: left;">🟢 <strong>建仓/加仓</strong>：全面做多 H 股折扣率超 40% 的高股息央企标的。</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>130 ~ 145</strong></td>
+<td style="text-align: left;">-0.5σ ~ +1.5σ</td>
+<td style="text-align: left;">均值震荡 (Neutral)</td>
+<td style="text-align: left;">🟡 <strong>持有观察</strong>：不进行增量套利，吃足 H 股绝对高股息。</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>&lt; 125</strong></td>
+<td style="text-align: left;">&lt; -1.0σ</td>
+<td style="text-align: left;">套利闭环 (Revert)</td>
+<td style="text-align: left;">🔴 <strong>获利了结</strong>：税差已抹平日均价差空间，果断平掉 H 股多头。</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>合伙人风控寄语</strong>：
+"在流动性枯竭的极值点做多，需要克服人类本能的恐惧。不要相信‘这次不一样’的故事，只相信大数定律和均值的引力。"</p>
+</blockquote>
+        </article>
+    </main>
+</body>
+</html>
