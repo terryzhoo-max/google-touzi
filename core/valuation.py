@@ -4,11 +4,12 @@ Data: Tushare index_dailybasic or daily_basic for index-level valuation.
 Shows where current valuation stands in 10-year history.
 
 Indices: 沪深300(000300.SH), 中证500(000905.SH), 创业板指(399006.SZ)
+Broad ETFs: 恒生ETF(510900.SH), 标普500ETF(513500.SH), 纳指ETF(513100.SH),
+日经225ETF(513520.SH), 恒生科技ETF(513180.SH)
 """
 
 import datetime
 import pandas as pd
-import numpy as np
 from core.data_providers import _tushare_items
 
 
@@ -16,6 +17,14 @@ INDICES = {
     "000300.SH": "沪深300",
     "000905.SH": "中证500",
     "399006.SZ": "创业板指",
+}
+
+BROAD_ETFS = {
+    "510900.SH": "恒生ETF",
+    "513500.SH": "标普500ETF",
+    "513100.SH": "纳指ETF",
+    "513520.SH": "日经225ETF",
+    "513180.SH": "恒生科技ETF",
 }
 
 COLORS = ["#22c55e", "#4ade80", "#a3e635", "#fbbf24", "#f97316", "#ef4444"]
@@ -41,11 +50,14 @@ def _signal(pct: float) -> str:
 
 
 def get_valuation() -> dict:
-    """Return PE/PB percentile data for major A-share indices.
+    """Return valuation percentile data for major indices and broad ETFs.
 
     Returns:
         dict with:
-          - indices: [{name, pe_current, pe_pct, pe_signal, pb_current, pb_pct, pb_signal, color}]
+          - indices: [
+              A-share index: {name, metric_type="pe_pb", pe_current, pe_pct, ...}
+              ETF: {name, metric_type="price", price_current, price_pct, ...}
+            ]
           - insight: str
     """
     end = datetime.date.today()
@@ -81,6 +93,8 @@ def get_valuation() -> dict:
 
             result_indices.append({
                 "name": name,
+                "category": "A股指数",
+                "metric_type": "pe_pb",
                 "pe_current": round(pe_cur, 1),
                 "pe_pct": pe_pct,
                 "pe_signal": _signal(pe_pct),
@@ -92,10 +106,52 @@ def get_valuation() -> dict:
         except Exception as e:
             print(f"[valuation] skip {name}: {e}")
 
+    for code, name in BROAD_ETFS.items():
+        try:
+            items = _tushare_items("fund_daily", {
+                "ts_code": code,
+                "start_date": start.strftime("%Y%m%d"),
+                "end_date": end.strftime("%Y%m%d"),
+            }, "trade_date,close")
+            if not items:
+                continue
+
+            df = pd.DataFrame(items)
+            if df.shape[1] < 2:
+                continue
+            df = df.iloc[:, :2]
+            df.columns = ["date", "close"]
+            df["close"] = pd.to_numeric(df["close"], errors="coerce")
+            df = df.dropna(subset=["close"]).sort_values("date")
+
+            if len(df) < 252:
+                continue
+
+            price_cur = float(df["close"].iloc[-1])
+            price_pct = round(float((df["close"] < price_cur).mean()) * 100, 1)
+
+            result_indices.append({
+                "name": name,
+                "code": code,
+                "category": "宽基ETF",
+                "metric_type": "price",
+                "price_current": round(price_cur, 3),
+                "price_pct": price_pct,
+                "price_signal": _signal(price_pct),
+                "color": _percentile_color(price_pct),
+            })
+        except Exception as e:
+            print(f"[valuation] skip {name}: {e}")
+
     if result_indices:
-        high = [i["name"] for i in result_indices if i["pe_pct"] > 70]
-        low = [i["name"] for i in result_indices if i["pe_pct"] < 30]
-        insight = "PE 分位: " + ", ".join(f"{i['name']} {i['pe_pct']}%" for i in result_indices)
+        index_items = [i for i in result_indices if i.get("metric_type") == "pe_pb"]
+        etf_items = [i for i in result_indices if i.get("metric_type") == "price"]
+        parts = []
+        if index_items:
+            parts.append("PE 分位: " + ", ".join(f"{i['name']} {i['pe_pct']}%" for i in index_items))
+        if etf_items:
+            parts.append("宽基价格分位: " + ", ".join(f"{i['name']} {i['price_pct']}%" for i in etf_items))
+        insight = " | ".join(parts)
     else:
         insight = "估值数据暂不可用"
 

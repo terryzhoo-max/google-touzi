@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;700&family=Outfit:wght@500;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=4">
+    <link rel="stylesheet" href="styles.css?v=7">
     <!-- ECharts & Marked.js -->
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
@@ -103,35 +103,155 @@
                     <div id="yieldcurve-chart" class="chart-container" style="height:400px;"><div class="skeleton"></div></div>
                 </div>
 
-                <!-- Heatmap Grid -->
-                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 24px; margin-top: 24px;">
-                    <!-- Shenwan Sector Rotation -->
-                    <div class="sector-panel glass-card">
-                        <div class="card-header"><h3 style="font-size: 1.1rem;">🇨🇳 申万一级行业轮动</h3><span id="sr-indicator" class="status-indicator">拉取31行业...</span></div>
-                        <p id="sr-insight" class="card-desc" style="min-height: 20px;">31 个申万一级行业近 20 日涨跌幅热力图。</p>
-                        <div id="sector-chart" class="chart-container" style="height:350px;"><div class="skeleton"></div></div>
-                    </div>
-                    
-                    <!-- Theme Rotation -->
-                    <div class="sector-panel glass-card">
-                        <div class="card-header"><h3 style="font-size: 1.1rem;">🚀 十五五政策驱动产业</h3><span id="tr-indicator" class="status-indicator">拉取政策主线...</span></div>
-                        <p id="tr-insight" class="card-desc" style="min-height: 20px;">新质生产力与政策主线热点追踪。</p>
-                        <div id="theme-chart" class="chart-container" style="height:350px;"><div class="skeleton"></div></div>
-                    </div>
+                <!-- Institutional Rotation Grid -->
+                <div class="rotation-grid">
+                    <article class="rotation-panel glass-card" data-rotation-panel="sector-chart">
+                        <header class="terminal-panel-header">
+                            <div>
+                                <div class="panel-kicker">CN EQUITY / INDUSTRY</div>
+                                <h3>申万一级行业轮动</h3>
+                                <p>31 个一级行业近端相对强弱，识别风险偏好与主线扩散。</p>
+                            </div>
+                            <span id="sr-indicator" class="status-indicator">拉取31行业...</span>
+                        </header>
+                        <div class="rotation-signal-strip">
+                            <div><span>市场结构</span><strong id="sector-chart-market-read">--</strong></div>
+                            <div><span>覆盖范围</span><strong id="sector-chart-coverage">--</strong></div>
+                            <div><span>领涨方向</span><strong id="sector-chart-leader">--</strong></div>
+                            <div><span>承压方向</span><strong id="sector-chart-laggard">--</strong></div>
+                        </div>
+                        <p id="sr-insight" class="rotation-insight">31 个申万一级行业近 20 日涨跌幅热力图。</p>
+                        <div class="rotation-controls" data-target="sector-chart">
+                            <button type="button" data-period="ret_5d">5D</button>
+                            <button type="button" data-period="ret_20d" class="is-active">20D</button>
+                            <button type="button" data-period="ret_60d">60D</button>
+                        </div>
+                        <div class="rotation-body">
+                            <div id="sector-chart" class="rotation-chart"><div class="skeleton"></div></div>
+                            <aside class="rotation-rank">
+                                <div>
+                                    <h4>Top Strength</h4>
+                                    <ol id="sector-chart-top"></ol>
+                                </div>
+                                <div>
+                                    <h4>Bottom Weakness</h4>
+                                    <ol id="sector-chart-bottom"></ol>
+                                </div>
+                            </aside>
+                        </div>
+                        <footer class="rotation-footer">Source: Tushare SW Daily · Metric: absolute return by selected window</footer>
+                    </article>
 
-                    <!-- Domestic Broad ETF -->
-                    <div class="sector-panel glass-card">
-                        <div class="card-header"><h3 style="font-size: 1.1rem;">🇨🇳 A股核心宽基 ETF</h3><span id="de-indicator" class="status-indicator">拉取A股宽基...</span></div>
-                        <p id="de-insight" class="card-desc" style="min-height: 20px;">实盘 ETF 溢价追踪，红色下跌、绿色上涨。</p>
-                        <div id="domestic-etf-chart" class="chart-container" style="height:350px;"><div class="skeleton"></div></div>
-                    </div>
+                    <article class="rotation-panel glass-card" data-rotation-panel="theme-chart">
+                        <header class="terminal-panel-header">
+                            <div>
+                                <div class="panel-kicker">CN POLICY / THEMES</div>
+                                <h3>十五五政策驱动产业</h3>
+                                <p>政策主线与新质生产力方向的强弱排序，辅助主题仓位确认。</p>
+                            </div>
+                            <span id="tr-indicator" class="status-indicator">拉取政策主线...</span>
+                        </header>
+                        <div class="rotation-signal-strip">
+                            <div><span>市场结构</span><strong id="theme-chart-market-read">--</strong></div>
+                            <div><span>覆盖范围</span><strong id="theme-chart-coverage">--</strong></div>
+                            <div><span>领涨方向</span><strong id="theme-chart-leader">--</strong></div>
+                            <div><span>承压方向</span><strong id="theme-chart-laggard">--</strong></div>
+                        </div>
+                        <p id="tr-insight" class="rotation-insight">新质生产力与政策主线热点追踪。</p>
+                        <div class="rotation-controls" data-target="theme-chart">
+                            <button type="button" data-period="ret_5d">5D</button>
+                            <button type="button" data-period="ret_20d" class="is-active">20D</button>
+                            <button type="button" data-period="ret_60d">60D</button>
+                        </div>
+                        <div class="rotation-body">
+                            <div id="theme-chart" class="rotation-chart"><div class="skeleton"></div></div>
+                            <aside class="rotation-rank">
+                                <div>
+                                    <h4>Top Strength</h4>
+                                    <ol id="theme-chart-top"></ol>
+                                </div>
+                                <div>
+                                    <h4>Bottom Weakness</h4>
+                                    <ol id="theme-chart-bottom"></ol>
+                                </div>
+                            </aside>
+                        </div>
+                        <footer class="rotation-footer">Source: Tushare fund/index data · Metric: theme basket return</footer>
+                    </article>
 
-                    <!-- Global Broad ETF -->
-                    <div class="sector-panel glass-card">
-                        <div class="card-header"><h3 style="font-size: 1.1rem;">🌍 海外核心宽基 ETF</h3><span id="ge-indicator" class="status-indicator">拉取全球宽基...</span></div>
-                        <p id="ge-insight" class="card-desc" style="min-height: 20px;">QDII 实盘 ETF 跟踪全球流动性。</p>
-                        <div id="global-etf-chart" class="chart-container" style="height:350px;"><div class="skeleton"></div></div>
-                    </div>
+                    <article class="rotation-panel glass-card" data-rotation-panel="domestic-etf-chart">
+                        <header class="terminal-panel-header">
+                            <div>
+                                <div class="panel-kicker">CN ETF / BROAD BASE</div>
+                                <h3>A股核心宽基 ETF</h3>
+                                <p>核心宽基 ETF 强弱与风格切换，用于观察 A 股 beta 配置窗口。</p>
+                            </div>
+                            <span id="de-indicator" class="status-indicator">拉取A股宽基...</span>
+                        </header>
+                        <div class="rotation-signal-strip">
+                            <div><span>市场结构</span><strong id="domestic-etf-chart-market-read">--</strong></div>
+                            <div><span>覆盖范围</span><strong id="domestic-etf-chart-coverage">--</strong></div>
+                            <div><span>领涨方向</span><strong id="domestic-etf-chart-leader">--</strong></div>
+                            <div><span>承压方向</span><strong id="domestic-etf-chart-laggard">--</strong></div>
+                        </div>
+                        <p id="de-insight" class="rotation-insight">实盘 ETF 强弱追踪，绿色上涨、红色下跌。</p>
+                        <div class="rotation-controls" data-target="domestic-etf-chart">
+                            <button type="button" data-period="ret_5d">5D</button>
+                            <button type="button" data-period="ret_20d" class="is-active">20D</button>
+                            <button type="button" data-period="ret_60d">60D</button>
+                        </div>
+                        <div class="rotation-body">
+                            <div id="domestic-etf-chart" class="rotation-chart"><div class="skeleton"></div></div>
+                            <aside class="rotation-rank">
+                                <div>
+                                    <h4>Top Strength</h4>
+                                    <ol id="domestic-etf-chart-top"></ol>
+                                </div>
+                                <div>
+                                    <h4>Bottom Weakness</h4>
+                                    <ol id="domestic-etf-chart-bottom"></ol>
+                                </div>
+                            </aside>
+                        </div>
+                        <footer class="rotation-footer">Source: Tushare fund daily · Metric: listed ETF close return</footer>
+                    </article>
+
+                    <article class="rotation-panel glass-card" data-rotation-panel="global-etf-chart">
+                        <header class="terminal-panel-header">
+                            <div>
+                                <div class="panel-kicker">GLOBAL ETF / CROSS ASSET</div>
+                                <h3>海外核心宽基 ETF</h3>
+                                <p>QDII 与海外核心资产强弱，跟踪全球流动性与跨市场风险偏好。</p>
+                            </div>
+                            <span id="ge-indicator" class="status-indicator">拉取全球宽基...</span>
+                        </header>
+                        <div class="rotation-signal-strip">
+                            <div><span>市场结构</span><strong id="global-etf-chart-market-read">--</strong></div>
+                            <div><span>覆盖范围</span><strong id="global-etf-chart-coverage">--</strong></div>
+                            <div><span>领涨方向</span><strong id="global-etf-chart-leader">--</strong></div>
+                            <div><span>承压方向</span><strong id="global-etf-chart-laggard">--</strong></div>
+                        </div>
+                        <p id="ge-insight" class="rotation-insight">QDII 实盘 ETF 跟踪全球流动性。</p>
+                        <div class="rotation-controls" data-target="global-etf-chart">
+                            <button type="button" data-period="ret_5d">5D</button>
+                            <button type="button" data-period="ret_20d" class="is-active">20D</button>
+                            <button type="button" data-period="ret_60d">60D</button>
+                        </div>
+                        <div class="rotation-body">
+                            <div id="global-etf-chart" class="rotation-chart"><div class="skeleton"></div></div>
+                            <aside class="rotation-rank">
+                                <div>
+                                    <h4>Top Strength</h4>
+                                    <ol id="global-etf-chart-top"></ol>
+                                </div>
+                                <div>
+                                    <h4>Bottom Weakness</h4>
+                                    <ol id="global-etf-chart-bottom"></ol>
+                                </div>
+                            </aside>
+                        </div>
+                        <footer class="rotation-footer">Source: Tushare fund daily · Metric: listed ETF close return</footer>
+                    </article>
                 </div>
 
                 <!-- China Macro Indicators -->
@@ -155,7 +275,7 @@
                 <div class="valuation-panel glass-card" style="margin-top:24px;">
                     <div class="card-header"><h3>🇨🇳 估值温度计 (Valuation Thermometer)</h3><span id="val-indicator" class="status-indicator">拉取估值数据...</span></div>
                     <p id="val-insight" class="card-desc">沪深300 / 中证500 / 创业板指 PE/PB 近 10 年分位数，一眼看穿贵还是便宜。</p>
-                    <div id="valuation-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:15px;margin-top:15px;"><div class="skeleton" style="height:160px;"></div><div class="skeleton" style="height:160px;"></div><div class="skeleton" style="height:160px;"></div></div>
+                    <div id="valuation-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:15px;margin-top:15px;"><div class="skeleton" style="height:160px;"></div><div class="skeleton" style="height:160px;"></div><div class="skeleton" style="height:160px;"></div></div>
                 </div>
 
                 <!-- Market Breadth -->
@@ -295,6 +415,6 @@
         </div>
     </footer>
 
-    <script src="main.js?v=4"></script>
+    <script src="main.js?v=7"></script>
 </body>
 </html>

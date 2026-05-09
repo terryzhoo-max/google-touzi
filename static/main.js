@@ -12,10 +12,7 @@ document.addEventListener("DOMContentLoaded", () => {
         initEfficientFrontier();
         initScenarioTest();
         initBacktest();
-        initTreemapChart('sector-chart', '/api/macro/sector_rotation', 'sr-indicator', 'sr-insight', '31行业已加载', 'default');
-        initTreemapChart('theme-chart', '/api/macro/theme_rotation', 'tr-indicator', 'tr-insight', '政策主线已加载', 'purple');
-        initTreemapChart('domestic-etf-chart', '/api/macro/domestic_etf', 'de-indicator', 'de-insight', 'A股宽基已加载', 'etf');
-        initTreemapChart('global-etf-chart', '/api/macro/global_etf', 'ge-indicator', 'ge-insight', '全球宽基已加载', 'blue');
+        initRotationPanels();
         initChinaMacro();
         initMarketBreadth();
         initFedProb();
@@ -796,60 +793,261 @@ async function initMonteCarloChart() {
     }
 }
 
-async function initTreemapChart(domId, apiUrl, indId, insId, successText, colorTheme) {
-    const cd = document.getElementById(domId);
-    if (!cd) return;
-    const mc = echarts.init(cd, 'dark');
-    mc.showLoading({text:'引擎演算中...',color:'#fbbf24',textColor:'#fff',maskColor:'rgba(20,20,25,0.8)'});
+const rotationPanelConfigs = [
+    {
+        domId: 'sector-chart',
+        apiUrl: '/api/macro/sector_rotation',
+        indicatorId: 'sr-indicator',
+        insightId: 'sr-insight',
+        successText: '31行业已加载',
+        theme: 'default',
+    },
+    {
+        domId: 'theme-chart',
+        apiUrl: '/api/macro/theme_rotation',
+        indicatorId: 'tr-indicator',
+        insightId: 'tr-insight',
+        successText: '政策主线已加载',
+        theme: 'policy',
+    },
+    {
+        domId: 'domestic-etf-chart',
+        apiUrl: '/api/macro/domestic_etf',
+        indicatorId: 'de-indicator',
+        insightId: 'de-insight',
+        successText: 'A股宽基已加载',
+        theme: 'etf',
+    },
+    {
+        domId: 'global-etf-chart',
+        apiUrl: '/api/macro/global_etf',
+        indicatorId: 'ge-indicator',
+        insightId: 'ge-insight',
+        successText: '全球宽基已加载',
+        theme: 'global',
+    },
+];
+
+function initRotationPanels() {
+    rotationPanelConfigs.forEach((config, index) => {
+        window.setTimeout(() => initTreemapChart(config), index * 350);
+    });
+}
+
+async function initTreemapChart(config) {
+    const { domId, apiUrl, indicatorId, insightId, successText, theme } = config;
+    const chartDom = document.getElementById(domId);
+    const panel = document.querySelector(`[data-rotation-panel="${domId}"]`);
+    if (!chartDom || !panel) return;
+
+    const chart = echarts.init(chartDom, 'dark');
+    let activePeriod = 'ret_20d';
+    let items = [];
+
+    chart.showLoading({
+        text: '引擎演算中...',
+        color: '#2563eb',
+        textColor: '#cbd5e1',
+        maskColor: 'rgba(11,15,20,0.82)'
+    });
+
     try {
-        const r = await fetch(apiUrl);
-        const d = await r.json();
-        mc.hideLoading();
-        if (d.error) throw new Error(d.error);
-        const si = document.getElementById(indId);
-        const sn = document.getElementById(insId);
-        if(si){si.innerText = successText; si.style.color='#fbbf24'; si.style.borderColor='#fbbf24';}
-        if(sn)sn.innerText=d.insight;
-        
-        // Define color gradient base based on theme
-        let posColorBase = [0, 80, 80]; // default green
-        let negColorBase = [80, 30, 30]; // default red
-        
-        if (colorTheme === 'blue') {
-            posColorBase = [0, 80, 160]; // tech blue
-            negColorBase = [120, 60, 0]; // orange/brown
-        } else if (colorTheme === 'purple') {
-            posColorBase = [80, 0, 160]; // purple
-            negColorBase = [120, 120, 0]; // yellow/olive
-        }
+        const payload = await fetchJsonWithRetry(apiUrl, 3, 650);
+        chart.hideLoading();
+        if (payload.error) throw new Error(payload.error);
 
-        mc.setOption({
-            backgroundColor:'transparent',
-            tooltip:{formatter:p=>`${p.name}<br/>5日 ${p.data.ret_5d}% | 20日 ${p.data.ret_20d}% | 60日 ${p.data.ret_60d}%`},
-            series:[{type:'treemap',roam:false,width:'96%',height:'85%',breadcrumb:{show:false},
-                label:{show:true,formatter:p=>`${p.name}\n${p.data.ret_20d>0?'+':''}${p.data.ret_20d}%`,fontSize:10,color:'#e2e8f0'},
-                data:d.sectors.map(s=> {
-                    let intensity = Math.min(175, Math.abs(s.ret_20d)*30);
-                    let colorStr = s.ret_20d >= 0 
-                        ? `rgb(${posColorBase[0]},${posColorBase[1]+intensity},${posColorBase[2]})`
-                        : `rgb(${negColorBase[0]+intensity},${negColorBase[1]},${negColorBase[2]})`;
-                    
-                    // Specific override for domestic/global ETF to keep classic red/green mapping
-                    if (colorTheme === 'etf') {
-                        colorStr = s.ret_20d >= 0 
-                            ? `rgb(30,${80+intensity},30)` // Green up
-                            : `rgb(${80+intensity},30,30)`; // Red down
-                    }
+        items = normalizeRotationItems(payload);
+        if (!items.length) throw new Error('No rotation data returned');
 
-                    return {
-                        name:s.name, value:s.value, ret_5d:s.ret_5d, ret_20d:s.ret_20d, ret_60d:s.ret_60d,
-                        itemStyle:{color: colorStr}
-                    };
-                })
-            }]
+        setRotationStatus(indicatorId, successText, 'ok');
+        const insight = document.getElementById(insightId);
+        if (insight) insight.textContent = payload.insight || buildRotationInsight(items, activePeriod);
+
+        bindRotationControls(panel, chart, items, theme, activePeriod, nextPeriod => {
+            activePeriod = nextPeriod;
+            renderRotationPanel(panel, chart, items, theme, activePeriod);
         });
-        window.addEventListener('resize',()=>mc.resize());
-    }catch(e){mc.hideLoading();console.error(domId + ' failed:',e);}
+        renderRotationPanel(panel, chart, items, theme, activePeriod);
+        window.addEventListener('resize', () => chart.resize());
+    } catch (e) {
+        chart.hideLoading();
+        setRotationStatus(indicatorId, '加载失败', 'error');
+        const insight = document.getElementById(insightId);
+        if (insight) insight.textContent = `数据源异常：${e.message}`;
+        chartDom.innerHTML = '<div class="rotation-empty">数据暂不可用</div>';
+        console.error(domId + ' failed:', e);
+    }
+}
+
+async function fetchJsonWithRetry(url, attempts = 3, baseDelay = 500) {
+    let lastError;
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+        try {
+            const response = await fetch(url, { cache: 'no-store' });
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            return await response.json();
+        } catch (error) {
+            lastError = error;
+            if (attempt < attempts) {
+                await sleep(baseDelay * attempt);
+            }
+        }
+    }
+    throw lastError;
+}
+
+function sleep(ms) {
+    return new Promise(resolve => window.setTimeout(resolve, ms));
+}
+
+function normalizeRotationItems(payload) {
+    const raw = payload.sectors || payload.items || [];
+    return raw.map(item => ({
+        code: item.code || '',
+        name: item.name || item.code || '--',
+        value: Number(item.value || item.last_close || Math.max(Math.abs(item.ret_20d || 0), 1)),
+        ret_5d: Number(item.ret_5d || 0),
+        ret_20d: Number(item.ret_20d || 0),
+        ret_60d: Number(item.ret_60d || 0),
+    })).filter(item => item.name !== '--');
+}
+
+function bindRotationControls(panel, chart, items, theme, activePeriod, onPeriodChange) {
+    const buttons = panel.querySelectorAll('.rotation-controls button[data-period]');
+    buttons.forEach(button => {
+        button.onclick = () => {
+            buttons.forEach(btn => btn.classList.remove('is-active'));
+            button.classList.add('is-active');
+            onPeriodChange(button.dataset.period || activePeriod);
+        };
+    });
+}
+
+function renderRotationPanel(panel, chart, items, theme, periodKey) {
+    const ranked = [...items].sort((a, b) => b[periodKey] - a[periodKey]);
+    const top = ranked.slice(0, 5);
+    const bottom = ranked.slice(-5).reverse();
+    const positives = items.filter(item => item[periodKey] > 0).length;
+    const breadth = Math.round((positives / Math.max(items.length, 1)) * 100);
+    const marketRead = breadth >= 65 ? '强势扩散' : (breadth <= 35 ? '弱势收缩' : '结构分化');
+
+    setPanelText(panel, 'market-read', marketRead);
+    setPanelText(panel, 'coverage', `${items.length}/${items.length}`);
+    setPanelText(panel, 'leader', top[0]?.name || '--');
+    setPanelText(panel, 'laggard', bottom[0]?.name || '--');
+    renderRankList(panel, 'top', top, periodKey);
+    renderRankList(panel, 'bottom', bottom, periodKey);
+    renderTreemap(chart, items, theme, periodKey);
+}
+
+function setPanelText(panel, suffix, value) {
+    const id = `${panel.dataset.rotationPanel}-${suffix}`;
+    const el = document.getElementById(id);
+    if (el) el.textContent = value;
+}
+
+function renderRankList(panel, suffix, rows, periodKey) {
+    const id = `${panel.dataset.rotationPanel}-${suffix}`;
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.innerHTML = rows.map(item => {
+        const val = item[periodKey];
+        const cls = val >= 0 ? 'is-positive' : 'is-negative';
+        return `<li><span>${item.name}</span><strong class="${cls}">${formatPct(val)}</strong></li>`;
+    }).join('');
+}
+
+function renderTreemap(chart, items, theme, periodKey) {
+    const data = items.map(item => ({
+        ...item,
+        value: Math.max(Number(item.value) || Math.abs(item[periodKey]) || 1, 1),
+        itemStyle: { color: rotationColor(item[periodKey], theme) },
+    }));
+
+    chart.setOption({
+        backgroundColor: 'transparent',
+        tooltip: {
+            trigger: 'item',
+            backgroundColor: 'rgba(15, 23, 42, 0.96)',
+            borderColor: 'rgba(148, 163, 184, 0.22)',
+            borderWidth: 1,
+            textStyle: { color: '#e5e7eb', fontFamily: 'Inter, sans-serif' },
+            extraCssText: 'box-shadow:0 12px 30px rgba(0,0,0,.35);border-radius:6px;',
+            formatter: p => {
+                const d = p.data;
+                return `<div class="chart-tooltip-title">${d.name}</div>
+                    <div>5D <b>${formatPct(d.ret_5d)}</b></div>
+                    <div>20D <b>${formatPct(d.ret_20d)}</b></div>
+                    <div>60D <b>${formatPct(d.ret_60d)}</b></div>`;
+            }
+        },
+        series: [{
+            type: 'treemap',
+            roam: false,
+            nodeClick: false,
+            breadcrumb: { show: false },
+            left: 0,
+            right: 0,
+            top: 0,
+            bottom: 0,
+            itemStyle: {
+                borderColor: '#111827',
+                borderWidth: 1,
+                gapWidth: 1,
+            },
+            upperLabel: { show: false },
+            label: {
+                show: true,
+                color: '#f8fafc',
+                fontSize: 11,
+                lineHeight: 15,
+                overflow: 'truncate',
+                formatter: p => `${p.name}\n${formatPct(p.data[periodKey])}`,
+            },
+            emphasis: {
+                itemStyle: { borderColor: '#e5e7eb', borderWidth: 1 },
+                label: { color: '#ffffff' },
+            },
+            data,
+        }]
+    }, true);
+}
+
+function rotationColor(value, theme) {
+    const v = Math.max(-12, Math.min(12, Number(value) || 0));
+    const intensity = Math.min(1, Math.abs(v) / 8);
+    const palettes = {
+        default: { pos: [22, 163, 74], neg: [220, 38, 38], neu: [71, 85, 105] },
+        policy: { pos: [37, 99, 235], neg: [217, 119, 6], neu: [71, 85, 105] },
+        etf: { pos: [22, 163, 74], neg: [220, 38, 38], neu: [71, 85, 105] },
+        global: { pos: [14, 116, 144], neg: [185, 28, 28], neu: [71, 85, 105] },
+    };
+    const p = palettes[theme] || palettes.default;
+    const base = v > 0 ? p.pos : (v < 0 ? p.neg : p.neu);
+    const alpha = 0.38 + intensity * 0.52;
+    return `rgba(${base[0]}, ${base[1]}, ${base[2]}, ${alpha})`;
+}
+
+function formatPct(value) {
+    const n = Number(value) || 0;
+    return `${n > 0 ? '+' : ''}${n.toFixed(2)}%`;
+}
+
+function buildRotationInsight(items, periodKey) {
+    const ranked = [...items].sort((a, b) => b[periodKey] - a[periodKey]);
+    const top = ranked.slice(0, 3).map(item => item.name).join(', ');
+    const bottom = ranked.slice(-3).reverse().map(item => item.name).join(', ');
+    return `近端领涨: ${top || '--'} | 领跌: ${bottom || '--'}`;
+}
+
+function setRotationStatus(indicatorId, text, status) {
+    const el = document.getElementById(indicatorId);
+    if (!el) return;
+    el.textContent = text;
+    el.classList.toggle('is-error', status === 'error');
+    el.classList.toggle('is-ok', status === 'ok');
 }
 
 async function initChinaMacro() {
@@ -954,9 +1152,27 @@ async function initValuation() {
         document.getElementById('val-indicator').innerText='已更新 '+d.updated;
         document.getElementById('val-insight').innerText=d.insight;
         gd.innerHTML=d.indices.map(i=>{
+            if (i.metric_type === 'price') {
+                const pct = Number(i.price_pct || 0);
+                const barW = Math.max(2, pct);
+                return `<div style="background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.05);border-radius:8px;padding:16px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:8px;">
+                        <div style="font-weight:bold;color:#e2e8f0;font-size:0.95rem;">${i.name}</div>
+                        <div style="font-size:0.65rem;color:#64748b;font-family:var(--font-mono);border:1px solid rgba(255,255,255,0.08);border-radius:4px;padding:2px 6px;">${i.category || 'ETF'}</div>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;font-size:0.75rem;color:#94a3b8;margin-bottom:4px;"><span>价格 ${i.price_current}</span><span>分位 ${pct}% ${i.price_signal}</span></div>
+                    <div style="height:10px;background:rgba(255,255,255,0.05);border-radius:5px;overflow:hidden;margin-bottom:12px;">
+                        <div style="width:${barW}%;height:100%;background:${i.color};border-radius:5px;transition:width 0.6s;"></div>
+                    </div>
+                    <div style="font-size:0.72rem;color:#64748b;line-height:1.5;">口径：近 10 年 ETF 收盘价历史分位，不等同于底层指数 PE/PB。</div>
+                </div>`;
+            }
             const pct=i.pe_pct; const barW=Math.max(2,pct);
             return `<div style="background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.05);border-radius:8px;padding:16px;">
-                <div style="font-weight:bold;color:#e2e8f0;font-size:0.95rem;margin-bottom:12px;">${i.name}</div>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:8px;">
+                    <div style="font-weight:bold;color:#e2e8f0;font-size:0.95rem;">${i.name}</div>
+                    <div style="font-size:0.65rem;color:#64748b;font-family:var(--font-mono);border:1px solid rgba(255,255,255,0.08);border-radius:4px;padding:2px 6px;">${i.category || 'INDEX'}</div>
+                </div>
                 <div style="display:flex;justify-content:space-between;font-size:0.75rem;color:#94a3b8;margin-bottom:4px;"><span>PE ${i.pe_current}</span><span>分位 ${pct}% ${i.pe_signal}</span></div>
                 <div style="height:10px;background:rgba(255,255,255,0.05);border-radius:5px;overflow:hidden;margin-bottom:12px;">
                     <div style="width:${barW}%;height:100%;background:${i.color};border-radius:5px;transition:width 0.6s;"></div>
