@@ -1,77 +1,118 @@
 """
-Market breadth indicators for A-shares.
-Advance/Decline Line and ratio — reveals "real" market temperature
-beneath the index surface.
+North-bound capital flow monitor for A-shares.
 
-Data source: Tushare daily_basic (requires 5000+ points).
+Public payload unit is always CNY 100mn ("yi yuan", 亿元).
 """
 
 import datetime
+
 import pandas as pd
-import numpy as np
+
 from core.data_providers import _tushare_items
 
 
-def get_market_breadth(days: int = 60) -> dict:
-    """Return AD Line cumulative values and daily advance/decline ratio.
+def _normalize_hsgt_flow_to_100mn(value: float) -> float:
+    """Normalize HSGT flow values to CNY 100mn.
 
-    Returns:
-        dict with:
-          - ad_line: [{date, value}]  — cumulative advance-decline
-          - ad_ratio: [{date, value}] — daily (up-down)/(up+down) * 100
-          - today: {up, down, flat, total}
-          - insight: str
+    Official Tushare moneyflow_hsgt fields north_money/hgt/sgt are
+    documented as CNY million, so the normal conversion is value / 100.
+
+    In practice, stale/proxy/cached rows may arrive in CNY 10k units and
+    appear roughly 100x larger. Daily north-bound flow above CNY 1000bn is
+    not a credible normal observation, so values above 100000 are treated
+    as CNY 10k and converted with value / 10000.
+    """
+    if abs(value) > 100000:
+        return round(value / 10000, 2)
+    return round(value / 100, 2)
+
+
+def get_market_breadth(days: int = 60) -> dict:
+    """Return north-bound daily net flow and cumulative flow.
+
+    Compatibility aliases ad_line/ad_ratio are retained for older frontend
+    contracts, but they should not be interpreted as market breadth counts.
     """
     end = datetime.date.today()
     start = end - datetime.timedelta(days=days + 10)
 
     try:
-        # Use Tushare moneyflow_hsgt as a breadth proxy.
-        # Returns north-bound / south-bound flow which reflects market sentiment.
-        # If unavailable, fall back gracefully.
-        items = _tushare_items("moneyflow_hsgt", params={
-            "start_date": start.strftime("%Y%m%d"),
-            "end_date": end.strftime("%Y%m%d"),
-        }, fields="trade_date,ggt_ss,ggt_sz")
+        items = _tushare_items(
+            "moneyflow_hsgt",
+            params={
+                "start_date": start.strftime("%Y%m%d"),
+                "end_date": end.strftime("%Y%m%d"),
+            },
+            fields="trade_date,north_money,hgt,sgt",
+        )
     except Exception:
         items = []
 
-    ad_line: list[dict] = []
-    ad_ratio: list[dict] = []
-    cumulative = 0
-    today_up = today_down = today_flat = 0
+    cumulative_series: list[dict] = []
+    flow_series: list[dict] = []
+    cumulative = 0.0
+    current_flow = 0.0
+    flow_5d = 0.0
+    flow_20d = 0.0
 
-    if items and len(items[0]) >= 3:
-        df = pd.DataFrame(items, columns=["trade_date", "ggt_ss", "ggt_sz"])
-        df = df.sort_values("trade_date")
+    if items and len(items[0]) >= 2:
+        cols = ["trade_date", "north_money", "hgt", "sgt"][: len(items[0])]
+        df = pd.DataFrame(items, columns=cols).sort_values("trade_date")
+
+        flows: list[float] = []
         for _, row in df.iterrows():
             try:
-                up = float(row["ggt_ss"] or 0) + float(row["ggt_sz"] or 0)
+                if "north_money" in row and pd.notna(row["north_money"]):
+                    raw_flow = float(row["north_money"] or 0)
+                else:
+                    raw_flow = float(row.get("hgt", 0) or 0) + float(row.get("sgt", 0) or 0)
             except Exception:
-                up = 0
-            cumulative += up
-            ratio = round(up, 1)
-            ad_line.append({"date": row["trade_date"], "value": cumulative})
-            ad_ratio.append({"date": row["trade_date"], "value": ratio})
+                raw_flow = 0.0
 
-        last = df.iloc[-1]
-        try:
-            today_up = round(float(last["ggt_ss"] or 0) + float(last["ggt_sz"] or 0), 1)
-        except Exception:
-            today_up = 0
-        today_down = today_flat = 0
+            flow = _normalize_hsgt_flow_to_100mn(raw_flow)
+            cumulative = round(cumulative + flow, 2)
+            flows.append(flow)
+            flow_series.append({"date": row["trade_date"], "value": flow})
+            cumulative_series.append({"date": row["trade_date"], "value": cumulative})
 
-    # insight
-    if ad_ratio:
-        last_r = ad_ratio[-1]["value"]
-        trend = "净流入" if last_r > 0 else "净流出"
-        insight = f"北向资金 {today_up:.0f}亿 ({trend}) | 累计 AD {cumulative:.0f}"
+        if flows:
+            current_flow = flows[-1]
+            flow_5d = round(sum(flows[-5:]), 2)
+            flow_20d = round(sum(flows[-20:]), 2)
+
+    if flow_series:
+        trend = "净流入" if current_flow > 0 else ("净流出" if current_flow < 0 else "持平")
+        if flow_20d > 0 and flow_5d > 0:
+            signal = "外资持续流入"
+        elif flow_20d < 0 and flow_5d < 0:
+            signal = "外资持续流出"
+        else:
+            signal = "短期分歧"
+        insight = (
+            f"北向资金 {current_flow:.1f}亿 ({trend}) | "
+            f"5日 {flow_5d:.1f}亿 | 20日 {flow_20d:.1f}亿"
+        )
     else:
-        insight = "市场宽度数据暂不可用"
+        signal = "数据不可用"
+        insight = "北向资金数据暂不可用"
 
     return {
-        "ad_line": ad_line[-days:],
-        "ad_ratio": ad_ratio[-days:],
-        "today": {"up": today_up, "down": today_down, "flat": today_flat, "total": today_up + today_down},
+        "flow": flow_series[-days:],
+        "cumulative": cumulative_series[-days:],
+        "ad_line": cumulative_series[-days:],
+        "ad_ratio": flow_series[-days:],
+        "today": {
+            "current_flow": current_flow,
+            "flow_5d": flow_5d,
+            "flow_20d": flow_20d,
+            "cumulative": cumulative,
+            "up": current_flow,
+            "down": 0,
+            "flat": 0,
+            "total": current_flow,
+        },
+        "signal": signal,
         "insight": insight,
+        "unit": "CNY 100mn",
+        "updated": end.strftime("%Y-%m-%d"),
     }

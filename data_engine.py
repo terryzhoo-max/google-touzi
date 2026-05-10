@@ -22,7 +22,8 @@ from core.fed_prob import get_fed_probability
 from core.global_assets import get_global_assets
 from core.valuation import get_valuation
 
-from core.cache_store import cached, cached_async, ROUTE_TTL, get_cache_stats, invalidate
+from core.cache_store import cached_async, ROUTE_TTL, get_cache_stats
+from core.config import settings
 
 app = FastAPI(title="AlphaCore Quant Data Engine")
 
@@ -40,25 +41,31 @@ async def shutdown_event_handler():
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=settings.ALLOWED_ORIGINS,
+    allow_credentials=settings.ALLOW_CREDENTIALS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # --- Phase 12: Institutional Security (Rate Limiting) ---
 from collections import defaultdict
-from core.config import settings
 RATE_LIMIT_DB = defaultdict(list)
 
 @app.middleware("http")
 async def rate_limit_middleware(request: Request, call_next):
+    if not request.url.path.startswith("/api/"):
+        return await call_next(request)
+
     client_ip = request.client.host
     now = time.time()
     RATE_LIMIT_DB[client_ip] = [t for t in RATE_LIMIT_DB[client_ip] if now - t < 60]
     
     if len(RATE_LIMIT_DB[client_ip]) >= settings.MAX_REQUESTS_PER_MINUTE:
-        return JSONResponse(status_code=429, content={"detail": "Too Many Requests. 机构级 API 风控防御机制已触发，已拦截异常高频访问。"})
+        return JSONResponse(
+            status_code=429,
+            content={"detail": "Too Many Requests. Institutional API rate guard triggered."},
+            headers={"Retry-After": "30"},
+        )
         
     RATE_LIMIT_DB[client_ip].append(now)
     response = await call_next(request)
@@ -78,17 +85,22 @@ async def api_health():
         "degraded_sources": degraded,
         "sources": ps,
         "cache": get_cache_stats(),
+        "rate_limit": {
+            "window_sec": 60,
+            "max_requests_per_minute": settings.MAX_REQUESTS_PER_MINUTE,
+            "tracked_clients": len(RATE_LIMIT_DB),
+        },
         "active_alerts": len(get_active_alerts()),
         "routes": list(ROUTE_TTL.keys()),
     }
 
-@cached_async(ttl=ROUTE_TTL["erp"], key="erp")
 @app.get("/api/macro/erp")
+@cached_async(ttl=ROUTE_TTL["erp"], key="erp")
 async def get_erp_data():
     return fetch_yfinance_data("^TNX", "tnx")
 
-@cached_async(ttl=ROUTE_TTL["spread"], key="spread")
 @app.get("/api/macro/spread")
+@cached_async(ttl=ROUTE_TTL["spread"], key="spread")
 async def get_spread_data():
     return fetch_yfinance_data("^VIX", "vix")
 
@@ -139,93 +151,93 @@ async def _build_decision_payload():
     result["regime_alloc"] = alloc
     return result
 
-@cached_async(ttl=ROUTE_TTL["decision"], key="decision")
 @app.get("/api/macro/decision")
+@cached_async(ttl=ROUTE_TTL["decision"], key="decision")
 async def api_decision():
     return await _build_decision_payload()
 
-@cached_async(ttl=ROUTE_TTL["yield_curve"], key="yield_curve")
 @app.get("/api/macro/yield_curve")
+@cached_async(ttl=ROUTE_TTL["yield_curve"], key="yield_curve")
 async def api_yield_curve():
     return get_yield_curve(days=120)
 
-@cached_async(ttl=ROUTE_TTL["allocation"], key="allocation")
 @app.get("/api/macro/allocation")
+@cached_async(ttl=ROUTE_TTL["allocation"], key="allocation")
 async def get_asset_allocation():
     return calculate_asset_allocation()
 
-@cached_async(ttl=ROUTE_TTL["correlation"], key="correlation")
 @app.get("/api/macro/correlation")
+@cached_async(ttl=ROUTE_TTL["correlation"], key="correlation")
 async def get_correlation_matrix():
     return calculate_correlation_matrix()
 
-@cached_async(ttl=ROUTE_TTL["montecarlo"], key="montecarlo")
 @app.get("/api/macro/montecarlo")
+@cached_async(ttl=ROUTE_TTL["montecarlo"], key="montecarlo")
 async def get_montecarlo_sim():
     return run_montecarlo_sim()
 
-@cached_async(ttl=ROUTE_TTL["efficient_frontier"], key="efficient_frontier")
 @app.get("/api/macro/efficient_frontier")
+@cached_async(ttl=ROUTE_TTL["efficient_frontier"], key="efficient_frontier")
 async def api_efficient_frontier():
     return await asyncio.to_thread(run_efficient_frontier)
 
-@cached_async(ttl=ROUTE_TTL["scenario"], key="scenario")
 @app.get("/api/macro/scenario")
+@cached_async(ttl=ROUTE_TTL["scenario"], key="scenario")
 async def api_scenario():
     return await asyncio.to_thread(run_scenario_analysis)
 
-@cached_async(ttl=3600, key="sector_rotation")
 @app.get("/api/macro/sector_rotation")
+@cached_async(ttl=ROUTE_TTL["sector_rotation"], key="sector_rotation")
 async def api_sector_rotation():
     return get_sector_rotation(days_back=90)
 
-@cached_async(ttl=3600, key="theme_rotation")
 @app.get("/api/macro/theme_rotation")
+@cached_async(ttl=ROUTE_TTL["theme_rotation"], key="theme_rotation")
 async def api_theme_rotation():
     return get_theme_rotation()
 
-@cached_async(ttl=3600, key="domestic_etf")
 @app.get("/api/macro/domestic_etf")
+@cached_async(ttl=ROUTE_TTL["domestic_etf"], key="domestic_etf")
 async def api_domestic_etf():
     return get_domestic_etf_rotation()
 
-@cached_async(ttl=3600, key="global_etf")
 @app.get("/api/macro/global_etf")
+@cached_async(ttl=ROUTE_TTL["global_etf"], key="global_etf")
 async def api_global_etf():
     return get_global_etf_rotation()
 
-@cached_async(ttl=3600, key="fed_prob")
 @app.get("/api/macro/fed_prob")
+@cached_async(ttl=ROUTE_TTL["fed_prob"], key="fed_prob")
 async def api_fed_prob():
     return get_fed_probability()
 
-@cached_async(ttl=3600, key="global_assets")
 @app.get("/api/macro/global_assets")
+@cached_async(ttl=ROUTE_TTL["global_assets"], key="global_assets")
 async def api_global_assets():
     return get_global_assets()
 
-@cached_async(ttl=43200, key="valuation")
 @app.get("/api/macro/valuation")
+@cached_async(ttl=ROUTE_TTL["valuation"], key="valuation")
 async def api_valuation():
     return get_valuation()
 
-@cached_async(ttl=86400, key="china_macro")
 @app.get("/api/macro/china_macro")
+@cached_async(ttl=ROUTE_TTL["china_macro"], key="china_macro")
 async def api_china_macro():
     return get_china_macro(months=24)
 
-@cached_async(ttl=3600, key="market_breadth")
 @app.get("/api/macro/market_breadth")
+@cached_async(ttl=ROUTE_TTL["market_breadth"], key="market_breadth")
 async def api_market_breadth():
     return get_market_breadth(days=60)
 
-@cached_async(ttl=ROUTE_TTL["signals"], key="signals")
 @app.get("/api/macro/signals")
+@cached_async(ttl=ROUTE_TTL["signals"], key="signals")
 async def api_signals():
     return get_multi_timeframe_signals()
 
-@cached_async(ttl=ROUTE_TTL["ai_insight"], key="ai_insight")
 @app.get("/api/macro/ai_insight")
+@cached_async(ttl=ROUTE_TTL["ai_insight"], key="ai_insight")
 async def get_ai_insight():
     # Phase 22: Async non-blocking thread offloading to prevent event loop lock
     return await asyncio.to_thread(generate_llm_insight)
@@ -233,8 +245,8 @@ async def get_ai_insight():
 
 from core.backtest import run_backtest
 
-@cached_async(ttl=ROUTE_TTL["backtest"], key="backtest")
 @app.get("/api/macro/backtest")
+@cached_async(ttl=ROUTE_TTL["backtest"], key="backtest")
 async def api_backtest():
     try:
         data = await asyncio.to_thread(run_backtest)

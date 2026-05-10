@@ -32,12 +32,9 @@ _provider_stats: dict[str, dict] = {
     "tushare_index": {"calls": 0, "hits": 0, "errors": 0, "last_ok": 0, "last_err": "", "avg_ms": 0},
     "akshare":    {"calls": 0, "hits": 0, "errors": 0, "last_ok": 0, "last_err": "", "avg_ms": 0},
 }
-# L3: inflight tracker to deduplicate concurrent same-param requests
-import threading as _threading
-_inflight: dict[str, _threading.Event] = {}
-_inflight_lock = _threading.Lock()
-
-PROVIDER_CACHE_TTL = 3600  # 1-hour default for raw provider data
+PROVIDER_CACHE_TTL = 3600       # 1-hour default
+MACRO_CACHE_TTL     = 900        # 15-min for VIX/TNX/DXY (aligns with 30-min background sync)
+EQUITY_CACHE_TTL    = 3600       # 1-hour for ETF/equity data (daily close doesn't change intraday)
 
 def get_provider_stats() -> dict:
     """Return provider health summary for the /api/health endpoint."""
@@ -104,10 +101,10 @@ def _fred_series(series_id: str, limit: int = 60) -> pd.Series:
     cache_key = f"fred:{series_id}:{limit}"
     now = time.time()
 
-    # L2 cache check
+    # L2 cache check — FRED macro data uses shorter TTL
     if cache_key in _provider_cache:
         ts, val = _provider_cache[cache_key]
-        if now - ts < PROVIDER_CACHE_TTL:
+        if now - ts < MACRO_CACHE_TTL:
             _provider_stats["fred"]["hits"] += 1
             return val
 
@@ -148,19 +145,18 @@ def _fred_series(series_id: str, limit: int = 60) -> pd.Series:
 
 
 def _tushare_items(api_name: str, params: dict, fields: str) -> list:
-    """Generic Tushare API call.  L2-cached per (api, ts_code, start, end)."""
+    """Generic Tushare API call. L2-cached per API, params, and fields."""
     ts_code = params.get("ts_code", "")
     start = params.get("start_date", "")
     end = params.get("end_date", "")
     trade_date = params.get("trade_date", "")
-    cache_key = f"ts:{api_name}:{ts_code}:{start}:{end}:{trade_date}"
+    cache_key = f"ts:{api_name}:{ts_code}:{start}:{end}:{trade_date}:{fields}"
 
     now = time.time()
     if cache_key in _provider_cache:
         ts, val = _provider_cache[cache_key]
         if now - ts < PROVIDER_CACHE_TTL:
-            # classify source
-            src = "tushare_fund" if "fund" in api_name else "tushare_index"
+            src = "tushare_fund" if "fund" in api_name else ("tushare_fx" if "fx" in api_name else "tushare_index")
             _provider_stats[src]["hits"] += 1
             return val
 

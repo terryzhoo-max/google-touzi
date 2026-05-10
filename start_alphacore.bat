@@ -57,9 +57,6 @@ if errorlevel 1 set "MISSING=!MISSING! pandas"
 python -c "import markdown" >nul 2>&1
 if errorlevel 1 set "MISSING=!MISSING! markdown"
 
-python -c "import yfinance" >nul 2>&1
-if errorlevel 1 set "MISSING=!MISSING! yfinance"
-
 if not "!MISSING!"=="" (
     echo [WARN] Missing:!MISSING!
     set /p "YN=       Auto-install? (Y/N): "

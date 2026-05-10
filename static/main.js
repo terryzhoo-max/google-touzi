@@ -1,26 +1,26 @@
 // main.js - Logic and Chart Initialization
 
 document.addEventListener("DOMContentLoaded", () => {
-    initDashboard();
-    initERPChart();
-    initSpreadChart();
-    setTimeout(() => {
-        initYieldCurve();
-        initAllocationChart();
-        initCorrelationChart();
-        initMonteCarloChart();
-        initEfficientFrontier();
-        initScenarioTest();
-        initBacktest();
-        initRotationPanels();
-        initChinaMacro();
-        initMarketBreadth();
-        initFedProb();
-        initGlobalAssets();
-        initValuation();
-    }, 500);
-    initGenAI();
-    initSignals();
+    scheduleInitializers([
+        [initDashboard, 0],
+        [initERPChart, 120],
+        [initSpreadChart, 240],
+        [initSignals, 360],
+        [initYieldCurve, 650],
+        [initAllocationChart, 800],
+        [initCorrelationChart, 950],
+        [initMonteCarloChart, 1100],
+        [initEfficientFrontier, 1300],
+        [initScenarioTest, 1500],
+        [initBacktest, 1700],
+        [initChinaMacro, 1900],
+        [initMarketBreadth, 2100],
+        [initFedProb, 2300],
+        [initGlobalAssets, 2500],
+        [initValuation, 2700],
+        [initRotationPanels, 3000],
+        [initGenAI, 3600],
+    ]);
 
     // Simple smooth scroll for nav links
     document.querySelectorAll('a[href^="#"]').forEach(anchor => {
@@ -34,6 +34,18 @@ document.addEventListener("DOMContentLoaded", () => {
 
 
 });
+
+function scheduleInitializers(jobs) {
+    jobs.forEach(([job, delay]) => {
+        window.setTimeout(() => {
+            try {
+                job();
+            } catch (error) {
+                console.error('Initializer failed:', error);
+            }
+        }, delay);
+    });
+}
 
 async function initDashboard() {
     try {
@@ -1087,23 +1099,66 @@ async function initMarketBreadth() {
     try {
         const r = await fetch('/api/macro/market_breadth');
         const d = await r.json();
-        document.getElementById('mb-indicator').innerText=`涨停${d.today.up}/跌停${d.today.down}`;
-        document.getElementById('mb-insight').innerText=d.insight;
+        const flow = d.flow || d.ad_ratio || [];
+        const cumulative = d.cumulative || d.ad_line || [];
+        const today = d.today || {};
+        const currentFlow = Number(today.current_flow ?? today.up ?? 0);
+        const flow5d = Number(today.flow_5d ?? 0);
+        const flow20d = Number(today.flow_20d ?? 0);
+
+        setFlowText('mb-current-flow', formatMoneyFlow(currentFlow));
+        setFlowText('mb-flow-5d', formatMoneyFlow(flow5d));
+        setFlowText('mb-flow-20d', formatMoneyFlow(flow20d));
+        setFlowText('mb-flow-signal', d.signal || '--');
+
+        const indicator = document.getElementById('mb-indicator');
+        if (indicator) {
+            indicator.innerText = d.signal || '已更新';
+            indicator.classList.toggle('is-error', !flow.length);
+            indicator.classList.toggle('is-ok', flow.length > 0);
+        }
+        document.getElementById('mb-insight').innerText = d.insight;
+
         mc.setOption({
-            backgroundColor:'transparent',
-            tooltip:{trigger:'axis'},
-            legend:{data:['AD Line','涨跌比(%)'],textStyle:{color:'#94a3b8'},top:0},
-            grid:{left:'3%',right:'4%',top:'15%',bottom:'3%',containLabel:true},
-            xAxis:{type:'category',data:d.ad_line.map(v=>v.date),axisLabel:{color:'#94a3b8'}},
-            yAxis:[{type:'value',name:'AD Line',splitLine:{lineStyle:{color:'rgba(255,255,255,0.05)'}},axisLabel:{color:'#94a3b8'}},
-                   {type:'value',name:'%',axisLabel:{color:'#94a3b8'}}],
+            backgroundColor: 'transparent',
+            tooltip: {
+                trigger: 'axis',
+                backgroundColor: 'rgba(15, 23, 42, 0.96)',
+                borderColor: 'rgba(148, 163, 184, 0.22)',
+                textStyle: { color: '#e5e7eb' },
+                axisPointer: { type: 'cross' },
+                formatter: params => {
+                    const lines = params.map(p => `${p.marker}${p.seriesName}: ${formatMoneyFlow(p.value)}`).join('<br/>');
+                    return `<div class="chart-tooltip-title">${params[0]?.axisValue || ''}</div>${lines}`;
+                }
+            },
+            legend: {data:['累计净流入','每日净流入'],textStyle:{color:'#94a3b8'},top:0},
+            grid:{left:'3%',right:'4%',top:'16%',bottom:'3%',containLabel:true},
+            xAxis:{type:'category',data:cumulative.map(v=>formatTradeDate(v.date)),axisLabel:{color:'#94a3b8'}},
+            yAxis:[{type:'value',name:'累计/亿',splitLine:{lineStyle:{color:'rgba(255,255,255,0.05)'}},axisLabel:{color:'#94a3b8'}},
+                   {type:'value',name:'单日/亿',axisLabel:{color:'#94a3b8'}}],
             series:[
-                {name:'AD Line',type:'line',data:d.ad_line.map(v=>v.value),smooth:true,symbol:'none',lineStyle:{width:2,color:'#00F0FF'}},
-                {name:'涨跌比(%)',type:'bar',yAxisIndex:1,data:d.ad_ratio.map(v=>({value:v.value,itemStyle:{color:v.value>=0?'#4ade80':'#ef4444'}}))},
+                {name:'累计净流入',type:'line',data:cumulative.map(v=>v.value),smooth:true,symbol:'none',lineStyle:{width:2,color:'#2563eb'},areaStyle:{color:'rgba(37,99,235,0.12)'}},
+                {name:'每日净流入',type:'bar',yAxisIndex:1,data:flow.map(v=>({value:v.value,itemStyle:{color:v.value>=0?'#16a34a':'#dc2626'}})),barMaxWidth:14},
             ]
         });
         window.addEventListener('resize',()=>mc.resize());
     }catch(e){console.error('Market breadth:',e);}
+}
+
+function setFlowText(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = value;
+}
+
+function formatMoneyFlow(value) {
+    const n = Number(value) || 0;
+    return `${n > 0 ? '+' : ''}${n.toFixed(1)}亿`;
+}
+
+function formatTradeDate(value) {
+    const s = String(value || '');
+    return s.length === 8 ? `${s.slice(4, 6)}-${s.slice(6, 8)}` : s;
 }
 
 async function initFedProb() {
@@ -1200,16 +1255,7 @@ async function initGenAI() {
         ind.style.borderColor = "#7000FF";
         ind.style.boxShadow = `0 0 10px rgba(112, 0, 255, 0.4)`;
         
-        // Phase 23: Markdown Parsing & HTML Injection
-        let parsedHTML = window.marked ? marked.parse(data.insight) : data.insight;
-        
-        // Highlight critical keywords dynamically
-        parsedHTML = parsedHTML
-            .replace(/(清仓|风险|平仓|双杀|警告)/g, '<span style="color: #ef4444; font-weight: bold;">$1</span>')
-            .replace(/(做多|看涨|买入|正收益)/g, '<span style="color: #4ade80; font-weight: bold;">$1</span>')
-            .replace(/(VIX|10Y|DXY|SPY|TLT)/g, '<span style="color: #00F0FF; font-family: var(--font-mono);">$1</span>');
-        
-        tw.innerHTML = parsedHTML;
+        tw.innerHTML = renderSafeAIInsight(data.insight);
         tw.style.opacity = 0;
         tw.style.animation = "fadeIn 1s forwards";
         
@@ -1219,6 +1265,30 @@ async function initGenAI() {
         ind.innerText = "推演失败";
         ind.style.color = "#ef4444";
     }
+}
+
+function escapeHTML(value) {
+    return String(value ?? '').replace(/[&<>"']/g, char => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+    })[char]);
+}
+
+function renderSafeAIInsight(insight) {
+    const markdownHTML = window.marked ? marked.parse(String(insight || '')) : escapeHTML(insight);
+    const highlightedHTML = markdownHTML
+        .replace(/(清仓|风险|平仓|双杀|警告)/g, '<span class="ai-keyword-risk">$1</span>')
+        .replace(/(做多|看涨|买入|正收益)/g, '<span class="ai-keyword-positive">$1</span>')
+        .replace(/(VIX|10Y|DXY|SPY|TLT)/g, '<span class="ai-keyword-ticker">$1</span>');
+
+    if (!window.DOMPurify) {
+        return escapeHTML(insight);
+    }
+
+    return DOMPurify.sanitize(highlightedHTML);
 }
 
 // ==========================================

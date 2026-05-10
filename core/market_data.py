@@ -260,9 +260,10 @@ async def background_data_fetcher():
             fetch_macro_indicator("^VIX", "vix")
             fetch_macro_indicator("DX-Y.NYB", "dxy")
             fetch_tushare_csi300()
-            # invalidate L1 route caches so next request gets fresh data
-            invalidate()
-            print("[Background Daemon] Sync complete. Caches refreshed.")
+            # selectively invalidate only routes whose source data was refreshed
+            for rk in ("erp", "spread", "yield_curve", "decision", "signals", "allocation"):
+                invalidate(rk)
+            print("[Background Daemon] Sync complete. Macro caches refreshed.")
             
             try:
                 await asyncio.wait_for(shutdown_event.wait(), timeout=1800)

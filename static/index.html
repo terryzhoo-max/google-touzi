@@ -8,10 +8,11 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;700&family=Outfit:wght@500;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=7">
+    <link rel="stylesheet" href="styles.css?v=9">
     <!-- ECharts & Marked.js -->
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.6/dist/purify.min.js"></script>
     <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
 </head>
 <body>
@@ -278,12 +279,26 @@
                     <div id="valuation-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:15px;margin-top:15px;"><div class="skeleton" style="height:160px;"></div><div class="skeleton" style="height:160px;"></div><div class="skeleton" style="height:160px;"></div></div>
                 </div>
 
-                <!-- Market Breadth -->
-                <div class="breadth-panel glass-card" style="margin-top:24px;">
-                    <div class="card-header"><h3>🇨🇳 北向资金流向 (North-bound Flow)</h3><span id="mb-indicator" class="status-indicator">拉取资金数据...</span></div>
-                    <p id="mb-insight" class="card-desc">北向资金累计净流入 + 每日净额，反映外资对A股的真实态度。</p>
-                    <div id="breadth-chart" class="chart-container" style="height:300px;"><div class="skeleton"></div></div>
-                </div>
+                <!-- North-bound Flow Monitor -->
+                <article class="flow-panel glass-card">
+                    <header class="terminal-panel-header">
+                        <div>
+                            <div class="panel-kicker">CN CONNECT / CAPITAL FLOW</div>
+                            <h3>北向资金监控</h3>
+                            <p>跟踪沪深港通北向净流入、短期合计与窗口累计变化，识别外资风险偏好。</p>
+                        </div>
+                        <span id="mb-indicator" class="status-indicator">拉取资金数据...</span>
+                    </header>
+                    <div class="flow-signal-strip">
+                        <div><span>今日净流</span><strong id="mb-current-flow">--</strong></div>
+                        <div><span>5日合计</span><strong id="mb-flow-5d">--</strong></div>
+                        <div><span>20日合计</span><strong id="mb-flow-20d">--</strong></div>
+                        <div><span>资金状态</span><strong id="mb-flow-signal">--</strong></div>
+                    </div>
+                    <p id="mb-insight" class="flow-insight">北向资金累计净流入 + 每日净额，反映外资对A股的真实态度。</p>
+                    <div id="breadth-chart" class="flow-chart"><div class="skeleton"></div></div>
+                    <footer class="flow-footer">Source: Tushare HSGT moneyflow · Unit: CNY 100mn · Window: recent 60 sessions</footer>
+                </article>
             </details>
 
             <!-- Group: Risk Analysis -->
@@ -415,6 +430,6 @@
         </div>
     </footer>
 
-    <script src="main.js?v=7"></script>
+    <script src="main.js?v=9"></script>
 </body>
 </html>

@@ -46,20 +46,21 @@ def get_global_assets() -> dict:
                 from core.data_providers import _fred_series
                 s = _fred_series(code, limit=260)
                 s.name = ticker
-            else:
+            elif api == "fx_daily":
                 items = _tushare_items(api, {
                     "ts_code": code,
                     "start_date": start.strftime("%Y%m%d"),
                     "end_date": end.strftime("%Y%m%d"),
-                }, "trade_date,close" if "index" in api else "trade_date,close")
+                }, "trade_date,bid_close")
                 s = _ts_items_to_series(items, date_col=0, val_col=1, name=ticker)
-                if api == "fx_daily":
-                    items2 = _tushare_items(api, {
-                        "ts_code": code,
-                        "start_date": start.strftime("%Y%m%d"),
-                        "end_date": end.strftime("%Y%m%d"),
-                    }, "trade_date,bid_close")
-                    s = _ts_items_to_series(items2, date_col=0, val_col=1, name=ticker)
+            else:
+                fields = "trade_date,close"
+                items = _tushare_items(api, {
+                    "ts_code": code,
+                    "start_date": start.strftime("%Y%m%d"),
+                    "end_date": end.strftime("%Y%m%d"),
+                }, fields)
+                s = _ts_items_to_series(items, date_col=0, val_col=1, name=ticker)
 
             if s.empty or len(s) < 5:
                 continue
