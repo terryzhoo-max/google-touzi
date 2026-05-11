@@ -65,6 +65,8 @@ ROUTE_TTL: dict[str, int] = {
     "institutional_policy": 300,
     "institutional_what_if": 300,
     "institutional_action": 300,
+    "institutional_allocation_model": 300,
+    "institutional_allocation_model_policy": 300,
     "institutional_audit_log": 120,
     "institutional_reviews_due": 120,
     "institutional_reviews_summary": 120,

@@ -41,6 +41,10 @@ def test_institutional_decision_endpoint_returns_ticket():
     assert payload["decision_explanation"]["policy_version"] == payload["policy"]["version"]
     assert payload["decision_explanation"]["policy_hash"] == payload["policy"]["policy_hash"]
     assert "recommended_action" in payload
+    assert "allocation_model" in payload
+    assert payload["allocation_model"]["model_version"] == "allocation-v1"
+    assert len(payload["allocation_model"]["model_hash"]) == 64
+    assert round(sum(payload["allocation_model"]["target_weights"].values()), 6) == 1.0
     assert "factor_risk" in payload
     assert "benchmark" in payload
     assert "active_risk" in payload
@@ -59,6 +63,28 @@ def test_institutional_decision_endpoint_returns_ticket():
     assert "primary_driver" in payload["decision_explanation"]
     assert "reason_codes" in payload["decision_explanation"]
     assert payload["audit"]["record_endpoint"] == "/api/institutional/audit/decisions"
+
+
+def test_institutional_allocation_model_endpoints_return_stable_contracts():
+    response = client.get("/api/institutional/allocation_model")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["model_version"] == "allocation-v1"
+    assert len(payload["model_hash"]) == 64
+    assert payload["status"] in {"allow", "limited", "observe"}
+    assert payload["policy"]["version"] == "allocation_policy_v1"
+    assert len(payload["policy"]["policy_hash"]) == 64
+    assert round(sum(payload["target_weights"].values()), 6) == 1.0
+    assert "proposed_trades" in payload
+    assert "constraint_result" in payload
+    assert "evidence_chain" in payload
+
+    policy = client.get("/api/institutional/allocation_model/policy")
+    assert policy.status_code == 200
+    policy_payload = policy.json()
+    assert policy_payload["version"] == "allocation_policy_v1"
+    assert policy_payload["policy_hash"] == payload["policy"]["policy_hash"]
 
 
 def test_institutional_component_endpoints_return_stable_contracts():

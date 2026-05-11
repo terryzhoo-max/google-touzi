@@ -94,6 +94,37 @@ def test_institutional_workbench_static_contract():
     assert "evidence_chain" in js
 
 
+def test_allocation_model_panel_static_contract():
+    html = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
+    js = (ROOT / "static" / "main.js").read_text(encoding="utf-8")
+
+    required_ids = [
+        "allocation-model-panel",
+        "allocation-model-status",
+        "allocation-model-version",
+        "allocation-model-hash",
+        "allocation-model-risk-delta",
+        "allocation-model-stress-delta",
+        "allocation-model-turnover",
+        "allocation-model-constraint",
+        "allocation-model-weights",
+        "allocation-model-trades",
+        "allocation-model-evidence",
+    ]
+    for item_id in required_ids:
+        assert f'id="{item_id}"' in html
+        assert item_id in js
+
+    assert "/api/institutional/allocation_model" in js
+    assert "renderAllocationModel(data.allocation_model || data)" in js
+    assert "renderAllocationWeightRows" in js
+    assert "renderAllocationTradeRows" in js
+    assert "renderAllocationEvidenceRows" in js
+    assert "allocationModelWeights.innerHTML" not in js
+    assert "allocationModelTrades.innerHTML" not in js
+    assert "allocationModelEvidence.innerHTML" not in js
+
+
 def test_data_engine_uses_lifespan_instead_of_deprecated_on_event():
     source = (ROOT / "data_engine.py").read_text(encoding="utf-8")
 

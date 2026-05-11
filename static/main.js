@@ -313,6 +313,58 @@ function formatEvidence(evidenceChain) {
     return `${sourceMode} / ${weak.length} watch`;
 }
 
+function formatWeightMap(weights) {
+    return Object.entries(weights || {})
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([symbol, weight]) => `${symbol} ${Math.round(Number(weight || 0) * 1000) / 10}%`)
+        .join(' / ') || '--';
+}
+
+function renderAllocationWeightRows(model) {
+    const allocationModelWeights = document.getElementById('allocation-model-weights');
+    if (!allocationModelWeights) return;
+    allocationModelWeights.textContent = formatWeightMap(model.target_weights);
+}
+
+function renderAllocationTradeRows(model) {
+    const allocationModelTrades = document.getElementById('allocation-model-trades');
+    if (!allocationModelTrades) return;
+    const trades = model.proposed_trades || [];
+    allocationModelTrades.textContent = trades.length
+        ? trades.slice(0, 4).map(row => `${row.symbol} ${row.delta_weight > 0 ? '+' : ''}${Math.round(row.delta_weight * 1000) / 10}%`).join(' / ')
+        : 'no trade';
+}
+
+function renderAllocationEvidenceRows(model) {
+    const allocationModelEvidence = document.getElementById('allocation-model-evidence');
+    if (!allocationModelEvidence) return;
+    const evidence = model.evidence_chain || [];
+    allocationModelEvidence.textContent = evidence.length
+        ? evidence.slice(0, 3).map(row => row.code || row.message || 'evidence').join(' / ')
+        : '--';
+}
+
+function renderAllocationModel(model) {
+    const panel = document.getElementById('allocation-model-panel');
+    if (!panel) return;
+    if (!model) return;
+    setFlowText('allocation-model-version', model.model_version || '--');
+    setFlowText('allocation-model-hash', shortHash(model.model_hash));
+    setFlowText('allocation-model-risk-delta', `${model.expected_effect?.var_95_delta_pct ?? '--'}%`);
+    setFlowText('allocation-model-stress-delta', `${model.expected_effect?.worst_scenario_delta_pct ?? '--'}%`);
+    setFlowText('allocation-model-turnover', `${model.expected_effect?.turnover_pct ?? '--'}%`);
+    setFlowText('allocation-model-constraint', model.constraint_result?.status || '--');
+    renderAllocationWeightRows(model);
+    renderAllocationTradeRows(model);
+    renderAllocationEvidenceRows(model);
+    const status = document.getElementById('allocation-model-status');
+    if (status) {
+        status.textContent = model.status || 'unknown';
+        status.classList.toggle('live', model.status === 'allow');
+    }
+}
+
 async function initInstitutionalDecision() {
     const panel = document.getElementById('institutional-decision-panel');
     const workbench = document.getElementById('institutional-workbench');
@@ -377,6 +429,7 @@ async function initInstitutionalDecision() {
         setFlowText('decision-last-verdict', latestScore.verdict || 'none');
         setFlowText('decision-risk-improvement', action.risk_improvement || '等待风险改善测算。');
         setFlowText('decision-review', `复盘计划: ${(ticket.review_schedule || []).join(' / ')}`);
+        renderAllocationModel(data.allocation_model || data);
 
         if (workbench) {
             setFlowText('workbench-top-factor', formatTopFactor(factor_risk));
@@ -397,6 +450,13 @@ async function initInstitutionalDecision() {
     } catch (error) {
         console.error('Institutional decision failed:', error);
         setFlowText('decision-action', '决策引擎暂不可用');
+        try {
+            const fallback = await fetch('/api/institutional/allocation_model');
+            const data = await fallback.json();
+            renderAllocationModel(data.allocation_model || data);
+        } catch (fallbackError) {
+            console.error('Allocation model failed:', fallbackError);
+        }
     }
 }
 

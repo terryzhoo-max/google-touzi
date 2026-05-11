@@ -117,6 +117,30 @@
                 </div>
             </section>
 
+            <section id="allocation-model-panel" class="institutional-panel glass-card">
+                <header class="terminal-panel-header">
+                    <div>
+                        <div class="panel-kicker">ETF ALLOCATION MODEL</div>
+                        <h3>Regime-Aware Target Weights</h3>
+                        <p>宏观状态、ETF 信号、风险预算与约束后的目标权重建议。</p>
+                    </div>
+                    <span id="allocation-model-status" class="status-indicator">计算中...</span>
+                </header>
+                <div class="institutional-grid">
+                    <div><span>Model Version</span><strong id="allocation-model-version">--</strong></div>
+                    <div><span>Model Hash</span><strong id="allocation-model-hash">--</strong></div>
+                    <div><span>VaR Delta</span><strong id="allocation-model-risk-delta">--</strong></div>
+                    <div><span>Stress Delta</span><strong id="allocation-model-stress-delta">--</strong></div>
+                    <div><span>Turnover</span><strong id="allocation-model-turnover">--</strong></div>
+                    <div><span>Constraint</span><strong id="allocation-model-constraint">--</strong></div>
+                </div>
+                <div class="workbench-detail-grid">
+                    <p><span>Target Weights</span><strong id="allocation-model-weights">--</strong></p>
+                    <p><span>Trades</span><strong id="allocation-model-trades">--</strong></p>
+                    <p><span>Evidence</span><strong id="allocation-model-evidence">--</strong></p>
+                </div>
+            </section>
+
             <!-- Global Cross-Asset Dashboard -->
             <div class="global-assets-panel glass-card" style="margin-top:16px;max-width:1200px;margin-left:auto;margin-right:auto;">
                 <div class="card-header"><h3>🌍 全球跨资产一览 (Global Cross-Asset)</h3><span id="ga-indicator" class="status-indicator">拉取中...</span></div>

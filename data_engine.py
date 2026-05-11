@@ -29,6 +29,8 @@ from core.cache_store import cached_async, ROUTE_TTL, get_cache_stats, invalidat
 from core.config import settings
 from core.data_quality import score_payload
 from core.action_generator import generate_action_recommendation
+from core.allocation_model import build_allocation_recommendation
+from core.allocation_policy import allocation_policy_to_dict, get_default_allocation_policy
 from core.attribution_engine import build_attribution_snapshot
 from core.audit_log import get_audit_store
 from core.benchmark_book import build_active_risk_snapshot, build_default_benchmark, benchmark_to_dict
@@ -316,6 +318,7 @@ def _build_institutional_payload() -> dict:
     what_if = _build_institutional_what_if(portfolio, build_default_risk_reduction_adjustments(portfolio))
     action = generate_action_recommendation(ticket, what_if)
     compliance = what_if["compliance"]
+    allocation_model = _build_institutional_allocation_model(portfolio=portfolio, data_quality=data_quality)
     evidence_chain = build_evidence_chain(
         decision_ticket=ticket,
         data_quality=data_quality,
@@ -350,6 +353,7 @@ def _build_institutional_payload() -> dict:
         "decision_ticket": ticket,
         "what_if": what_if,
         "recommended_action": action,
+        "allocation_model": allocation_model,
         "decision_explanation": explanation,
         "audit": {
             "recorded": False,
@@ -373,6 +377,25 @@ def _build_institutional_data_quality() -> dict:
         fallback_used=not has_portfolio_file,
         missing_ratio=0.0,
         anomaly_count=0,
+    )
+
+
+def _build_institutional_market_context() -> dict:
+    return {
+        "macro_decision": {"score": 50, "signal_en": "NEUTRAL"},
+        "valuation": {},
+        "domestic_rotation": {},
+        "global_rotation": {},
+    }
+
+
+def _build_institutional_allocation_model(portfolio: dict | None = None, data_quality: dict | None = None) -> dict:
+    portfolio = portfolio or _build_institutional_portfolio()
+    data_quality = data_quality or _build_institutional_data_quality()
+    return build_allocation_recommendation(
+        portfolio,
+        data_quality=data_quality,
+        market_context=_build_institutional_market_context(),
     )
 
 
@@ -470,6 +493,18 @@ async def api_institutional_decision():
 @cached_async(ttl=ROUTE_TTL["institutional_policy"], key="institutional_policy")
 async def api_institutional_policy():
     return get_default_decision_policy()
+
+
+@app.get("/api/institutional/allocation_model")
+@cached_async(ttl=ROUTE_TTL["institutional_allocation_model"], key="institutional_allocation_model")
+async def api_institutional_allocation_model():
+    return _build_institutional_allocation_model()
+
+
+@app.get("/api/institutional/allocation_model/policy")
+@cached_async(ttl=ROUTE_TTL["institutional_allocation_model_policy"], key="institutional_allocation_model_policy")
+async def api_institutional_allocation_model_policy():
+    return allocation_policy_to_dict(get_default_allocation_policy())
 
 
 @app.get("/api/institutional/what_if")
