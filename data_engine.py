@@ -398,11 +398,59 @@ def _build_institutional_market_context() -> dict:
 def _build_institutional_allocation_model(portfolio: dict | None = None, data_quality: dict | None = None) -> dict:
     portfolio = portfolio or _build_institutional_portfolio()
     data_quality = data_quality or _build_institutional_data_quality()
-    return build_allocation_recommendation(
-        portfolio,
-        data_quality=data_quality,
-        market_context=_build_institutional_market_context(),
-    )
+    try:
+        return build_allocation_recommendation(
+            portfolio,
+            data_quality=data_quality,
+            market_context=_build_institutional_market_context(),
+        )
+    except Exception as exc:
+        return _build_allocation_model_degraded_packet(portfolio, data_quality, exc)
+
+
+def _build_allocation_model_degraded_packet(portfolio: dict, data_quality: dict, exc: Exception) -> dict:
+    current_weights = {row["symbol"]: float(row["weight"]) for row in portfolio.get("positions", [])}
+    drift = round(1.0 - sum(current_weights.values()), 6)
+    if current_weights and drift:
+        largest = max(current_weights, key=current_weights.get)
+        current_weights[largest] = round(current_weights[largest] + drift, 6)
+    return {
+        "model_version": "allocation-v1",
+        "model_hash": "",
+        "status": "observe",
+        "degraded": True,
+        "degradation_reason": str(exc),
+        "policy": allocation_policy_to_dict(get_default_allocation_policy()),
+        "current_weights": current_weights,
+        "target_weights": current_weights,
+        "signals": [],
+        "proposed_trades": [],
+        "expected_effect": {
+            "var_95_delta_pct": 0.0,
+            "worst_scenario_delta_pct": 0.0,
+            "turnover_pct": 0.0,
+            "concentration_delta": 0.0,
+        },
+        "constraint_result": {
+            "status": "block",
+            "violations": ["allocation_model_unavailable"],
+            "warnings": [],
+            "repair_suggestions": ["Review runtime diagnostics before using allocation recommendations."],
+        },
+        "evidence_chain": [
+            {
+                "code": "allocation_model_unavailable",
+                "message": str(exc),
+                "severity": "warning",
+            },
+            {
+                "code": "data_quality_snapshot",
+                "message": f"data_quality={data_quality.get('status', 'unknown')}",
+                "severity": "info",
+            },
+        ],
+        "review_schedule": ["T+1", "T+5", "T+20"],
+    }
 
 
 def _build_simulated_data_quality(request: AllocationModelSimulateRequest) -> dict:

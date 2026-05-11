@@ -49,8 +49,11 @@ def _valuation_score(position: dict, market_context: dict) -> float:
 
 
 def _rotation_items(market_context: dict) -> list[dict]:
-    return list((market_context.get("domestic_rotation") or {}).get("items") or []) + list(
-        (market_context.get("global_rotation") or {}).get("items") or []
+    domestic = market_context.get("domestic_rotation") or {}
+    global_rotation = market_context.get("global_rotation") or {}
+    return (
+        list(domestic.get("items") or domestic.get("sectors") or [])
+        + list(global_rotation.get("items") or global_rotation.get("sectors") or [])
     )
 
 

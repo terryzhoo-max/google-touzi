@@ -1,5 +1,7 @@
 from fastapi.testclient import TestClient
 
+import data_engine
+from core.cache_store import invalidate
 from data_engine import _build_institutional_data_quality, app
 from core.config import settings
 
@@ -85,6 +87,30 @@ def test_institutional_allocation_model_endpoints_return_stable_contracts():
     policy_payload = policy.json()
     assert policy_payload["version"] == "allocation_policy_v1"
     assert policy_payload["policy_hash"] == payload["policy"]["policy_hash"]
+
+
+def test_institutional_allocation_model_degrades_without_breaking_decision(monkeypatch):
+    def broken_model(*args, **kwargs):
+        raise RuntimeError("allocation model unavailable")
+
+    invalidate("institutional_decision")
+    invalidate("institutional_allocation_model")
+    monkeypatch.setattr(data_engine, "build_allocation_recommendation", broken_model)
+
+    standalone = client.get("/api/institutional/allocation_model")
+    decision = client.get("/api/institutional/decision")
+
+    assert standalone.status_code == 200
+    standalone_payload = standalone.json()
+    assert standalone_payload["status"] == "observe"
+    assert standalone_payload["degraded"] is True
+    assert "allocation model unavailable" in standalone_payload["degradation_reason"]
+    assert round(sum(standalone_payload["target_weights"].values()), 6) == 1.0
+
+    assert decision.status_code == 200
+    decision_payload = decision.json()
+    assert decision_payload["allocation_model"]["status"] == "observe"
+    assert decision_payload["allocation_model"]["degraded"] is True
 
 
 def test_institutional_allocation_model_simulate_and_audit_endpoints():

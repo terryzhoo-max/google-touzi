@@ -85,6 +85,30 @@ def test_etf_signal_builder_returns_one_signal_per_real_holding():
         assert row["reasons"]
 
 
+def test_etf_signal_builder_accepts_rotation_sector_payloads():
+    portfolio = _portfolio()
+    signals = build_etf_signals(
+        portfolio,
+        factor_risk=build_factor_risk_snapshot(portfolio),
+        risk=calculate_portfolio_risk(portfolio),
+        scenarios=run_portfolio_scenarios(portfolio),
+        data_quality=_quality(),
+        market_context={
+            "macro_decision": {"score": 60, "signal_en": "BUY"},
+            "valuation": {"indices": []},
+            "global_rotation": {
+                "sectors": [
+                    {"code": "513100.SH", "ret_20d": 3.0},
+                ]
+            },
+        },
+    )
+
+    nasdaq = next(row for row in signals if row["symbol"] == "NASDAQ_ETF")
+
+    assert nasdaq["component_scores"]["momentum_score"] == 65
+
+
 def test_allocation_recommendation_returns_constraint_checked_target_weights():
     portfolio = _portfolio()
     recommendation = build_allocation_recommendation(
