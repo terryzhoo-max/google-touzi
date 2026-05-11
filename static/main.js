@@ -6,6 +6,7 @@ document.addEventListener("DOMContentLoaded", () => {
         [initERPChart, 120],
         [initSpreadChart, 240],
         [initSignals, 360],
+        [initInstitutionalDecision, 520],
         [initYieldCurve, 650],
         [initAllocationChart, 800],
         [initCorrelationChart, 950],
@@ -153,6 +154,153 @@ async function initDashboard() {
 }
 
 // ── shared panel helper ──────────────────────────────────
+function formatTopExposure(exposure) {
+    const rows = Object.entries(exposure || {})
+        .map(([name, weight]) => [name, Number(weight) || 0])
+        .filter(([, weight]) => weight > 0)
+        .sort((a, b) => b[1] - a[1]);
+
+    if (!rows.length) return '--';
+
+    return rows
+        .slice(0, 2)
+        .map(([name, weight]) => `${name} ${Math.round(weight * 100)}%`)
+        .join(' / ');
+}
+
+function formatReasonCodes(reasonCodes) {
+    const codes = (reasonCodes || []).map(item => item.code).filter(Boolean);
+    if (!codes.length) return '--';
+    return codes.slice(0, 3).join(' / ');
+}
+
+function shortHash(value) {
+    const text = String(value || '');
+    return text ? text.slice(0, 12) : '--';
+}
+
+function formatTopFactor(factorRisk) {
+    const top = factorRisk?.top_factor || {};
+    if (!top.factor_name) return '--';
+    const exposure = Number(top.exposure || 0);
+    return `${top.factor_group}:${top.factor_name} ${Math.round(exposure * 100)}%`;
+}
+
+function formatLargestActive(activeRisk) {
+    const row = (activeRisk?.largest_active_exposures || [])[0];
+    if (!row) return '--';
+    return `${row.symbol} ${Math.round((row.active_weight || 0) * 1000) / 10}%`;
+}
+
+function formatComplianceIssues(compliance) {
+    const violations = compliance?.violations || [];
+    const warnings = compliance?.warnings || [];
+    const issues = violations.length ? violations : warnings;
+    return issues.length ? issues.slice(0, 3).join(' / ') : 'clear';
+}
+
+function formatAttribution(attribution) {
+    if (!attribution) return '--';
+    const decision = Number(attribution.decision_effect || 0);
+    const allocation = Number(attribution.allocation_effect || 0);
+    const selection = Number(attribution.selection_effect || 0);
+    return `D ${Math.round(decision * 10000) / 100}bp / A ${Math.round(allocation * 10000) / 100}bp / S ${Math.round(selection * 10000) / 100}bp`;
+}
+
+function formatEvidence(evidenceChain) {
+    const items = evidenceChain?.items || [];
+    const weak = items.filter(item => item.direction === 'below_threshold');
+    const sourceMode = evidenceChain?.source_quality?.mode || 'unknown';
+    return `${sourceMode} / ${weak.length} watch`;
+}
+
+async function initInstitutionalDecision() {
+    const panel = document.getElementById('institutional-decision-panel');
+    const workbench = document.getElementById('institutional-workbench');
+    if (!panel) return;
+
+    try {
+        const response = await fetch('/api/institutional/decision');
+        const data = await response.json();
+        const [auditResp, auditVerifyResp, summaryResp, queueResp, scoreResp] = await Promise.all([
+            fetch('/api/institutional/audit/decisions?limit=10'),
+            fetch('/api/institutional/audit/verify?limit=10'),
+            fetch('/api/institutional/reviews/summary'),
+            fetch('/api/institutional/reviews/queue?limit=1'),
+            fetch('/api/institutional/reviews/scores?limit=1')
+        ]);
+        const auditData = await auditResp.json();
+        const auditVerifyData = await auditVerifyResp.json();
+        const summaryData = await summaryResp.json();
+        const queueData = await queueResp.json();
+        const scoreData = await scoreResp.json();
+        const ticket = data.decision_ticket || {};
+        const action = data.recommended_action || {};
+        const risk = data.risk || {};
+        const worst = data.scenarios?.worst_scenario || {};
+        const portfolio = data.portfolio || ticket.portfolio_summary || {};
+        const explanation = data.decision_explanation || {};
+        const factor_risk = data.factor_risk || {};
+        const active_risk = data.active_risk || {};
+        const compliance = data.compliance || {};
+        const attribution = data.attribution || {};
+        const evidence_chain = data.evidence_chain || {};
+        const latestScore = (scoreData.scores || [])[0] || {};
+        const topQueueItem = (queueData.queue || [])[0] || {};
+
+        setFlowText('decision-score', `${ticket.score ?? '--'} / 100`);
+        setFlowText('decision-action', action.action || ticket.suggested_action || '--');
+        setFlowText('decision-var', `${risk.var_95_pct ?? '--'}%`);
+        setFlowText('decision-worst', `${worst.portfolio_loss_pct ?? '--'}%`);
+        setFlowText('decision-asset-exposure', formatTopExposure(portfolio.asset_class_exposure));
+        setFlowText('decision-region-exposure', formatTopExposure(portfolio.region_exposure));
+        setFlowText('decision-strategy-exposure', formatTopExposure(portfolio.strategy_exposure));
+        setFlowText('decision-currency-exposure', formatTopExposure(portfolio.currency_exposure));
+        setFlowText('decision-concentration', portfolio.concentration_level || '--');
+        setFlowText('decision-primary-driver', explanation.primary_driver?.code || '--');
+        setFlowText('decision-execution-readiness', explanation.execution_readiness || '--');
+        setFlowText('decision-reason-codes', formatReasonCodes(explanation.reason_codes));
+        setFlowText('decision-policy-version', explanation.policy_version || ticket.policy_version || data.policy?.version || '--');
+        setFlowText('decision-policy-hash', shortHash(explanation.policy_hash || ticket.policy_hash || data.policy?.policy_hash));
+        setFlowText('decision-audit-count', String((auditData.decisions || []).length));
+        setFlowText(
+            'decision-audit-integrity',
+            auditVerifyData.status === 'empty'
+                ? 'empty'
+                : `${auditVerifyData.status || 'unknown'} ${Math.round((auditVerifyData.verified_rate ?? 0) * 100)}%`
+        );
+        setFlowText('decision-review-due', String(summaryData.summary?.due_count ?? 0));
+        setFlowText(
+            'decision-review-sla',
+            `${summaryData.summary?.critical_due_count ?? 0}C / ${summaryData.summary?.elevated_due_count ?? 0}E`
+        );
+        setFlowText('decision-review-priority', topQueueItem.priority || 'none');
+        setFlowText('decision-last-verdict', latestScore.verdict || 'none');
+        setFlowText('decision-risk-improvement', action.risk_improvement || '等待风险改善测算。');
+        setFlowText('decision-review', `复盘计划: ${(ticket.review_schedule || []).join(' / ')}`);
+
+        if (workbench) {
+            setFlowText('workbench-top-factor', formatTopFactor(factor_risk));
+            setFlowText('workbench-tracking-error', `${active_risk.tracking_error_proxy_pct ?? '--'}%`);
+            setFlowText('workbench-largest-active', formatLargestActive(active_risk));
+            setFlowText('workbench-compliance-status', compliance.status || '--');
+            setFlowText('workbench-compliance-issues', formatComplianceIssues(compliance));
+            setFlowText('workbench-attribution', formatAttribution(attribution));
+            setFlowText('workbench-evidence', formatEvidence(evidence_chain));
+        }
+
+        const status = document.getElementById('decision-status');
+        if (status) {
+            status.innerText = ticket.decision_status || 'unknown';
+            status.classList.toggle('is-ok', ticket.decision_status === 'allow');
+            status.classList.toggle('is-error', ticket.decision_status === 'observe');
+        }
+    } catch (error) {
+        console.error('Institutional decision failed:', error);
+        setFlowText('decision-action', '决策引擎暂不可用');
+    }
+}
+
 function initPanel({url, indicatorId, insightId, onData, onError}) {
     fetch(url).then(r=>r.json()).then(d=>{
         if(d.error)throw new Error(d.error);

@@ -31,6 +31,18 @@ ENDPOINTS = {
     "AI CIO": "/api/macro/ai_insight",
     "Decision": "/api/macro/decision",
     "Backtest": "/api/macro/backtest",
+    "Institutional Portfolio": "/api/institutional/portfolio",
+    "Institutional Policy": "/api/institutional/policy",
+    "Institutional Decision": "/api/institutional/decision",
+    "Institutional Factors": "/api/institutional/factors",
+    "Institutional Benchmark": "/api/institutional/benchmark",
+    "Institutional Active Risk": "/api/institutional/active_risk",
+    "Institutional Attribution": "/api/institutional/attribution",
+    "Institutional Compliance": "/api/institutional/compliance",
+    "Institutional What-if": "/api/institutional/what_if",
+    "Institutional Action": "/api/institutional/action",
+    "Institutional Audit Verify": "/api/institutional/audit/verify",
+    "Institutional Review Summary": "/api/institutional/reviews/summary",
 }
 
 
@@ -45,10 +57,16 @@ class EndpointResult:
     payload: dict | None = None
 
 
-def check_endpoint(base_url: str, name: str, path: str, timeout: int = 60) -> EndpointResult:
+def check_endpoint(
+    base_url: str,
+    name: str,
+    path: str,
+    timeout: int = 60,
+    get=requests.get,
+) -> EndpointResult:
     try:
         t0 = time.time()
-        response = requests.get(base_url + path, timeout=timeout)
+        response = get(base_url + path, timeout=timeout)
         duration = time.time() - t0
 
         if response.status_code != 200:
@@ -91,10 +109,16 @@ def check_endpoint(base_url: str, name: str, path: str, timeout: int = 60) -> En
         )
 
 
-def run_endpoint_checks(base_url: str = DEFAULT_BASE_URL, timeout: int = 60) -> list[EndpointResult]:
+def run_endpoint_checks(
+    base_url: str = DEFAULT_BASE_URL,
+    timeout: int = 60,
+    get=requests.get,
+    endpoints: dict[str, str] | None = None,
+) -> list[EndpointResult]:
+    endpoints = endpoints or ENDPOINTS
     return [
-        check_endpoint(base_url, name, path, timeout=timeout)
-        for name, path in ENDPOINTS.items()
+        check_endpoint(base_url, name, path, timeout=timeout, get=get)
+        for name, path in endpoints.items()
     ]
 
 
@@ -120,11 +144,13 @@ def print_result(result: EndpointResult) -> None:
 
 
 def main() -> int:
+    base_url = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_BASE_URL
     print("=" * 50)
     print("ALPHACORE V18.0 COMPREHENSIVE SYSTEM TEST")
+    print(f"BASE URL: {base_url}")
     print("=" * 50)
 
-    results = run_endpoint_checks()
+    results = run_endpoint_checks(base_url=base_url)
     for result in results:
         print_result(result)
 
