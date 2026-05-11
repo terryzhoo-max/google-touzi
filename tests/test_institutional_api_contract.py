@@ -87,6 +87,30 @@ def test_institutional_allocation_model_endpoints_return_stable_contracts():
     assert policy_payload["policy_hash"] == payload["policy"]["policy_hash"]
 
 
+def test_institutional_allocation_model_simulate_and_audit_endpoints():
+    simulated = client.post(
+        "/api/institutional/allocation_model/simulate",
+        json={
+            "data_quality_score": 55,
+            "data_quality_flags": ["fallback"],
+            "market_context": {"macro_decision": {"score": 35, "signal_en": "SELL"}},
+        },
+    )
+
+    assert simulated.status_code == 200
+    simulated_payload = simulated.json()
+    assert simulated_payload["model_version"] == "allocation-v1"
+    assert simulated_payload["status"] in {"limited", "observe"}
+    assert any(item["code"] == "data_quality_guardrail" for item in simulated_payload["evidence_chain"])
+
+    audited = client.post("/api/institutional/allocation_model/audit")
+    assert audited.status_code == 200
+    audited_payload = audited.json()
+    assert audited_payload["record"]["ticket_id"].startswith("dt_")
+    assert "allocation_model" in audited_payload["payload"]
+    assert audited_payload["payload"]["allocation_model"]["model_version"] == "allocation-v1"
+
+
 def test_institutional_component_endpoints_return_stable_contracts():
     portfolio = client.get("/api/institutional/portfolio").json()
     quality = client.get("/api/institutional/data_quality").json()

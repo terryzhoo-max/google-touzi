@@ -76,6 +76,12 @@ class WhatIfRequest(BaseModel):
         "CASH": 0.05,
     })
 
+
+class AllocationModelSimulateRequest(BaseModel):
+    market_context: dict = Field(default_factory=dict)
+    data_quality_score: int = Field(default=100, ge=0, le=100)
+    data_quality_flags: list[str] = Field(default_factory=list)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.ALLOWED_ORIGINS,
@@ -399,6 +405,15 @@ def _build_institutional_allocation_model(portfolio: dict | None = None, data_qu
     )
 
 
+def _build_simulated_data_quality(request: AllocationModelSimulateRequest) -> dict:
+    return {
+        "score": request.data_quality_score,
+        "status": "strong" if request.data_quality_score >= 80 else "weak",
+        "flags": list(dict.fromkeys(request.data_quality_flags)),
+        "source": "simulation",
+    }
+
+
 def _build_institutional_what_if(portfolio: dict, adjustments: dict[str, float]) -> dict:
     what_if = run_what_if(portfolio, adjustments)
     data_quality = _build_institutional_data_quality()
@@ -505,6 +520,31 @@ async def api_institutional_allocation_model():
 @cached_async(ttl=ROUTE_TTL["institutional_allocation_model_policy"], key="institutional_allocation_model_policy")
 async def api_institutional_allocation_model_policy():
     return allocation_policy_to_dict(get_default_allocation_policy())
+
+
+@app.post("/api/institutional/allocation_model/simulate")
+async def api_institutional_allocation_model_simulate(request: AllocationModelSimulateRequest):
+    portfolio = _build_institutional_portfolio()
+    return build_allocation_recommendation(
+        portfolio,
+        data_quality=_build_simulated_data_quality(request),
+        market_context=request.market_context,
+    )
+
+
+@app.post("/api/institutional/allocation_model/audit")
+async def api_record_institutional_allocation_model():
+    payload = _build_institutional_payload()
+    record = get_audit_store().record_decision(payload, source="allocation_model_api")
+    invalidate("institutional_audit_log")
+    invalidate("institutional_reviews_due")
+    invalidate("institutional_reviews_summary")
+    invalidate("institutional_review_scores")
+    invalidate("institutional_review_outcomes")
+    return {
+        "record": {k: v for k, v in record.items() if k != "payload"},
+        "payload": payload,
+    }
 
 
 @app.get("/api/institutional/what_if")
