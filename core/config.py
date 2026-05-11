@@ -8,6 +8,10 @@ DEFAULT_ALLOWED_ORIGINS = [
     "http://localhost:8888",
 ]
 
+DEFAULT_PORTFOLIO_BOOK_PATH = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "data", "institutional_portfolio.json")
+)
+
 
 def parse_origins(value: str) -> list[str]:
     origins = [item.strip() for item in value.split(",") if item.strip()]
@@ -38,6 +42,7 @@ class Settings:
 
     # System Settings
     CACHE_TTL: int = 3600
+    PORTFOLIO_BOOK_PATH: str = os.getenv("PORTFOLIO_BOOK_PATH", DEFAULT_PORTFOLIO_BOOK_PATH)
     MAX_REQUESTS_PER_MINUTE: int = int(os.getenv("MAX_REQUESTS_PER_MINUTE", "240"))
     ALLOWED_ORIGINS: list[str] = parse_origins(os.getenv("ALLOWED_ORIGINS", ""))
     ALLOW_CREDENTIALS: bool = parse_bool(os.getenv("ALLOW_CREDENTIALS", "false"))

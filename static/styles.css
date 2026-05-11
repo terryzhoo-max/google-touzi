@@ -838,6 +838,91 @@ footer {
     padding: 18px;
 }
 
+.institutional-panel {
+    margin: 16px auto 0;
+    max-width: 1200px;
+    padding: 18px;
+}
+
+.institutional-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1px;
+    margin-top: 14px;
+    overflow: hidden;
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 4px;
+    background: rgba(255,255,255,0.06);
+}
+
+.institutional-grid div {
+    min-width: 0;
+    padding: 12px;
+    background: rgba(15, 23, 42, 0.72);
+}
+
+.institutional-grid span {
+    display: block;
+    margin-bottom: 5px;
+    color: #64748b;
+    font-size: 0.66rem;
+}
+
+.institutional-grid strong {
+    display: block;
+    color: #e5e7eb;
+    font-family: var(--font-mono);
+    font-size: 0.84rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.institutional-workbench {
+    border-color: rgba(74, 222, 128, 0.18);
+}
+
+.workbench-tabs {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+    margin-top: 14px;
+}
+
+.workbench-tabs div,
+.workbench-detail-grid p {
+    min-width: 0;
+    margin: 0;
+    padding: 12px;
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 4px;
+    background: rgba(15, 23, 42, 0.72);
+}
+
+.workbench-tabs span,
+.workbench-detail-grid span {
+    display: block;
+    margin-bottom: 5px;
+    color: #94a3b8;
+    font-size: 0.66rem;
+}
+
+.workbench-tabs strong,
+.workbench-detail-grid strong {
+    display: block;
+    color: #e5e7eb;
+    font-family: var(--font-mono);
+    font-size: 0.82rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.workbench-detail-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    margin-top: 8px;
+}
+
 .flow-signal-strip {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));

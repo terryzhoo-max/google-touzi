@@ -1,12 +1,15 @@
 import time
 import asyncio
-from fastapi import FastAPI, Request
+import os
+from contextlib import asynccontextmanager, suppress
+from fastapi import FastAPI, Query, Request
+from pydantic import BaseModel, Field
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 # Import refactored core modules
-from core.market_data import background_data_fetcher, fetch_yfinance_data
+from core.market_data import background_data_fetcher, fetch_yfinance_data, shutdown_event
 from core.quant_engine import calculate_asset_allocation, calculate_correlation_matrix, run_montecarlo_sim
 from core.llm_agent import generate_llm_insight
 from core.yield_curve import get_yield_curve
@@ -22,22 +25,53 @@ from core.fed_prob import get_fed_probability
 from core.global_assets import get_global_assets
 from core.valuation import get_valuation
 
-from core.cache_store import cached_async, ROUTE_TTL, get_cache_stats
+from core.cache_store import cached_async, ROUTE_TTL, get_cache_stats, invalidate
 from core.config import settings
+from core.data_quality import score_payload
+from core.action_generator import generate_action_recommendation
+from core.attribution_engine import build_attribution_snapshot
+from core.audit_log import get_audit_store
+from core.benchmark_book import build_active_risk_snapshot, build_default_benchmark, benchmark_to_dict
+from core.compliance_engine import evaluate_pre_trade_compliance
+from core.decision_explainer import build_decision_explanation
+from core.decision_policy import get_default_decision_policy
+from core.decision_ticket import build_decision_ticket
+from core.evidence_chain import build_evidence_chain
+from core.factor_risk import build_factor_risk_snapshot
+from core.portfolio_book import build_portfolio_snapshot, load_portfolio_positions
+from core.risk_engine import calculate_portfolio_risk
+from core.review_scheduler import build_review_queue, build_review_summary, list_due_reviews
+from core.review_scoring import score_review
+from core.scenario_engine import run_portfolio_scenarios
+from core.what_if_engine import build_default_risk_reduction_adjustments, run_what_if
 
-app = FastAPI(title="AlphaCore Quant Data Engine")
 
-@app.on_event("startup")
-async def startup_event():
-    asyncio.create_task(background_data_fetcher())
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    shutdown_event.clear()
+    background_task = asyncio.create_task(background_data_fetcher())
+    try:
+        yield
+    finally:
+        print("Shutting down background tasks...")
+        shutdown_event.set()
+        try:
+            await asyncio.wait_for(background_task, timeout=5)
+        except asyncio.TimeoutError:
+            background_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await background_task
 
-from core.market_data import shutdown_event
 
-@app.on_event("shutdown")
-async def shutdown_event_handler():
-    print("Shutting down background tasks...")
-    shutdown_event.set()
+app = FastAPI(title="AlphaCore Quant Data Engine", lifespan=lifespan)
 
+
+class WhatIfRequest(BaseModel):
+    adjustments: dict[str, float] = Field(default_factory=lambda: {
+        "SPY": -0.10,
+        "GLD": 0.05,
+        "CASH": 0.05,
+    })
 
 app.add_middleware(
     CORSMiddleware,
@@ -256,6 +290,339 @@ async def api_backtest():
     except Exception as e:
         print(f"Backtest error: {e}")
         return JSONResponse(content={"error": str(e)}, status_code=500)
+
+
+def _build_institutional_payload() -> dict:
+    policy = get_default_decision_policy()
+    portfolio = _build_institutional_portfolio()
+    data_quality = _build_institutional_data_quality()
+    risk = calculate_portfolio_risk(portfolio)
+    scenarios = run_portfolio_scenarios(portfolio)
+    factor_risk = build_factor_risk_snapshot(portfolio)
+    benchmark = build_default_benchmark()
+    benchmark_payload = benchmark_to_dict(benchmark)
+    active_risk = build_active_risk_snapshot(portfolio, benchmark)
+    attribution = build_attribution_snapshot(portfolio, benchmark, period="T+1")
+    ticket = build_decision_ticket(data_quality, risk, scenarios, portfolio=portfolio, policy=policy)
+    what_if = _build_institutional_what_if(portfolio, build_default_risk_reduction_adjustments(portfolio))
+    action = generate_action_recommendation(ticket, what_if)
+    compliance = what_if["compliance"]
+    evidence_chain = build_evidence_chain(
+        decision_ticket=ticket,
+        data_quality=data_quality,
+        risk=risk,
+        scenarios=scenarios,
+        factor_risk=factor_risk,
+        active_risk=active_risk,
+        compliance=compliance,
+    )
+    explanation = build_decision_explanation(
+        decision_ticket=ticket,
+        data_quality=data_quality,
+        risk=risk,
+        scenarios=scenarios,
+        portfolio=portfolio,
+        what_if=what_if,
+        recommended_action=action,
+        policy=policy,
+    )
+    return {
+        "policy": policy,
+        "portfolio": portfolio,
+        "data_quality": data_quality,
+        "risk": risk,
+        "scenarios": scenarios,
+        "factor_risk": factor_risk,
+        "benchmark": benchmark_payload,
+        "active_risk": active_risk,
+        "attribution": attribution,
+        "compliance": compliance,
+        "evidence_chain": evidence_chain,
+        "decision_ticket": ticket,
+        "what_if": what_if,
+        "recommended_action": action,
+        "decision_explanation": explanation,
+        "audit": {
+            "recorded": False,
+            "record_endpoint": "/api/institutional/audit/decisions",
+            "review_schedule": ticket["review_schedule"],
+        },
+    }
+
+
+def _build_institutional_portfolio() -> dict:
+    return build_portfolio_snapshot(load_portfolio_positions(settings.PORTFOLIO_BOOK_PATH))
+
+
+def _build_institutional_data_quality() -> dict:
+    has_portfolio_file = bool(settings.PORTFOLIO_BOOK_PATH) and os.path.exists(settings.PORTFOLIO_BOOK_PATH)
+    source = "portfolio_file" if has_portfolio_file else "sample_portfolio"
+    return score_payload(
+        source=source,
+        updated_secs_ago=0,
+        stale_after_sec=3600,
+        fallback_used=not has_portfolio_file,
+        missing_ratio=0.0,
+        anomaly_count=0,
+    )
+
+
+def _build_institutional_what_if(portfolio: dict, adjustments: dict[str, float]) -> dict:
+    what_if = run_what_if(portfolio, adjustments)
+    data_quality = _build_institutional_data_quality()
+    current_risk = calculate_portfolio_risk(portfolio)
+    what_if["compliance"] = evaluate_pre_trade_compliance(
+        portfolio,
+        what_if["after"]["portfolio"],
+        data_quality=data_quality,
+        current_risk=current_risk,
+    )
+    return what_if
+
+
+@app.get("/api/institutional/portfolio")
+@cached_async(ttl=ROUTE_TTL["institutional_portfolio"], key="institutional_portfolio")
+async def api_institutional_portfolio():
+    return _build_institutional_portfolio()
+
+
+@app.get("/api/institutional/data_quality")
+@cached_async(ttl=ROUTE_TTL["institutional_data_quality"], key="institutional_data_quality")
+async def api_institutional_data_quality():
+    return _build_institutional_data_quality()
+
+
+@app.get("/api/institutional/risk")
+@cached_async(ttl=ROUTE_TTL["institutional_risk"], key="institutional_risk")
+async def api_institutional_risk():
+    portfolio = _build_institutional_portfolio()
+    risk = calculate_portfolio_risk(portfolio)
+    return risk
+
+
+@app.get("/api/institutional/scenarios")
+@cached_async(ttl=ROUTE_TTL["institutional_scenarios"], key="institutional_scenarios")
+async def api_institutional_scenarios():
+    portfolio = _build_institutional_portfolio()
+    scenarios = run_portfolio_scenarios(portfolio)
+    return scenarios
+
+
+@app.get("/api/institutional/factors")
+@cached_async(ttl=ROUTE_TTL["institutional_factors"], key="institutional_factors")
+async def api_institutional_factors():
+    return build_factor_risk_snapshot(_build_institutional_portfolio())
+
+
+@app.get("/api/institutional/benchmark")
+@cached_async(ttl=ROUTE_TTL["institutional_benchmark"], key="institutional_benchmark")
+async def api_institutional_benchmark():
+    return benchmark_to_dict(build_default_benchmark())
+
+
+@app.get("/api/institutional/active_risk")
+@cached_async(ttl=ROUTE_TTL["institutional_active_risk"], key="institutional_active_risk")
+async def api_institutional_active_risk():
+    portfolio = _build_institutional_portfolio()
+    return build_active_risk_snapshot(portfolio, build_default_benchmark())
+
+
+@app.get("/api/institutional/attribution")
+@cached_async(ttl=ROUTE_TTL["institutional_attribution"], key="institutional_attribution")
+async def api_institutional_attribution(period: str = "T+1"):
+    portfolio = _build_institutional_portfolio()
+    return build_attribution_snapshot(portfolio, build_default_benchmark(), period=period)
+
+
+@app.get("/api/institutional/compliance")
+@cached_async(ttl=ROUTE_TTL["institutional_compliance"], key="institutional_compliance")
+async def api_institutional_compliance():
+    portfolio = _build_institutional_portfolio()
+    what_if = _build_institutional_what_if(portfolio, build_default_risk_reduction_adjustments(portfolio))
+    return what_if["compliance"]
+
+
+@app.post("/api/institutional/compliance/check")
+async def api_institutional_compliance_check(request: WhatIfRequest):
+    try:
+        portfolio = _build_institutional_portfolio()
+        what_if = _build_institutional_what_if(portfolio, request.adjustments)
+        return what_if["compliance"]
+    except ValueError as exc:
+        return JSONResponse(content={"error": str(exc)}, status_code=400)
+
+
+@app.get("/api/institutional/decision")
+@cached_async(ttl=ROUTE_TTL["institutional_decision"], key="institutional_decision")
+async def api_institutional_decision():
+    return _build_institutional_payload()
+
+
+@app.get("/api/institutional/policy")
+@cached_async(ttl=ROUTE_TTL["institutional_policy"], key="institutional_policy")
+async def api_institutional_policy():
+    return get_default_decision_policy()
+
+
+@app.get("/api/institutional/what_if")
+@cached_async(ttl=ROUTE_TTL["institutional_what_if"], key="institutional_what_if")
+async def api_institutional_what_if_default():
+    portfolio = _build_institutional_portfolio()
+    return _build_institutional_what_if(portfolio, build_default_risk_reduction_adjustments(portfolio))
+
+
+@app.post("/api/institutional/what_if")
+async def api_institutional_what_if(request: WhatIfRequest):
+    try:
+        portfolio = _build_institutional_portfolio()
+        return _build_institutional_what_if(portfolio, request.adjustments)
+    except ValueError as exc:
+        return JSONResponse(content={"error": str(exc)}, status_code=400)
+
+
+@app.get("/api/institutional/action")
+@cached_async(ttl=ROUTE_TTL["institutional_action"], key="institutional_action")
+async def api_institutional_action():
+    payload = _build_institutional_payload()
+    return payload["recommended_action"]
+
+
+@app.post("/api/institutional/audit/decisions")
+async def api_record_institutional_decision():
+    payload = _build_institutional_payload()
+    record = get_audit_store().record_decision(payload, source="api")
+    invalidate("institutional_audit_log")
+    invalidate("institutional_reviews_due")
+    invalidate("institutional_reviews_summary")
+    invalidate("institutional_review_scores")
+    invalidate("institutional_review_outcomes")
+    return {
+        "record": {k: v for k, v in record.items() if k != "payload"},
+        "payload": payload,
+    }
+
+
+@app.get("/api/institutional/audit/decisions")
+async def api_list_institutional_decisions(limit: int = 20):
+    return {"decisions": get_audit_store().list_decisions(limit=limit)}
+
+
+@app.get("/api/institutional/audit/verify")
+async def api_verify_institutional_audit(limit: int = Query(100, ge=1, le=500)):
+    return get_audit_store().verify_recent_decisions(limit=limit)
+
+
+@app.get("/api/institutional/audit/decisions/{ticket_id}")
+async def api_get_institutional_decision(ticket_id: str):
+    record = get_audit_store().get_decision(ticket_id)
+    if record is None:
+        return JSONResponse(content={"error": "decision ticket not found"}, status_code=404)
+    return record
+
+
+@app.get("/api/institutional/audit/decisions/{ticket_id}/verify")
+async def api_verify_institutional_decision(ticket_id: str):
+    verification = get_audit_store().verify_decision(ticket_id)
+    if verification is None:
+        return JSONResponse(content={"error": "decision ticket not found"}, status_code=404)
+    return verification
+
+
+@app.get("/api/institutional/reviews/due")
+@cached_async(ttl=ROUTE_TTL["institutional_reviews_due"], key="institutional_reviews_due")
+async def api_institutional_due_reviews():
+    store = get_audit_store()
+    rows = store.list_decisions(limit=100)
+    review_scores = store.list_review_scores(limit=500)
+    return {"reviews": list_due_reviews(rows, now=time.time(), review_scores=review_scores)}
+
+
+@app.get("/api/institutional/reviews/summary")
+@cached_async(ttl=ROUTE_TTL["institutional_reviews_summary"], key="institutional_reviews_summary")
+async def api_institutional_review_summary():
+    store = get_audit_store()
+    rows = store.list_decisions(limit=100)
+    review_scores = store.list_review_scores(limit=500)
+    return {"summary": build_review_summary(rows, review_scores, now=time.time())}
+
+
+@app.get("/api/institutional/reviews/queue")
+async def api_institutional_review_queue(priority: str | None = None, limit: int = Query(50, ge=1, le=100)):
+    store = get_audit_store()
+    rows = store.list_decisions(limit=100)
+    review_scores = store.list_review_scores(limit=500)
+    try:
+        queue = build_review_queue(rows, review_scores, now=time.time(), priority=priority, limit=limit)
+    except ValueError as exc:
+        return JSONResponse(content={"error": str(exc)}, status_code=400)
+    return {
+        "queue": queue,
+        "returned_count": len(queue),
+        "filters": {
+            "priority": priority,
+            "limit": limit,
+        },
+    }
+
+
+@app.get("/api/institutional/reviews/{ticket_id}/score")
+async def api_score_institutional_review(ticket_id: str, window: str = "T+1"):
+    record = get_audit_store().get_decision(ticket_id)
+    if record is None:
+        return JSONResponse(content={"error": "decision ticket not found"}, status_code=404)
+    return score_review(record, review_window=window)
+
+
+@app.post("/api/institutional/reviews/{ticket_id}/score")
+async def api_record_institutional_review_score(ticket_id: str, window: str = "T+1"):
+    store = get_audit_store()
+    record = store.get_decision(ticket_id)
+    if record is None:
+        return JSONResponse(content={"error": "decision ticket not found"}, status_code=404)
+    review_score = score_review(record, review_window=window)
+    stored = store.record_review_score(review_score)
+    invalidate("institutional_review_outcomes")
+    invalidate("institutional_review_scores")
+    invalidate("institutional_reviews_due")
+    invalidate("institutional_reviews_summary")
+    return {"recorded": True, "score": stored}
+
+
+@app.get("/api/institutional/reviews/scores")
+async def api_list_institutional_review_scores(ticket_id: str | None = None, limit: int = 50):
+    return {"scores": get_audit_store().list_review_scores(ticket_id=ticket_id, limit=limit)}
+
+
+@app.get("/api/institutional/reviews/scores/due")
+@cached_async(ttl=ROUTE_TTL["institutional_review_scores"], key="institutional_review_scores")
+async def api_score_due_institutional_reviews():
+    store = get_audit_store()
+    review_scores = store.list_review_scores(limit=500)
+    due = list_due_reviews(store.list_decisions(limit=100), now=time.time(), review_scores=review_scores)
+    scored = []
+    for item in due:
+        record = store.get_decision(item["ticket_id"])
+        if record is not None:
+            scored.append(score_review(record, review_window=item["window"]))
+    return {"scores": scored}
+
+
+@app.post("/api/institutional/reviews/scores/due")
+async def api_record_due_institutional_review_scores():
+    store = get_audit_store()
+    review_scores = store.list_review_scores(limit=500)
+    due = list_due_reviews(store.list_decisions(limit=100), now=time.time(), review_scores=review_scores)
+    scored = []
+    for item in due:
+        record = store.get_decision(item["ticket_id"])
+        if record is not None:
+            scored.append(store.record_review_score(score_review(record, review_window=item["window"])))
+    invalidate("institutional_review_scores")
+    invalidate("institutional_review_outcomes")
+    invalidate("institutional_reviews_due")
+    invalidate("institutional_reviews_summary")
+    return {"recorded_count": len(scored), "scores": scored}
+
 
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
 

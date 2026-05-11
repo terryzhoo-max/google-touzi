@@ -61,6 +61,62 @@
                 <span id="freshness-indicator" style="font-size:0.7rem;color:#64748b;">数据刷新中…</span>
             </div>
 
+            <section id="institutional-decision-panel" class="institutional-panel glass-card">
+                <header class="terminal-panel-header">
+                    <div>
+                        <div class="panel-kicker">INSTITUTIONAL DECISION</div>
+                        <h3>科学决策门禁</h3>
+                        <p>组合风险、场景压力、数据质量与决策票据的机构级汇总。</p>
+                    </div>
+                    <span id="decision-status" class="status-indicator">计算中...</span>
+                </header>
+                <div class="institutional-grid">
+                    <div><span>决策评分</span><strong id="decision-score">--</strong></div>
+                    <div><span>建议动作</span><strong id="decision-action">--</strong></div>
+                    <div><span>VaR 95%</span><strong id="decision-var">--</strong></div>
+                    <div><span>最坏场景</span><strong id="decision-worst">--</strong></div>
+                    <div><span>Asset Exposure</span><strong id="decision-asset-exposure">--</strong></div>
+                    <div><span>Region Exposure</span><strong id="decision-region-exposure">--</strong></div>
+                    <div><span>Strategy Exposure</span><strong id="decision-strategy-exposure">--</strong></div>
+                    <div><span>Currency Exposure</span><strong id="decision-currency-exposure">--</strong></div>
+                    <div><span>Concentration</span><strong id="decision-concentration">--</strong></div>
+                    <div><span>Primary Driver</span><strong id="decision-primary-driver">--</strong></div>
+                    <div><span>Execution Ready</span><strong id="decision-execution-readiness">--</strong></div>
+                    <div><span>Reason Codes</span><strong id="decision-reason-codes">--</strong></div>
+                    <div><span>Policy Version</span><strong id="decision-policy-version">--</strong></div>
+                    <div><span>Policy Hash</span><strong id="decision-policy-hash">--</strong></div>
+                    <div><span>Audit Log</span><strong id="decision-audit-count">--</strong></div>
+                    <div><span>Audit Integrity</span><strong id="decision-audit-integrity">--</strong></div>
+                    <div><span>Due Reviews</span><strong id="decision-review-due">--</strong></div>
+                    <div><span>Review SLA</span><strong id="decision-review-sla">--</strong></div>
+                    <div><span>Top Priority</span><strong id="decision-review-priority">--</strong></div>
+                    <div><span>Last Verdict</span><strong id="decision-last-verdict">--</strong></div>
+                </div>
+                <p id="decision-risk-improvement" class="flow-insight">等待风险改善测算。</p>
+                <p id="decision-review" class="flow-insight">等待机构决策引擎输出。</p>
+            </section>
+
+            <section id="institutional-workbench" class="institutional-panel institutional-workbench glass-card">
+                <header class="terminal-panel-header">
+                    <div>
+                        <div class="panel-kicker">INSTITUTIONAL WORKBENCH</div>
+                        <h3>Factor Risk / Active Risk / Compliance</h3>
+                    </div>
+                    <span class="status-indicator">v8</span>
+                </header>
+                <div class="workbench-tabs" aria-label="Institutional workbench">
+                    <div><span>Top Factor</span><strong id="workbench-top-factor">--</strong></div>
+                    <div><span>Tracking Error</span><strong id="workbench-tracking-error">--</strong></div>
+                    <div><span>Largest Active</span><strong id="workbench-largest-active">--</strong></div>
+                    <div><span>Compliance</span><strong id="workbench-compliance-status">--</strong></div>
+                </div>
+                <div class="workbench-detail-grid">
+                    <p><span>Compliance Issues</span><strong id="workbench-compliance-issues">--</strong></p>
+                    <p><span>Attribution</span><strong id="workbench-attribution">--</strong></p>
+                    <p><span>Evidence</span><strong id="workbench-evidence">--</strong></p>
+                </div>
+            </section>
+
             <!-- Global Cross-Asset Dashboard -->
             <div class="global-assets-panel glass-card" style="margin-top:16px;max-width:1200px;margin-left:auto;margin-right:auto;">
                 <div class="card-header"><h3>🌍 全球跨资产一览 (Global Cross-Asset)</h3><span id="ga-indicator" class="status-indicator">拉取中...</span></div>

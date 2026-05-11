@@ -1,0 +1,85 @@
+{
+  "positions": [
+    {
+      "symbol": "CSI300_ETF",
+      "name": "沪深300ETF",
+      "asset_class": "equity",
+      "region": "China",
+      "strategy": "broad_market",
+      "currency": "CNY",
+      "market_value": 100000
+    },
+    {
+      "symbol": "CSI500_ETF",
+      "name": "中证500ETF",
+      "asset_class": "equity",
+      "region": "China",
+      "strategy": "broad_market",
+      "currency": "CNY",
+      "market_value": 100000
+    },
+    {
+      "symbol": "STAR50_ETF",
+      "name": "科创50ETF",
+      "asset_class": "equity",
+      "region": "China",
+      "strategy": "technology",
+      "currency": "CNY",
+      "market_value": 100000
+    },
+    {
+      "symbol": "HSTECH_ETF",
+      "name": "恒生科技ETF",
+      "asset_class": "equity",
+      "region": "HongKong",
+      "strategy": "technology",
+      "currency": "CNY",
+      "market_value": 100000
+    },
+    {
+      "symbol": "SP500_ETF",
+      "name": "标普500ETF",
+      "asset_class": "equity",
+      "region": "US",
+      "strategy": "overseas",
+      "currency": "CNY",
+      "market_value": 100000
+    },
+    {
+      "symbol": "NASDAQ_ETF",
+      "name": "纳指ETF",
+      "asset_class": "equity",
+      "region": "US",
+      "strategy": "technology",
+      "currency": "CNY",
+      "market_value": 100000
+    },
+    {
+      "symbol": "NIKKEI225_ETF",
+      "name": "日经225ETF",
+      "asset_class": "equity",
+      "region": "Japan",
+      "strategy": "overseas",
+      "currency": "CNY",
+      "market_value": 100000
+    },
+    {
+      "symbol": "CHIP_ETF",
+      "name": "芯片ETF",
+      "asset_class": "equity",
+      "region": "China",
+      "strategy": "technology",
+      "currency": "CNY",
+      "market_value": 100000
+    },
+    {
+      "symbol": "GOLD_ETF",
+      "name": "黄金ETF",
+      "asset_class": "gold",
+      "region": "Gold",
+      "strategy": "gold",
+      "currency": "CNY",
+      "market_value": 100000
+    }
+  ]
+}
