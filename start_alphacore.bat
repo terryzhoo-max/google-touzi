@@ -5,10 +5,12 @@ setlocal EnableDelayedExpansion
 title AlphaCore Quant Server
 
 :: ====== CONFIG ======
-set "PROJECT_DIR=d:\FIONA\google touzi"
-set "HOST=127.0.0.1"
-set "PORT=8888"
-set "APP_MODULE=data_engine:app"
+if not defined PROJECT_DIR set "PROJECT_DIR=%~dp0"
+if not defined HOST set "HOST=127.0.0.1"
+if not defined PORT set "PORT=8888"
+if not defined APP_MODULE set "APP_MODULE=data_engine:app"
+set "OPEN_BROWSER=1"
+if /i "%~1"=="--no-browser" set "OPEN_BROWSER=0"
 
 echo.
 echo ============================================================
@@ -54,8 +56,11 @@ if errorlevel 1 set "MISSING=!MISSING! uvicorn"
 python -c "import pandas" >nul 2>&1
 if errorlevel 1 set "MISSING=!MISSING! pandas"
 
-python -c "import markdown" >nul 2>&1
-if errorlevel 1 set "MISSING=!MISSING! markdown"
+python -c "import numpy" >nul 2>&1
+if errorlevel 1 set "MISSING=!MISSING! numpy"
+
+python -c "import requests" >nul 2>&1
+if errorlevel 1 set "MISSING=!MISSING! requests"
 
 if not "!MISSING!"=="" (
     echo [WARN] Missing:!MISSING!
@@ -111,8 +116,8 @@ echo   Press Ctrl+C to stop the server
 echo ============================================================
 echo.
 
-:: Automatically open the browser
-start http://%HOST%:%PORT%
+:: Automatically open the browser unless --no-browser is passed
+if "%OPEN_BROWSER%"=="1" start http://%HOST%:%PORT%
 
 :: Start the unified FastAPI server
 python -m uvicorn %APP_MODULE% --host %HOST% --port %PORT%

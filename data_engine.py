@@ -42,6 +42,7 @@ from core.portfolio_book import build_portfolio_snapshot, load_portfolio_positio
 from core.risk_engine import calculate_portfolio_risk
 from core.review_scheduler import build_review_queue, build_review_summary, list_due_reviews
 from core.review_scoring import score_review
+from core.runtime_diagnostics import build_runtime_diagnostics
 from core.scenario_engine import run_portfolio_scenarios
 from core.what_if_engine import build_default_risk_reduction_adjustments, run_what_if
 
@@ -114,11 +115,19 @@ async def api_health():
     from core.alert_state import get_active_alerts
     ps = get_provider_stats()
     degraded = [k for k, v in ps.items() if v.get("error_rate", 0) > 0.3]
+    diagnostics = build_runtime_diagnostics(settings, cwd=os.getcwd())
+    if diagnostics["status"] == "misconfigured":
+        status = "misconfigured"
+    elif degraded or diagnostics["status"] == "degraded":
+        status = "degraded"
+    else:
+        status = "healthy"
     return {
-        "status": "degraded" if degraded else "healthy",
+        "status": status,
         "degraded_sources": degraded,
         "sources": ps,
         "cache": get_cache_stats(),
+        "diagnostics": diagnostics,
         "rate_limit": {
             "window_sec": 60,
             "max_requests_per_minute": settings.MAX_REQUESTS_PER_MINUTE,

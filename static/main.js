@@ -105,9 +105,7 @@ async function initDashboard() {
             banner.style.display = 'block';
             banner.classList.add('has-warnings');
             if (count) count.textContent = d.active_warnings.length;
-            if (list) list.innerHTML = d.active_warnings.map(a =>
-                `<div class="alert-${a.level}">▸ ${a.text}</div>`
-            ).join('');
+            if (list) renderAlertList(list, d.active_warnings);
             // badge on relevant panel groups
             const hasMacro = d.active_warnings.some(a => a.source === 'yield_curve');
             const hasRisk = d.active_warnings.some(a => a.source === 'correlation');
@@ -141,10 +139,10 @@ async function initDashboard() {
             const degraded = hd.degraded_sources || [];
             const hitPct = Math.round((hd.cache?.hit_ratio || 0) * 100);
             if (degraded.length > 0) {
-                fi.innerHTML = `⚠️ 数据源降级: ${degraded.join(', ')} | 缓存命中 ${hitPct}%`;
+                fi.textContent = `Data source degraded: ${degraded.join(', ')} | cache hit ${hitPct}%`;
                 fi.style.color = '#fbbf24';
             } else {
-                fi.innerHTML = `● 数据正常 | 缓存命中 ${hitPct}% | 活跃警示 ${hd.active_alerts}`;
+                fi.textContent = `Data healthy | cache hit ${hitPct}% | active alerts ${hd.active_alerts}`;
                 fi.style.color = '#4ade80';
             }
         }
@@ -154,6 +152,107 @@ async function initDashboard() {
 }
 
 // ── shared panel helper ──────────────────────────────────
+function clearChildren(el) {
+    while (el.firstChild) {
+        el.removeChild(el.firstChild);
+    }
+}
+
+function safeCssColor(value, fallback = '#94a3b8') {
+    const text = String(value || '').trim();
+    return /^#[0-9a-fA-F]{3,8}$/.test(text) ? text : fallback;
+}
+
+function safeLevelClass(value) {
+    const level = String(value || 'info').toLowerCase();
+    return ['info', 'warning', 'warn', 'error', 'critical'].includes(level) ? level : 'info';
+}
+
+function appendTextBlock(parent, text, styles = {}) {
+    const el = document.createElement('div');
+    el.textContent = text ?? '';
+    Object.assign(el.style, styles);
+    parent.appendChild(el);
+    return el;
+}
+
+function renderAlertList(list, warnings) {
+    clearChildren(list);
+    (warnings || []).forEach(warning => {
+        const row = document.createElement('div');
+        row.className = `alert-${safeLevelClass(warning.level)}`;
+        row.textContent = `> ${warning.text || ''}`;
+        list.appendChild(row);
+    });
+}
+
+function renderScenarioMetric(parent, label, value, color) {
+    const box = document.createElement('div');
+    appendTextBlock(box, label, { fontSize: '0.65rem', color: '#94a3b8' });
+    appendTextBlock(box, value, {
+        fontFamily: 'var(--font-mono)',
+        fontSize: '1.2rem',
+        fontWeight: 'bold',
+        color,
+    });
+    parent.appendChild(box);
+}
+
+function renderScenarioGrid(grid, scenarios) {
+    clearChildren(grid);
+    (scenarios || []).forEach(scenario => {
+        const color = safeCssColor(scenario.color);
+        const portRet = Number(scenario.port_ret || 0);
+        const benchRet = Number(scenario.bench_ret || 0);
+        const isWin = portRet > benchRet;
+        const beat = (portRet - benchRet).toFixed(1);
+
+        const card = document.createElement('div');
+        Object.assign(card.style, {
+            background: 'rgba(255,255,255,0.02)',
+            border: `1px solid ${color}40`,
+            borderRadius: '8px',
+            padding: '16px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '10px',
+        });
+
+        appendTextBlock(card, scenario.name || '--', { fontSize: '0.95rem', fontWeight: 'bold', color: '#e2e8f0' });
+        appendTextBlock(card, scenario.period || '--', { fontSize: '0.7rem', color: '#94a3b8' });
+        appendTextBlock(card, scenario.desc || '', { fontSize: '0.75rem', color: '#64748b', lineHeight: '1.5' });
+
+        const metrics = document.createElement('div');
+        Object.assign(metrics.style, {
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap: '8px',
+            marginTop: '5px',
+            paddingTop: '10px',
+            borderTop: '1px solid rgba(255,255,255,0.05)',
+        });
+        renderScenarioMetric(metrics, 'Strategy return', `${portRet}%`, color);
+        renderScenarioMetric(metrics, 'Benchmark return', `${benchRet}%`, '#ef4444');
+        card.appendChild(metrics);
+
+        appendTextBlock(card, `Strategy ${isWin ? 'leads' : 'lags'} benchmark ${isWin ? '+' : ''}${beat}%`, {
+            fontSize: '0.7rem',
+            color: isWin ? '#4ade80' : '#ef4444',
+            fontWeight: '600',
+        });
+        appendTextBlock(card, scenario.verdict || '', {
+            fontSize: '0.7rem',
+            padding: '3px 8px',
+            background: `${color}20`,
+            borderRadius: '4px',
+            color,
+            alignSelf: 'flex-start',
+        });
+
+        grid.appendChild(card);
+    });
+}
+
 function formatTopExposure(exposure) {
     const rows = Object.entries(exposure || {})
         .map(([name, weight]) => [name, Number(weight) || 0])
@@ -681,10 +780,11 @@ async function initCorrelationChart() {
         
         if (ind && ins) {
             ind.innerText = corrData.state;
-            ind.style.color = corrData.color;
-            ind.style.borderColor = corrData.color;
-            ind.style.boxShadow = `0 0 10px ${corrData.color}40`;
-            ins.innerHTML = corrData.insight;
+            const color = safeCssColor(corrData.color, '#ef4444');
+            ind.style.color = color;
+            ind.style.borderColor = color;
+            ind.style.boxShadow = `0 0 10px ${color}40`;
+            ins.textContent = corrData.insight;
         }
 
         if (corrData.extreme_action && banner && actionText) {
@@ -831,33 +931,7 @@ async function initScenarioTest() {
         ind.style.borderColor = '#fbbf24';
         if (ins) ins.innerText = data.insight;
 
-        grid.innerHTML = data.scenarios.map(s => {
-            const isWin = s.port_ret > s.bench_ret;
-            const beat = (s.port_ret - s.bench_ret).toFixed(1);
-            return `
-                <div style="background: rgba(255,255,255,0.02); border: 1px solid ${s.color}40; border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 10px;">
-                    <div style="font-size: 0.95rem; font-weight: bold; color: #e2e8f0;">${s.name}</div>
-                    <div style="font-size: 0.7rem; color: #94a3b8;">${s.period}</div>
-                    <div style="font-size: 0.75rem; color: #64748b; line-height: 1.5;">${s.desc}</div>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 5px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.05);">
-                        <div>
-                            <div style="font-size: 0.65rem; color: #94a3b8;">策略收益</div>
-                            <div style="font-family: var(--font-mono); font-size: 1.2rem; font-weight: bold; color: ${s.color};">${s.port_ret}%</div>
-                        </div>
-                        <div>
-                            <div style="font-size: 0.65rem; color: #94a3b8;">基准收益</div>
-                            <div style="font-family: var(--font-mono); font-size: 1.2rem; font-weight: bold; color: #ef4444;">${s.bench_ret}%</div>
-                        </div>
-                    </div>
-                    <div style="font-size: 0.7rem; color: ${isWin ? '#4ade80' : '#ef4444'}; font-weight: 600;">
-                        策略${isWin ? '领先' : '落后'}基准 ${isWin ? '+' : ''}${beat}%
-                    </div>
-                    <div style="font-size: 0.7rem; padding: 3px 8px; background: ${s.color}20; border-radius: 4px; color: ${s.color}; align-self: flex-start;">
-                        ${s.verdict}
-                    </div>
-                </div>
-            `;
-        }).join('');
+        renderScenarioGrid(grid, data.scenarios);
 
     } catch (e) {
         console.error("Scenario test failed:", e);

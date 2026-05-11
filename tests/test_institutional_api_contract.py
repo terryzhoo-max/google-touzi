@@ -7,6 +7,24 @@ from core.config import settings
 client = TestClient(app)
 
 
+def test_health_endpoint_includes_production_diagnostics_without_secrets(monkeypatch):
+    monkeypatch.setattr(settings, "DEEPSEEK_API_KEY", "secret-value-should-not-leak", raising=False)
+
+    response = client.get("/api/health")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert "diagnostics" in payload
+    diagnostics = payload["diagnostics"]
+    assert diagnostics["status"] in {"healthy", "degraded", "misconfigured"}
+    assert "config" in diagnostics
+    assert "portfolio" in diagnostics
+    assert "audit_db" in diagnostics
+    assert "git" in diagnostics
+    assert diagnostics["optional_keys"]["DEEPSEEK_API_KEY"] == "present"
+    assert "secret-value-should-not-leak" not in str(payload)
+
+
 def test_institutional_decision_endpoint_returns_ticket():
     response = client.get("/api/institutional/decision")
 

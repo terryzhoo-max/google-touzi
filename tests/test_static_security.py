@@ -106,3 +106,30 @@ def test_pytest_collection_is_scoped_to_tests_directory():
 
     assert "testpaths = tests" in pytest_ini
     assert "python_files = test_*.py" in pytest_ini
+
+
+def test_start_script_supports_production_hardening_contract():
+    script = (ROOT / "start_alphacore.bat").read_text(encoding="utf-8")
+
+    assert "if not defined PROJECT_DIR" in script
+    assert "if not defined HOST" in script
+    assert "if not defined PORT" in script
+    assert "if not defined APP_MODULE" in script
+    assert "--no-browser" in script
+    assert "import numpy" in script
+    assert "import requests" in script
+    assert "Occupied by PID" in script
+    assert "start http://%HOST%:%PORT%" in script
+
+
+def test_frontend_uses_safe_rendering_for_targeted_api_payloads():
+    js = (ROOT / "static" / "main.js").read_text(encoding="utf-8")
+
+    assert "renderAlertList(list, d.active_warnings)" in js
+    assert "fi.textContent =" in js
+    assert "ins.textContent = corrData.insight" in js
+    assert "renderScenarioGrid(grid, data.scenarios)" in js
+    assert "list.innerHTML = d.active_warnings.map" not in js
+    assert "fi.innerHTML =" not in js
+    assert "ins.innerHTML = corrData.insight" not in js
+    assert "grid.innerHTML = data.scenarios.map" not in js
