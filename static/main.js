@@ -313,18 +313,28 @@ function formatEvidence(evidenceChain) {
     return `${sourceMode} / ${weak.length} watch`;
 }
 
-function formatWeightMap(weights) {
-    return Object.entries(weights || {})
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 5)
-        .map(([symbol, weight]) => `${symbol} ${Math.round(Number(weight || 0) * 1000) / 10}%`)
-        .join(' / ') || '--';
-}
-
 function renderAllocationWeightRows(model) {
     const allocationModelWeights = document.getElementById('allocation-model-weights');
     if (!allocationModelWeights) return;
-    allocationModelWeights.textContent = formatWeightMap(model.target_weights);
+    const current = model.current_weights || {};
+    const target = model.target_weights || {};
+    const rows = Object.keys(target)
+        .sort((a, b) => Number(target[b] || 0) - Number(target[a] || 0))
+        .slice(0, 6);
+    if (!rows.length) {
+        allocationModelWeights.textContent = '--';
+        return;
+    }
+    clearChildren(allocationModelWeights);
+    rows.forEach(symbol => {
+        const current_weight = Number(current[symbol] || 0);
+        const target_weight = Number(target[symbol] || 0);
+        const delta = target_weight - current_weight;
+        const row = document.createElement('span');
+        row.textContent = `${symbol} ${Math.round(current_weight * 1000) / 10}% -> ${Math.round(target_weight * 1000) / 10}% (${delta >= 0 ? '+' : ''}${Math.round(delta * 1000) / 10}%)`;
+        row.style.display = 'block';
+        allocationModelWeights.appendChild(row);
+    });
 }
 
 function renderAllocationTradeRows(model) {
@@ -345,6 +355,10 @@ function renderAllocationEvidenceRows(model) {
         : '--';
 }
 
+function renderAllocationReviewSchedule(model) {
+    setFlowText('allocation-model-review', (model.review_schedule || []).join(' / ') || '--');
+}
+
 function renderAllocationModel(model) {
     const panel = document.getElementById('allocation-model-panel');
     if (!panel) return;
@@ -355,6 +369,7 @@ function renderAllocationModel(model) {
     setFlowText('allocation-model-stress-delta', `${model.expected_effect?.worst_scenario_delta_pct ?? '--'}%`);
     setFlowText('allocation-model-turnover', `${model.expected_effect?.turnover_pct ?? '--'}%`);
     setFlowText('allocation-model-constraint', model.constraint_result?.status || '--');
+    renderAllocationReviewSchedule(model);
     renderAllocationWeightRows(model);
     renderAllocationTradeRows(model);
     renderAllocationEvidenceRows(model);

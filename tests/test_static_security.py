@@ -107,6 +107,7 @@ def test_allocation_model_panel_static_contract():
         "allocation-model-stress-delta",
         "allocation-model-turnover",
         "allocation-model-constraint",
+        "allocation-model-review",
         "allocation-model-weights",
         "allocation-model-trades",
         "allocation-model-evidence",
@@ -120,6 +121,9 @@ def test_allocation_model_panel_static_contract():
     assert "renderAllocationWeightRows" in js
     assert "renderAllocationTradeRows" in js
     assert "renderAllocationEvidenceRows" in js
+    assert "renderAllocationReviewSchedule" in js
+    assert "current_weight" in js
+    assert "target_weight" in js
     assert "allocationModelWeights.innerHTML" not in js
     assert "allocationModelTrades.innerHTML" not in js
     assert "allocationModelEvidence.innerHTML" not in js
