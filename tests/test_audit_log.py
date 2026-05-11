@@ -90,6 +90,42 @@ def test_audit_log_store_summarizes_benchmark_and_compliance(tmp_path):
     assert loaded["compliance_status"] == "warn"
 
 
+def test_audit_log_store_summarizes_allocation_model(tmp_path):
+    store = AuditLogStore(str(tmp_path / "audit.db"))
+
+    record = store.record_decision(
+        payload={
+            "policy": {"version": "institutional_policy_v1", "policy_hash": "a" * 64},
+            "decision_ticket": {
+                "score": 76,
+                "decision_status": "limited",
+                "policy_version": "institutional_policy_v1",
+                "policy_hash": "a" * 64,
+            },
+            "recommended_action": {"status": "staged_execution"},
+            "allocation_model": {
+                "status": "limited",
+                "model_hash": "c" * 64,
+            },
+        },
+        source="allocation_model_api",
+    )
+
+    rows = store.list_decisions(limit=5)
+    loaded = store.get_decision(record["ticket_id"])
+    verification = store.verify_decision(record["ticket_id"])
+
+    assert record["allocation_model_status"] == "limited"
+    assert record["allocation_model_hash"] == "c" * 64
+    assert rows[0]["allocation_model_status"] == "limited"
+    assert rows[0]["allocation_model_hash"] == "c" * 64
+    assert loaded["allocation_model_status"] == "limited"
+    assert loaded["allocation_model_hash"] == "c" * 64
+    assert verification["stored_summary"]["allocation_model_status"] == "limited"
+    assert verification["computed_summary"]["allocation_model_hash"] == "c" * 64
+    assert verification["verified"] is True
+
+
 def test_audit_log_store_hydrates_payload_by_ticket_id(tmp_path):
     store = AuditLogStore(str(tmp_path / "audit.db"))
     record = store.record_decision(

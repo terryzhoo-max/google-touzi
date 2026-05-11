@@ -107,8 +107,18 @@ def test_institutional_allocation_model_simulate_and_audit_endpoints():
     assert audited.status_code == 200
     audited_payload = audited.json()
     assert audited_payload["record"]["ticket_id"].startswith("dt_")
+    assert audited_payload["record"]["allocation_model_status"] in {"allow", "limited", "observe"}
+    assert len(audited_payload["record"]["allocation_model_hash"]) == 64
     assert "allocation_model" in audited_payload["payload"]
     assert audited_payload["payload"]["allocation_model"]["model_version"] == "allocation-v1"
+
+    ticket_id = audited_payload["record"]["ticket_id"]
+    loaded = client.get(f"/api/institutional/audit/decisions/{ticket_id}").json()
+    verification = client.get(f"/api/institutional/audit/decisions/{ticket_id}/verify").json()
+    assert loaded["allocation_model_status"] == audited_payload["record"]["allocation_model_status"]
+    assert loaded["allocation_model_hash"] == audited_payload["record"]["allocation_model_hash"]
+    assert verification["verified"] is True
+    assert verification["stored_summary"]["allocation_model_hash"] == audited_payload["record"]["allocation_model_hash"]
 
 
 def test_institutional_component_endpoints_return_stable_contracts():

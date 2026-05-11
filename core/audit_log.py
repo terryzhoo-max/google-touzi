@@ -50,6 +50,16 @@ def _compliance_status(payload: dict) -> str | None:
     return compliance.get("status") or what_if_compliance.get("status")
 
 
+def _allocation_model_status(payload: dict) -> str | None:
+    allocation_model = payload.get("allocation_model", {})
+    return allocation_model.get("status")
+
+
+def _allocation_model_hash(payload: dict) -> str | None:
+    allocation_model = payload.get("allocation_model", {})
+    return allocation_model.get("model_hash")
+
+
 def _norm(value: str | None) -> str:
     return value or ""
 
@@ -77,6 +87,8 @@ class AuditLogStore:
                     primary_driver TEXT,
                     benchmark_hash TEXT,
                     compliance_status TEXT,
+                    allocation_model_status TEXT,
+                    allocation_model_hash TEXT,
                     payload_hash TEXT,
                     payload_json TEXT NOT NULL
                 )
@@ -108,6 +120,10 @@ class AuditLogStore:
                 conn.execute("ALTER TABLE decision_audit_log ADD COLUMN benchmark_hash TEXT")
             if "compliance_status" not in columns:
                 conn.execute("ALTER TABLE decision_audit_log ADD COLUMN compliance_status TEXT")
+            if "allocation_model_status" not in columns:
+                conn.execute("ALTER TABLE decision_audit_log ADD COLUMN allocation_model_status TEXT")
+            if "allocation_model_hash" not in columns:
+                conn.execute("ALTER TABLE decision_audit_log ADD COLUMN allocation_model_hash TEXT")
             rows_missing_hash = conn.execute(
                 """
                 SELECT ticket_id, payload_json
@@ -118,6 +134,8 @@ class AuditLogStore:
                    OR primary_driver IS NULL OR primary_driver = ''
                    OR benchmark_hash IS NULL OR benchmark_hash = ''
                    OR compliance_status IS NULL OR compliance_status = ''
+                   OR allocation_model_status IS NULL OR allocation_model_status = ''
+                   OR allocation_model_hash IS NULL OR allocation_model_hash = ''
                 """
             ).fetchall()
             for ticket_id, payload_json in rows_missing_hash:
@@ -130,7 +148,9 @@ class AuditLogStore:
                         policy_hash = COALESCE(NULLIF(policy_hash, ''), ?),
                         primary_driver = COALESCE(NULLIF(primary_driver, ''), ?),
                         benchmark_hash = COALESCE(NULLIF(benchmark_hash, ''), ?),
-                        compliance_status = COALESCE(NULLIF(compliance_status, ''), ?)
+                        compliance_status = COALESCE(NULLIF(compliance_status, ''), ?),
+                        allocation_model_status = COALESCE(NULLIF(allocation_model_status, ''), ?),
+                        allocation_model_hash = COALESCE(NULLIF(allocation_model_hash, ''), ?)
                     WHERE ticket_id = ?
                     """,
                     (
@@ -140,6 +160,8 @@ class AuditLogStore:
                         _primary_driver(payload),
                         _benchmark_hash(payload),
                         _compliance_status(payload),
+                        _allocation_model_status(payload),
+                        _allocation_model_hash(payload),
                         ticket_id,
                     ),
                 )
@@ -162,6 +184,8 @@ class AuditLogStore:
             "primary_driver": _primary_driver(payload),
             "benchmark_hash": _benchmark_hash(payload),
             "compliance_status": _compliance_status(payload),
+            "allocation_model_status": _allocation_model_status(payload),
+            "allocation_model_hash": _allocation_model_hash(payload),
             "payload_hash": _payload_hash(payload),
             "review_schedule": build_review_schedule(ticket_id, created_at),
             "payload": payload,
@@ -173,9 +197,9 @@ class AuditLogStore:
                 INSERT INTO decision_audit_log (
                     ticket_id, created_at, source, score,
                     decision_status, action_status, policy_version, policy_hash, primary_driver,
-                    benchmark_hash, compliance_status,
+                    benchmark_hash, compliance_status, allocation_model_status, allocation_model_hash,
                     payload_hash, payload_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     row["ticket_id"],
@@ -189,6 +213,8 @@ class AuditLogStore:
                     row["primary_driver"],
                     row["benchmark_hash"],
                     row["compliance_status"],
+                    row["allocation_model_status"],
+                    row["allocation_model_hash"],
                     row["payload_hash"],
                     _canonical_payload_json(payload),
                 ),
@@ -204,6 +230,7 @@ class AuditLogStore:
                        COALESCE(policy_version, ''), COALESCE(primary_driver, ''),
                        COALESCE(policy_hash, ''),
                        COALESCE(benchmark_hash, ''), COALESCE(compliance_status, ''),
+                       COALESCE(allocation_model_status, ''), COALESCE(allocation_model_hash, ''),
                        COALESCE(payload_hash, '')
                 FROM decision_audit_log
                 ORDER BY created_at DESC
@@ -224,11 +251,14 @@ class AuditLogStore:
                 "primary_driver": primary_driver,
                 "benchmark_hash": benchmark_hash,
                 "compliance_status": compliance_status,
+                "allocation_model_status": allocation_model_status,
+                "allocation_model_hash": allocation_model_hash,
                 "payload_hash": payload_hash,
                 "review_schedule": build_review_schedule(ticket_id, created_at),
             }
             for ticket_id, created_at, source, score, decision_status, action_status,
-            policy_version, primary_driver, policy_hash, benchmark_hash, compliance_status, payload_hash in rows
+            policy_version, primary_driver, policy_hash, benchmark_hash, compliance_status,
+            allocation_model_status, allocation_model_hash, payload_hash in rows
         ]
 
     def get_decision(self, ticket_id: str) -> dict | None:
@@ -239,6 +269,7 @@ class AuditLogStore:
                        decision_status, action_status, COALESCE(policy_version, ''),
                        COALESCE(policy_hash, ''), COALESCE(primary_driver, ''),
                        COALESCE(benchmark_hash, ''), COALESCE(compliance_status, ''),
+                       COALESCE(allocation_model_status, ''), COALESCE(allocation_model_hash, ''),
                        COALESCE(payload_hash, ''), payload_json
                 FROM decision_audit_log
                 WHERE ticket_id = ?
@@ -259,9 +290,11 @@ class AuditLogStore:
             "primary_driver": row[8],
             "benchmark_hash": row[9],
             "compliance_status": row[10],
-            "payload_hash": row[11],
+            "allocation_model_status": row[11],
+            "allocation_model_hash": row[12],
+            "payload_hash": row[13],
             "review_schedule": build_review_schedule(row[0], row[1]),
-            "payload": json.loads(row[12]),
+            "payload": json.loads(row[14]),
         }
 
     def verify_decision(self, ticket_id: str) -> dict | None:
@@ -271,7 +304,8 @@ class AuditLogStore:
                 SELECT ticket_id, COALESCE(payload_hash, ''), payload_json,
                        COALESCE(policy_version, ''), COALESCE(policy_hash, ''),
                        COALESCE(primary_driver, ''), COALESCE(benchmark_hash, ''),
-                       COALESCE(compliance_status, '')
+                       COALESCE(compliance_status, ''), COALESCE(allocation_model_status, ''),
+                       COALESCE(allocation_model_hash, '')
                 FROM decision_audit_log
                 WHERE ticket_id = ?
                 """,
@@ -295,6 +329,8 @@ class AuditLogStore:
             "primary_driver": _norm(_primary_driver(payload)),
             "benchmark_hash": _norm(_benchmark_hash(payload)),
             "compliance_status": _norm(_compliance_status(payload)),
+            "allocation_model_status": _norm(_allocation_model_status(payload)),
+            "allocation_model_hash": _norm(_allocation_model_hash(payload)),
         }
         stored_summary = {
             "policy_version": row[3],
@@ -302,6 +338,8 @@ class AuditLogStore:
             "primary_driver": row[5],
             "benchmark_hash": row[6],
             "compliance_status": row[7],
+            "allocation_model_status": row[8],
+            "allocation_model_hash": row[9],
         }
         for key, expected in expected_summary.items():
             if stored_summary[key] != expected:

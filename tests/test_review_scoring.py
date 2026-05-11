@@ -97,3 +97,39 @@ def test_score_review_penalizes_negative_attribution_effect():
     assert result["attribution"]["decision_effect"] == -0.009
     assert "attribution_negative" in result["evidence"]
     assert "currency_drag" in result["evidence"]
+
+
+def test_score_review_includes_allocation_model_outcome():
+    result = score_review(
+        audit_record={
+            "ticket_id": "dt_allocation_model",
+            "payload": {
+                "recommended_action": {"status": "staged_execution"},
+                "what_if": {
+                    "risk_delta": {"var_95_pct": 0.05, "worst_scenario_loss_pct": 0.1},
+                    "constraints": {"passed": True},
+                },
+                "allocation_model": {
+                    "status": "limited",
+                    "constraint_result": {"status": "warn"},
+                    "expected_effect": {
+                        "var_95_delta_pct": 0.04,
+                        "worst_scenario_delta_pct": 0.0,
+                        "turnover_pct": 3.2,
+                    },
+                    "evidence_chain": [
+                        {"code": "signal_rank"},
+                        {"code": "risk_delta"},
+                    ],
+                },
+            },
+        },
+        review_window="T+5",
+    )
+
+    assert "allocation_model_limited" in result["evidence"]
+    assert "allocation_constraints_warn" in result["evidence"]
+    assert "allocation_risk_improved" in result["evidence"]
+    assert result["allocation_model"]["status"] == "limited"
+    assert result["allocation_model"]["turnover_pct"] == 3.2
+    assert result["allocation_model"]["evidence_count"] == 2
