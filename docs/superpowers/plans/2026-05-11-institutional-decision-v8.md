@@ -31,10 +31,10 @@
 - Create: `core/factor_risk.py`
 - Test: `tests/test_factor_risk.py`
 
-- [ ] Write failing tests for ETF factor mapping and aggregate top factor.
-- [ ] Run `python -m pytest tests/test_factor_risk.py -q` and verify import failure.
-- [ ] Implement deterministic factor registry and aggregation.
-- [ ] Re-run `python -m pytest tests/test_factor_risk.py -q`.
+- [x] Write failing tests for ETF factor mapping and aggregate top factor.
+- [x] Run `python -m pytest tests/test_factor_risk.py -q` and verify import failure.
+- [x] Implement deterministic factor registry and aggregation.
+- [x] Re-run `python -m pytest tests/test_factor_risk.py -q`.
 
 ### Task 2: Benchmark and Active Risk
 
@@ -42,10 +42,10 @@
 - Create: `core/benchmark_book.py`
 - Test: `tests/test_benchmark_book.py`
 
-- [ ] Write failing tests for benchmark hash stability, active weights, and tracking error proxy.
-- [ ] Run `python -m pytest tests/test_benchmark_book.py -q` and verify import failure.
-- [ ] Implement benchmark book, active risk, and largest active exposures.
-- [ ] Re-run `python -m pytest tests/test_benchmark_book.py -q`.
+- [x] Write failing tests for benchmark hash stability, active weights, and tracking error proxy.
+- [x] Run `python -m pytest tests/test_benchmark_book.py -q` and verify import failure.
+- [x] Implement benchmark book, active risk, and largest active exposures.
+- [x] Re-run `python -m pytest tests/test_benchmark_book.py -q`.
 
 ### Task 3: Pre-trade Compliance
 
@@ -54,10 +54,10 @@
 - Modify: `core/action_generator.py`
 - Test: `tests/test_compliance_engine.py`
 
-- [ ] Write failing tests for pass, warn, block, defensive-only mode, and action downgrade.
-- [ ] Run `python -m pytest tests/test_compliance_engine.py -q tests/test_action_generator.py -q`.
-- [ ] Implement compliance policy rules and action-generator integration.
-- [ ] Re-run focused compliance and action tests.
+- [x] Write failing tests for pass, warn, block, defensive-only mode, and action downgrade.
+- [x] Run `python -m pytest tests/test_compliance_engine.py -q tests/test_action_generator.py -q`.
+- [x] Implement compliance policy rules and action-generator integration.
+- [x] Re-run focused compliance and action tests.
 
 ### Task 4: Attribution Engine
 
@@ -65,10 +65,10 @@
 - Create: `core/attribution_engine.py`
 - Test: `tests/test_attribution_engine.py`
 
-- [ ] Write failing tests for allocation, selection, currency, and decision effect outputs.
-- [ ] Run `python -m pytest tests/test_attribution_engine.py -q`.
-- [ ] Implement deterministic attribution snapshots for T+1, T+5, and T+20 windows.
-- [ ] Re-run attribution tests.
+- [x] Write failing tests for allocation, selection, currency, and decision effect outputs.
+- [x] Run `python -m pytest tests/test_attribution_engine.py -q`.
+- [x] Implement deterministic attribution snapshots for T+1, T+5, and T+20 windows.
+- [x] Re-run attribution tests.
 
 ### Task 5: Evidence Chain
 
@@ -77,10 +77,10 @@
 - Modify: `core/decision_explainer.py`
 - Test: `tests/test_evidence_chain.py`
 
-- [ ] Write failing tests for metric, threshold, direction, source quality, and policy hash evidence.
-- [ ] Run `python -m pytest tests/test_evidence_chain.py -q`.
-- [ ] Implement evidence-chain builder and attach it to decision output.
-- [ ] Re-run evidence tests.
+- [x] Write failing tests for metric, threshold, direction, source quality, and policy hash evidence.
+- [x] Run `python -m pytest tests/test_evidence_chain.py -q`.
+- [x] Implement evidence-chain builder and attach it to decision output.
+- [x] Re-run evidence tests.
 
 ### Task 6: API Contract
 
@@ -89,10 +89,10 @@
 - Modify: `test_system.py`
 - Test: `tests/test_institutional_api_contract.py`
 
-- [ ] Write failing API tests for `/factors`, `/benchmark`, `/active_risk`, `/attribution`, `/compliance`, and decision extensions.
-- [ ] Run `python -m pytest tests/test_institutional_api_contract.py -q`.
-- [ ] Wire new core modules into FastAPI endpoints and decision packet builder.
-- [ ] Re-run API contract tests.
+- [x] Write failing API tests for `/factors`, `/benchmark`, `/active_risk`, `/attribution`, `/compliance`, and decision extensions.
+- [x] Run `python -m pytest tests/test_institutional_api_contract.py -q`.
+- [x] Wire new core modules into FastAPI endpoints and decision packet builder.
+- [x] Re-run API contract tests.
 
 ### Task 7: Audit Summary Extension
 
@@ -100,10 +100,10 @@
 - Modify: `core/audit_log.py`
 - Test: `tests/test_audit_log.py`
 
-- [ ] Write failing tests that recorded decisions expose benchmark hash and compliance status.
-- [ ] Run `python -m pytest tests/test_audit_log.py -q`.
-- [ ] Add summary columns with migration and verification checks.
-- [ ] Re-run audit tests.
+- [x] Write failing tests that recorded decisions expose benchmark hash and compliance status.
+- [x] Run `python -m pytest tests/test_audit_log.py -q`.
+- [x] Add summary columns with migration and verification checks.
+- [x] Re-run audit tests.
 
 ### Task 8: Frontend Institutional Workbench
 
@@ -113,20 +113,20 @@
 - Modify: `static/styles.css`
 - Test: `tests/test_static_security.py`
 
-- [ ] Write failing static tests for required workbench DOM ids and `textContent` updates.
-- [ ] Run `python -m pytest tests/test_static_security.py -q` and `node --check static\main.js`.
-- [ ] Add compact workbench tabs and JS fetch rendering.
-- [ ] Re-run static and JS syntax checks.
+- [x] Write failing static tests for required workbench DOM ids and `textContent` updates.
+- [x] Run `python -m pytest tests/test_static_security.py -q` and `node --check static\main.js`.
+- [x] Add compact workbench tabs and JS fetch rendering.
+- [x] Re-run static and JS syntax checks.
 
 ### Task 9: Full Verification
 
 **Files:**
 - Modify: documentation only if endpoint names or contracts differ.
 
-- [ ] Run `python -m pytest -q`.
-- [ ] Run `node --check static\main.js`.
-- [ ] Run `git diff --check`.
-- [ ] Run `python test_system.py` against the local server if available.
+- [x] Run `python -m pytest -q`.
+- [x] Run `node --check static\main.js`.
+- [x] Run `git diff --check`.
+- [x] Run institutional endpoint smoke checks against the local server.
 
 ## Self-Review
 

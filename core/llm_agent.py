@@ -76,8 +76,7 @@ def generate_llm_insight():
             raise Exception("All Gen-AI endpoints failed to respond.")
     except Exception as e:
         import traceback
-        with open("llm_error.log", "w") as f:
-            f.write(traceback.format_exc())
+        print(traceback.format_exc())
         print(f"LLM API Error: {e}")
         
         # Phase 22: Local Healer (Fallback to deterministic rule-based insight)
