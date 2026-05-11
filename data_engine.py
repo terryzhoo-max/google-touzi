@@ -387,11 +387,41 @@ def _build_institutional_data_quality() -> dict:
 
 
 def _build_institutional_market_context() -> dict:
+    def collect(name: str, fn, fallback: dict) -> tuple[dict, str, str | None]:
+        try:
+            payload = fn()
+            if not isinstance(payload, dict) or payload.get("error"):
+                return fallback, "degraded", str(payload.get("error", "empty payload")) if isinstance(payload, dict) else "invalid payload"
+            return payload, "ok", None
+        except Exception as exc:
+            return fallback, "degraded", str(exc)
+
+    valuation, valuation_status, valuation_error = collect("valuation", get_valuation, {})
+    domestic_rotation, domestic_status, domestic_error = collect("domestic_rotation", get_domestic_etf_rotation, {})
+    global_rotation, global_status, global_error = collect("global_rotation", get_global_etf_rotation, {})
+
+    source_status = {
+        "valuation": valuation_status,
+        "domestic_rotation": domestic_status,
+        "global_rotation": global_status,
+    }
+    source_errors = {
+        name: error
+        for name, error in {
+            "valuation": valuation_error,
+            "domestic_rotation": domestic_error,
+            "global_rotation": global_error,
+        }.items()
+        if error
+    }
+
     return {
         "macro_decision": {"score": 50, "signal_en": "NEUTRAL"},
-        "valuation": {},
-        "domestic_rotation": {},
-        "global_rotation": {},
+        "valuation": valuation,
+        "domestic_rotation": domestic_rotation,
+        "global_rotation": global_rotation,
+        "source_status": source_status,
+        "source_errors": source_errors,
     }
 
 

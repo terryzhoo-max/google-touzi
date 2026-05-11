@@ -2,7 +2,7 @@ from fastapi.testclient import TestClient
 
 import data_engine
 from core.cache_store import invalidate
-from data_engine import _build_institutional_data_quality, app
+from data_engine import _build_institutional_data_quality, _build_institutional_market_context, app
 from core.config import settings
 
 
@@ -111,6 +111,26 @@ def test_institutional_allocation_model_degrades_without_breaking_decision(monke
     decision_payload = decision.json()
     assert decision_payload["allocation_model"]["status"] == "observe"
     assert decision_payload["allocation_model"]["degraded"] is True
+
+
+def test_institutional_market_context_uses_live_inputs_defensively(monkeypatch):
+    monkeypatch.setattr(data_engine, "get_valuation", lambda: {"indices": [{"name": "CSI300", "pe_pct": 41}]})
+    monkeypatch.setattr(data_engine, "get_domestic_etf_rotation", lambda: {"sectors": [{"code": "510300.SH", "ret_20d": 2.2}]})
+
+    def broken_global_rotation():
+        raise RuntimeError("global rotation unavailable")
+
+    monkeypatch.setattr(data_engine, "get_global_etf_rotation", broken_global_rotation)
+
+    context = _build_institutional_market_context()
+
+    assert context["valuation"]["indices"][0]["pe_pct"] == 41
+    assert context["domestic_rotation"]["sectors"][0]["code"] == "510300.SH"
+    assert context["global_rotation"] == {}
+    assert context["source_status"]["valuation"] == "ok"
+    assert context["source_status"]["domestic_rotation"] == "ok"
+    assert context["source_status"]["global_rotation"] == "degraded"
+    assert "global rotation unavailable" in context["source_errors"]["global_rotation"]
 
 
 def test_institutional_allocation_model_simulate_and_audit_endpoints():
