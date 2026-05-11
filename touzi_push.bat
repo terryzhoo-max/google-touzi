@@ -40,7 +40,47 @@ echo.
 echo [2/5] Branch
 git status --short --branch
 if errorlevel 1 goto :error_exit
+for /f "delims=" %%b in ('git branch --show-current') do set "CURRENT_BRANCH=%%b"
+if not defined CURRENT_BRANCH (
+    echo [FATAL] Cannot detect current branch.
+    goto :error_exit
+)
 echo.
+
+echo [Sync] Checking remote branch state
+git fetch origin
+if errorlevel 1 goto :error_exit
+
+git rev-parse --verify --quiet "@{u}" >nul 2>&1
+if errorlevel 1 (
+    echo [INFO] Current branch has no upstream yet. It will be created during push.
+) else (
+    set "SYNC_COUNTS_FILE=%TEMP%\touzi_git_sync_counts_%RANDOM%.txt"
+    git rev-list --left-right --count "@{u}...HEAD" > "!SYNC_COUNTS_FILE!"
+    if errorlevel 1 goto :error_exit
+    set /p SYNC_COUNTS=<"!SYNC_COUNTS_FILE!"
+    del "!SYNC_COUNTS_FILE!" >nul 2>&1
+    for /f "tokens=1,2" %%a in ("!SYNC_COUNTS!") do (
+        set "BEHIND_COUNT=%%a"
+        set "AHEAD_COUNT=%%b"
+    )
+    echo       ahead=!AHEAD_COUNT! behind=!BEHIND_COUNT!
+    if not "!BEHIND_COUNT!"=="0" (
+        if "!AHEAD_COUNT!"=="0" (
+            echo [INFO] Local branch is behind upstream. Fast-forwarding before push...
+            git pull --ff-only
+            if errorlevel 1 goto :error_exit
+        ) else (
+            echo [FATAL] Local and remote branches have diverged.
+            echo         This script will not auto-commit or push a diverged branch.
+            echo         Resolve manually with one of:
+            echo           git pull --rebase
+            echo           git merge origin/!CURRENT_BRANCH!
+            echo         Then rerun this script after conflicts are resolved.
+            goto :error_exit
+        )
+    )
+)
 
 echo [3/5] Working tree
 git status --short
@@ -80,7 +120,6 @@ git push
 if errorlevel 1 (
     echo.
     echo [WARN] Normal push failed. Trying to set upstream for current branch...
-    for /f "delims=" %%b in ('git branch --show-current') do set "CURRENT_BRANCH=%%b"
     if not defined CURRENT_BRANCH (
         echo [FATAL] Cannot detect current branch.
         goto :error_exit
