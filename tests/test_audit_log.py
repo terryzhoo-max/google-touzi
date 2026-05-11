@@ -208,6 +208,43 @@ def test_audit_log_store_detects_tampered_summary_columns(tmp_path):
     assert "primary_driver_mismatch" in verification["summary_errors"]
 
 
+def test_audit_log_store_detects_tampered_benchmark_and_compliance_summary(tmp_path):
+    store = AuditLogStore(str(tmp_path / "audit.db"))
+    record = store.record_decision(
+        payload={
+            "policy": {"version": "institutional_policy_v1", "policy_hash": "a" * 64},
+            "benchmark": {"benchmark_hash": "b" * 64},
+            "compliance": {"status": "pass"},
+            "decision_ticket": {
+                "score": 88,
+                "decision_status": "limited",
+                "policy_version": "institutional_policy_v1",
+                "policy_hash": "a" * 64,
+            },
+            "recommended_action": {"status": "staged_execution"},
+        },
+        source="unit_test",
+    )
+    with store._connect() as conn:
+        conn.execute(
+            """
+            UPDATE decision_audit_log
+            SET benchmark_hash = ?, compliance_status = ?
+            WHERE ticket_id = ?
+            """,
+            ("c" * 64, "block", record["ticket_id"]),
+        )
+        conn.commit()
+
+    verification = store.verify_decision(record["ticket_id"])
+
+    assert verification["verified"] is False
+    assert verification["payload_verified"] is True
+    assert verification["summary_verified"] is False
+    assert "benchmark_hash_mismatch" in verification["summary_errors"]
+    assert "compliance_status_mismatch" in verification["summary_errors"]
+
+
 def test_audit_log_store_verifies_recent_decision_batch(tmp_path):
     store = AuditLogStore(str(tmp_path / "audit.db"))
     first = store.record_decision(

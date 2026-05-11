@@ -73,7 +73,7 @@ Operational endpoints:
 - `/api/institutional/reviews/{ticket_id}/score`
 - `/api/institutional/reviews/scores/due`
 
-Use the queue endpoint first during daily operations, then persist review scores after validating action effectiveness and risk improvement.
+Use the queue endpoint first during daily operations, then persist review scores after validating action effectiveness, risk improvement, attribution effect, selection effect, and currency drag or tailwind.
 
 ## Verification
 
