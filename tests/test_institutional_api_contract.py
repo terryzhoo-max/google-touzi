@@ -91,6 +91,14 @@ def test_institutional_compliance_check_accepts_adjustments():
     assert "violations" in payload
 
 
+def test_institutional_attribution_endpoint_respects_period_parameter():
+    t1 = client.get("/api/institutional/attribution?period=T%2B1").json()
+    t5 = client.get("/api/institutional/attribution?period=T%2B5").json()
+
+    assert t1["period"] == "T+1"
+    assert t5["period"] == "T+5"
+
+
 def test_institutional_data_quality_marks_missing_portfolio_file_as_fallback(monkeypatch, tmp_path):
     missing_path = tmp_path / "missing_portfolio.json"
     monkeypatch.setattr(settings, "PORTFOLIO_BOOK_PATH", str(missing_path))

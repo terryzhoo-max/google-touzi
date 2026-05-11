@@ -428,7 +428,6 @@ async def api_institutional_active_risk():
 
 
 @app.get("/api/institutional/attribution")
-@cached_async(ttl=ROUTE_TTL["institutional_attribution"], key="institutional_attribution")
 async def api_institutional_attribution(period: str = "T+1"):
     portfolio = _build_institutional_portfolio()
     return build_attribution_snapshot(portfolio, build_default_benchmark(), period=period)
