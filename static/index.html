@@ -68,8 +68,13 @@
                         <h3>科学决策门禁</h3>
                         <p>组合风险、场景压力、数据质量与决策票据的机构级汇总。</p>
                     </div>
-                    <span id="decision-status" class="status-indicator">计算中...</span>
+                    <div style="display:flex;align-items:center;gap:12px;">
+                        <div id="decision-zone" class="decision-zone">● 计算中</div>
+                        <span id="decision-status" class="status-indicator">计算中...</span>
+                    </div>
                 </header>
+                <!-- Compliance + Risk Warnings -->
+                <div id="decision-compliance-alert" class="compliance-alert" style="display:none;margin:0 0 12px;padding:8px 14px;border-radius:6px;font-size:0.75rem;line-height:1.6;"></div>
                 <div class="institutional-grid">
                     <div><span>决策评分</span><strong id="decision-score">--</strong></div>
                     <div><span>建议动作</span><strong id="decision-action">--</strong></div>

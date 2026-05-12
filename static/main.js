@@ -462,6 +462,75 @@ async function initInstitutionalDecision() {
             status.classList.toggle('is-ok', ticket.decision_status === 'allow');
             status.classList.toggle('is-error', ticket.decision_status === 'observe');
         }
+
+        // ── Buy/Sell Zone Indicator ──────────────────────
+        const zone = document.getElementById('decision-zone');
+        if (zone) {
+            const score = ticket.score ?? 0;
+            const ticketStatus = ticket.decision_status || 'unknown';
+            const compStatus = compliance.status || 'pass';
+            const riskLevel = risk.risk_level || 'low';
+            const gateFailures = ticket.gates_failed || [];
+
+            let zoneText, zoneBg, zoneColor, zoneAction;
+            if (score >= 80 && ticketStatus === 'allow' && compStatus !== 'block') {
+                zoneText = '● 买入区间'; zoneBg = 'rgba(34,197,94,0.12)'; zoneColor = '#22c55e';
+                zoneAction = 'risk budget充足，建议按目标权重执行调仓';
+            } else if (score >= 60 && ticketStatus !== 'observe') {
+                zoneText = '● 持有/观察'; zoneBg = 'rgba(251,191,36,0.12)'; zoneColor = '#fbbf24';
+                zoneAction = '部分风险指标承压，建议分批小步执行';
+            } else if (ticketStatus === 'observe' || compStatus === 'block') {
+                zoneText = '● 卖出/减仓'; zoneBg = 'rgba(239,68,68,0.12)'; zoneColor = '#ef4444';
+                zoneAction = '风险超标或合规拦截，不建议新增风险敞口';
+            } else {
+                zoneText = '● 中性/观望'; zoneBg = 'rgba(148,163,184,0.1)'; zoneColor = '#94a3b8';
+                zoneAction = '等待数据质量改善后重新评估';
+            }
+            zone.innerHTML = `${zoneText} <span style="font-size:0.7rem;font-weight:400;color:${zoneColor};margin-left:8px;">${zoneAction}</span>`;
+            zone.style.background = zoneBg;
+            zone.style.color = zoneColor;
+            zone.style.fontWeight = '700';
+            zone.style.fontSize = '0.9rem';
+            zone.style.textTransform = 'uppercase';
+            zone.style.letterSpacing = '1px';
+            zone.style.padding = '6px 16px';
+            zone.style.borderRadius = '6px';
+            zone.style.border = `1px solid ${zoneColor}30`;
+        }
+
+        // ── Compliance Alert Strip ────────────────────────
+        const compAlert = document.getElementById('decision-compliance-alert');
+        if (compAlert) {
+            const violations = compliance.violations || [];
+            const warnings = compliance.warnings || [];
+            const compScore = compliance.score ?? 100;
+            const gates = ticket.gates_failed || [];
+            const allIssues = [
+                ...gates.map(g => ({text: g, level: 'danger'})),
+                ...violations.map(v => ({text: v, level: 'danger'})),
+                ...warnings.map(w => ({text: w, level: 'warning'}))
+            ];
+            if (allIssues.length > 0) {
+                compAlert.style.display = 'block';
+                if (compStatus === 'block') {
+                    compAlert.style.background = 'rgba(239,68,68,0.08)';
+                    compAlert.style.border = '1px solid rgba(239,68,68,0.25)';
+                } else {
+                    compAlert.style.background = 'rgba(251,191,36,0.06)';
+                    compAlert.style.border = '1px solid rgba(251,191,36,0.2)';
+                }
+                compAlert.innerHTML = `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+                    <span style="font-weight:700;color:${compStatus==='block'?'#ef4444':'#fbbf24'};">⚠ 合规门禁: ${compStatus.toUpperCase()}</span>
+                    <span style="color:#64748b;font-size:0.7rem;">评分 ${compScore}/100</span>
+                </div>` +
+                allIssues.map(i => `<div style="margin-left:8px;color:${i.level==='danger'?'#ef4444':'#fbbf24'};font-size:0.72rem;">▸ ${i.text}</div>`).join('');
+            } else if (compStatus === 'pass') {
+                compAlert.style.display = 'block';
+                compAlert.style.background = 'rgba(34,197,94,0.04)';
+                compAlert.style.border = '1px solid rgba(34,197,94,0.15)';
+                compAlert.innerHTML = `<span style="color:#22c55e;font-size:0.72rem;">✓ 合规门禁通过 | 无风险超标</span>`;
+            }
+        }
     } catch (error) {
         console.error('Institutional decision failed:', error);
         setFlowText('decision-action', '决策引擎暂不可用');
