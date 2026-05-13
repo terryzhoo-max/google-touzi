@@ -3,519 +3,421 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AlphaCore 智库 | 机构级量化投资决策系统</title>
-    <meta name="description" content="专为进阶投资者打造的宏观对冲逻辑、量化信号解析与独家数据模型。">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;700&family=Outfit:wght@500;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=9">
-    <!-- ECharts & Marked.js -->
+    <title>AlphaCore Terminal</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css?v=11">
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.6/dist/purify.min.js"></script>
     <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
 </head>
 <body>
-    <!-- Background glowing orbs -->
-    <div class="glow-orb orb-1"></div>
-    <div class="glow-orb orb-2"></div>
+    <div class="terminal-layout">
+        <aside class="terminal-sidebar">
+            <div class="terminal-logo">ALPHACORE <span>TERMINAL</span></div>
+            <nav class="terminal-nav">
+                <a href="#view-macro" class="active" onclick="switchView('view-macro')">
+                    <span class="nav-cmd">[MACR]</span> 宏观监控
+                </a>
+                <a href="#view-rotation" onclick="switchView('view-rotation')">
+                    <span class="nav-cmd">[ROTA]</span> 资产轮动
+                </a>
+                <a href="#view-risk" onclick="switchView('view-risk')">
+                    <span class="nav-cmd">[RISK]</span> 风险沙盘
+                </a>
+                <a href="#view-ai" onclick="switchView('view-ai')">
+                    <span class="nav-cmd">[AICS]</span> AI 投研
+                </a>
+                <a href="#view-institutional" onclick="switchView('view-institutional')">
+                    <span class="nav-cmd">[AUDT]</span> 机构审计
+                </a>
+            </nav>
+            <div class="terminal-status">
+                <div>SYS: 🟢 ONLINE</div>
+                <div id="freshness-indicator">SYNCING...</div>
+            </div>
+        </aside>
 
-    <nav class="navbar glass">
-        <div class="nav-container">
-            <div class="logo">
-                <span class="logo-icon"></span>
-                <span class="logo-text">AlphaCore <span class="highlight">Insights</span></span>
-            </div>
-            <div class="nav-links">
-                <a href="#models">数据模型</a>
-                <a href="#insights">深度研报</a>
-            </div>
-        </div>
-    </nav>
-
-    <main>
-        <!-- ═══ Live Decision Dashboard (replaces static Hero) ═══ -->
-        <section id="dashboard" class="dashboard-section">
-            <div class="dashboard-grid-3col">
-                <div class="dashboard-card signal-card" id="dash-signal">
-                    <div class="dash-label">综合决策信号</div>
-                    <div class="signal-ring" id="signal-ring">
-                        <svg viewBox="0 0 120 120"><circle cx="60" cy="60" r="52" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="8"/><circle id="signal-arc" cx="60" cy="60" r="52" fill="none" stroke="#fbbf24" stroke-width="8" stroke-linecap="round" stroke-dasharray="327" stroke-dashoffset="327" transform="rotate(-90 60 60)"/></svg>
-                        <div class="signal-text" id="signal-text">--</div>
-                    </div>
-                    <div class="signal-label" id="signal-label">计算中…</div>
-                </div>
-                <div class="dashboard-card" id="dash-regime">
-                    <div class="dash-label">当前宏观象限</div>
-                    <div class="regime-badge" id="regime-badge">--</div>
-                    <div class="regime-detail" id="regime-detail"></div>
-                </div>
-                <div class="dashboard-card" id="dash-alloc">
-                    <div class="dash-label">建议仓位</div>
-                    <div class="alloc-bars" id="alloc-bars"></div>
-                    <div class="alloc-detail" id="alloc-detail"></div>
-                </div>
-            </div>
-            <!-- Data freshness + health -->
-            <div style="text-align:center;margin-top:10px;">
-                <span id="freshness-indicator" style="font-size:0.7rem;color:#64748b;">数据刷新中…</span>
-            </div>
-
-            <section id="institutional-decision-panel" class="institutional-panel glass-card">
-                <header class="terminal-panel-header">
+        <main class="terminal-main">
+            <!-- View: Macro -->
+            <div id="view-macro" class="view-panel active">
+                <div class="panel-header" style="display:flex; justify-content:space-between; align-items:flex-end; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 12px; margin-bottom: 20px;">
                     <div>
-                        <div class="panel-kicker">INSTITUTIONAL DECISION</div>
-                        <h3>科学决策门禁</h3>
-                        <p>组合风险、场景压力、数据质量与决策票据的机构级汇总。</p>
+                        <h2 style="font-size: 1.5rem; letter-spacing: 1px; color: #fff;">MACRO DASHBOARD</h2>
+                        <div style="color:var(--text-tertiary); font-size:0.8rem; margin-top:6px; font-family:var(--font-mono); text-transform: uppercase;">
+                            Global Regime · Liquidity · Rates · Valuations
+                        </div>
                     </div>
-                    <div style="display:flex;align-items:center;gap:12px;">
-                        <div id="decision-zone" class="decision-zone">● 计算中</div>
-                        <span id="decision-status" class="status-indicator">计算中...</span>
+                    <div style="display:flex; gap:10px;">
+                        <!-- Optional action buttons for export or sync could go here -->
+                        <span id="macro-sync-status" style="color:var(--accent-primary); font-size:0.8rem; font-family:var(--font-mono); padding:4px 8px; background:rgba(0,240,255,0.1); border-radius:4px;">LIVE</span>
                     </div>
-                </header>
-                <!-- Compliance + Risk Warnings -->
-                <div id="decision-compliance-alert" class="compliance-alert" style="display:none;margin:0 0 12px;padding:8px 14px;border-radius:6px;font-size:0.75rem;line-height:1.6;"></div>
-                <div class="institutional-grid">
-                    <div><span>决策评分</span><strong id="decision-score">--</strong></div>
-                    <div><span>建议动作</span><strong id="decision-action">--</strong></div>
-                    <div><span>VaR 95%</span><strong id="decision-var">--</strong></div>
-                    <div><span>最坏场景</span><strong id="decision-worst">--</strong></div>
-                    <div><span>Asset Exposure</span><strong id="decision-asset-exposure">--</strong></div>
-                    <div><span>Region Exposure</span><strong id="decision-region-exposure">--</strong></div>
-                    <div><span>Strategy Exposure</span><strong id="decision-strategy-exposure">--</strong></div>
-                    <div><span>Currency Exposure</span><strong id="decision-currency-exposure">--</strong></div>
-                    <div><span>Concentration</span><strong id="decision-concentration">--</strong></div>
-                    <div><span>Primary Driver</span><strong id="decision-primary-driver">--</strong></div>
-                    <div><span>Execution Ready</span><strong id="decision-execution-readiness">--</strong></div>
-                    <div><span>Reason Codes</span><strong id="decision-reason-codes">--</strong></div>
-                    <div><span>Policy Version</span><strong id="decision-policy-version">--</strong></div>
-                    <div><span>Policy Hash</span><strong id="decision-policy-hash">--</strong></div>
-                    <div><span>Audit Log</span><strong id="decision-audit-count">--</strong></div>
-                    <div><span>Audit Integrity</span><strong id="decision-audit-integrity">--</strong></div>
-                    <div><span>Due Reviews</span><strong id="decision-review-due">--</strong></div>
-                    <div><span>Review SLA</span><strong id="decision-review-sla">--</strong></div>
-                    <div><span>Top Priority</span><strong id="decision-review-priority">--</strong></div>
-                    <div><span>Last Verdict</span><strong id="decision-last-verdict">--</strong></div>
                 </div>
-                <p id="decision-risk-improvement" class="flow-insight">等待风险改善测算。</p>
-                <p id="decision-review" class="flow-insight">等待机构决策引擎输出。</p>
-            </section>
 
-            <section id="institutional-workbench" class="institutional-panel institutional-workbench glass-card">
-                <header class="terminal-panel-header">
-                    <div>
-                        <div class="panel-kicker">INSTITUTIONAL WORKBENCH</div>
-                        <h3>Factor Risk / Active Risk / Compliance</h3>
+                <!-- 1. CORE SIGNALS -->
+                <div class="dashboard-grid-3col">
+                    <div class="glass-card" id="dash-signal">
+                        <div class="dash-label">COMPOSITE SIGNAL</div>
+                        <div class="signal-ring" id="signal-ring">
+                            <svg viewBox="0 0 120 120"><circle cx="60" cy="60" r="52" fill="none" stroke="#1e1e24" stroke-width="8"/><circle id="signal-arc" cx="60" cy="60" r="52" fill="none" stroke="#f59e0b" stroke-width="8" stroke-linecap="round" stroke-dasharray="327" stroke-dashoffset="327" transform="rotate(-90 60 60)"/></svg>
+                            <div class="signal-text" id="signal-text">--</div>
+                        </div>
+                        <div class="signal-label" id="signal-label">CALCULATING...</div>
                     </div>
-                    <span class="status-indicator">v8</span>
-                </header>
-                <div class="workbench-tabs" aria-label="Institutional workbench">
-                    <div><span>Top Factor</span><strong id="workbench-top-factor">--</strong></div>
-                    <div><span>Tracking Error</span><strong id="workbench-tracking-error">--</strong></div>
-                    <div><span>Largest Active</span><strong id="workbench-largest-active">--</strong></div>
-                    <div><span>Compliance</span><strong id="workbench-compliance-status">--</strong></div>
-                </div>
-                <div class="workbench-detail-grid">
-                    <p><span>Compliance Issues</span><strong id="workbench-compliance-issues">--</strong></p>
-                    <p><span>Attribution</span><strong id="workbench-attribution">--</strong></p>
-                    <p><span>Evidence</span><strong id="workbench-evidence">--</strong></p>
-                </div>
-            </section>
-
-            <section id="allocation-model-panel" class="institutional-panel glass-card">
-                <header class="terminal-panel-header">
-                    <div>
-                        <div class="panel-kicker">ETF ALLOCATION MODEL</div>
-                        <h3>Regime-Aware Target Weights</h3>
-                        <p>宏观状态、ETF 信号、风险预算与约束后的目标权重建议。</p>
+                    <div class="glass-card" id="dash-regime">
+                        <div class="dash-label">MACRO REGIME</div>
+                        <div class="regime-badge" id="regime-badge">--</div>
+                        <div class="regime-detail" id="regime-detail"></div>
                     </div>
-                    <span id="allocation-model-status" class="status-indicator">计算中...</span>
-                </header>
-                <div class="institutional-grid">
-                    <div><span>Model Version</span><strong id="allocation-model-version">--</strong></div>
-                    <div><span>Model Hash</span><strong id="allocation-model-hash">--</strong></div>
-                    <div><span>VaR Delta</span><strong id="allocation-model-risk-delta">--</strong></div>
-                    <div><span>Stress Delta</span><strong id="allocation-model-stress-delta">--</strong></div>
-                    <div><span>Turnover</span><strong id="allocation-model-turnover">--</strong></div>
-                    <div><span>Constraint</span><strong id="allocation-model-constraint">--</strong></div>
-                    <div><span>Review</span><strong id="allocation-model-review">--</strong></div>
+                    <div class="glass-card" id="dash-alloc">
+                        <div class="dash-label">TARGET ALLOCATION</div>
+                        <div class="alloc-bars" id="alloc-bars"></div>
+                        <div class="alloc-detail" id="alloc-detail"></div>
+                    </div>
                 </div>
-                <div class="workbench-detail-grid">
-                    <p><span>Target Weights</span><strong id="allocation-model-weights">--</strong></p>
-                    <p><span>Trades</span><strong id="allocation-model-trades">--</strong></p>
-                    <p><span>Evidence</span><strong id="allocation-model-evidence">--</strong></p>
-                </div>
-            </section>
 
-            <!-- Global Cross-Asset Dashboard -->
-            <div class="global-assets-panel glass-card" style="margin-top:16px;max-width:1200px;margin-left:auto;margin-right:auto;">
-                <div class="card-header"><h3>🌍 全球跨资产一览 (Global Cross-Asset)</h3><span id="ga-indicator" class="status-indicator">拉取中...</span></div>
-                <div id="global-assets-table" style="overflow-x:auto;font-size:0.8rem;margin-top:8px;"><div class="skeleton" style="height:200px;"></div></div>
+                <div class="inst-guard" style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:16px;font-size:0.75rem;">
+                    <div class="glass-card" style="text-align:center; padding: 12px;">
+                        <span style="color:var(--text-tertiary);">COMPLIANCE GATE</span>
+                        <strong id="guard-compliance" style="display:block;font-family:var(--font-mono);color:var(--text-primary);font-size:1.1rem;margin-top:4px;">--</strong>
+                    </div>
+                    <div class="glass-card" style="text-align:center; padding: 12px;">
+                        <span style="color:var(--text-tertiary);">PRIMARY RISK FACTOR</span>
+                        <strong id="guard-factor" style="display:block;font-family:var(--font-mono);color:var(--text-primary);font-size:1.1rem;margin-top:4px;">--</strong>
+                    </div>
+                    <div class="glass-card" style="text-align:center; padding: 12px;">
+                        <span style="color:var(--text-tertiary);">TRACKING ERROR</span>
+                        <strong id="guard-tracking" style="display:block;font-family:var(--font-mono);color:var(--text-primary);font-size:1.1rem;margin-top:4px;">--</strong>
+                    </div>
+                </div>
+
+                <!-- Alert Banner -->
+                <div class="alert-banner" id="alert-banner" style="display:none; margin-top: 16px;">
+                    <div class="alert-banner-header"><span class="alert-dot"></span><span id="alert-count">0</span> ACTIVE ALERTS</div>
+                    <div id="alert-list"></div>
+                </div>
+
+                <!-- 2. MACRO CHARTS TIER 1: ERP, Spread, Yield Curve -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-top: 16px;">
+                    <div class="glass-card" style="display:flex; flex-direction:column;">
+                        <div class="card-header">
+                            <h3>EQUITY RISK PREMIUM (ERP)</h3>
+                            <span id="tnx-indicator" class="status-indicator"></span>
+                        </div>
+                        <p id="tnx-insight" class="card-desc" style="min-height: 40px;">--</p>
+                        <div id="erp-chart" class="chart-container" style="flex:1; min-height:280px;"><div class="skeleton"></div></div>
+                    </div>
+                    <div class="glass-card" style="display:flex; flex-direction:column;">
+                        <div class="card-header">
+                            <h3>CREDIT SPREAD / VIX</h3>
+                            <span id="vix-indicator" class="status-indicator"></span>
+                        </div>
+                        <p id="vix-insight" class="card-desc" style="min-height: 40px;">--</p>
+                        <div id="spread-chart" class="chart-container" style="flex:1; min-height:280px;"><div class="skeleton"></div></div>
+                    </div>
+                    <div class="glass-card" style="display:flex; flex-direction:column;">
+                        <div class="card-header">
+                            <h3>YIELD CURVE (2s10s)</h3>
+                            <span id="yc-indicator" class="status-indicator"></span>
+                        </div>
+                        <p id="yc-insight" class="card-desc" style="min-height: 40px;">--</p>
+                        <div id="yieldcurve-chart" class="chart-container" style="flex:1; min-height:280px;"><div class="skeleton"></div></div>
+                    </div>
+                </div>
+
+                <!-- 3. CHINA & LIQUIDITY: China Macro, Breadth, Margin -->
+                <div style="display: grid; grid-template-columns: 2.5fr 2fr 1.5fr; gap: 16px; margin-top: 16px;">
+                    <div class="glass-card">
+                        <div class="card-header">
+                            <h3>CHINA MACRO CORE</h3>
+                            <span id="cm-indicator" class="status-indicator"></span>
+                        </div>
+                        <p id="cm-insight" class="card-desc" style="margin-bottom:12px;">--</p>
+                        <div id="china-macro-grid" style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;"></div>
+                    </div>
+                    <div class="glass-card" style="display:flex; flex-direction:column;">
+                        <div class="card-header">
+                            <h3>A-SHARE MARKET BREADTH</h3>
+                            <span id="mb-indicator" class="status-indicator"></span>
+                        </div>
+                        <p id="mb-insight" class="card-desc" style="min-height: 40px;">--</p>
+                        <div style="display:flex; gap:12px; margin-bottom:12px;">
+                            <div class="metric-cell" style="flex:1;"><span>Today Flow</span><strong id="mb-current-flow" style="color:var(--text-primary);">--</strong></div>
+                            <div class="metric-cell" style="flex:1;"><span>5D Flow</span><strong id="mb-flow-5d" style="color:var(--text-primary);">--</strong></div>
+                            <div class="metric-cell" style="flex:1;"><span>20D Flow</span><strong id="mb-flow-20d" style="color:var(--text-primary);">--</strong></div>
+                        </div>
+                        <div id="breadth-chart" class="chart-container" style="flex:1; min-height:180px;"><div class="skeleton"></div></div>
+                    </div>
+                    <div class="glass-card" style="display:flex; flex-direction:column;">
+                        <div class="card-header">
+                            <h3>MARGIN TRADING</h3>
+                            <span id="mg-indicator" class="status-indicator"></span>
+                        </div>
+                        <p id="mg-insight" class="card-desc" style="min-height: 40px;">--</p>
+                        <div id="margin-chart" class="chart-container" style="flex:1; min-height:180px;"><div class="skeleton"></div></div>
+                    </div>
+                </div>
+
+                <!-- 4. GLOBAL MACRO & VALUATION: Fed Prob, Global Assets, Surprise -->
+                <div style="display: grid; grid-template-columns: 2fr 3fr; gap: 16px; margin-top: 16px;">
+                    <div style="display:flex; flex-direction:column; gap:16px;">
+                        <div class="glass-card" style="flex:1;">
+                            <div class="card-header">
+                                <h3>FED PROBABILITY & FOMC</h3>
+                                <span id="fed-indicator" class="status-indicator"></span>
+                            </div>
+                            <p id="fed-insight" class="card-desc" style="margin-bottom:8px;">--</p>
+                            <div id="fed-chart" class="chart-container" style="height:180px;"><div class="skeleton"></div></div>
+                        </div>
+                        <div class="glass-card" style="flex:1;">
+                            <div class="card-header">
+                                <h3>MACRO SURPRISE INDEX</h3>
+                                <span id="si-indicator" class="status-indicator"></span>
+                            </div>
+                            <p id="si-insight" class="card-desc" style="margin-bottom:8px;">--</p>
+                            <div id="surprise-chart" class="chart-container" style="height:180px;"><div class="skeleton"></div></div>
+                        </div>
+                    </div>
+                    
+                    <div class="glass-card">
+                        <div class="card-header">
+                            <h3>GLOBAL ASSETS MOMENTUM</h3>
+                            <span id="ga-indicator" class="status-indicator"></span>
+                        </div>
+                        <div id="global-assets-table" style="margin-top:16px; overflow-x:auto;">
+                            <div class="skeleton" style="height:400px;"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 5. VALUATION AND DIVIDENDS -->
+                <div style="display: grid; grid-template-columns: 3fr 2fr; gap: 16px; margin-top: 16px;">
+                    <div class="glass-card">
+                        <div class="card-header">
+                            <h3>INDEX VALUATION HEATMAP</h3>
+                            <span id="val-indicator" class="status-indicator"></span>
+                        </div>
+                        <p id="val-insight" class="card-desc" style="margin-bottom:12px;">--</p>
+                        <div id="valuation-grid" style="display:grid; grid-template-columns:repeat(3,1fr); gap:12px;"></div>
+                    </div>
+                    <div class="glass-card" style="display:flex; flex-direction:column;">
+                        <div class="card-header">
+                            <h3>HIGH DIVIDEND YIELD LEADERS</h3>
+                            <span id="dv-indicator" class="status-indicator"></span>
+                        </div>
+                        <p id="dv-insight" class="card-desc" style="margin-bottom:12px;">--</p>
+                        <div id="dividend-table" style="flex:1;">
+                            <div class="skeleton" style="height:250px;"></div>
+                        </div>
+                    </div>
+                </div>
             </div>
 
-            <!-- Alert Banner -->
-            <div class="alert-banner" id="alert-banner" style="display:none;">
-                <div class="alert-banner-header">
-                    <span class="alert-dot"></span>
-                    <span id="alert-count">0</span> 条活跃警示
+            <!-- View: Rotation -->
+            <div id="view-rotation" class="view-panel">
+                <div class="panel-header" style="display:flex; justify-content:space-between; align-items:flex-end; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 12px; margin-bottom: 20px;">
+                    <div>
+                        <h2 style="font-size: 1.5rem; letter-spacing: 1px; color: #fff;">ASSET ROTATION HEATMAPS</h2>
+                        <div style="color:var(--text-tertiary); font-size:0.8rem; margin-top:6px; font-family:var(--font-mono); text-transform: uppercase;">
+                            Cross-Asset · Sectors · Policy Themes · ETFs
+                        </div>
+                    </div>
+                    <div class="rotation-controls" id="global-rotation-controls" style="margin-bottom:0;">
+                        <button class="is-active" onclick="setRotationPeriod('ret_20d')">T-20</button>
+                        <button onclick="setRotationPeriod('ret_5d')">T-5</button>
+                        <button onclick="setRotationPeriod('ret_60d')">T-60</button>
+                    </div>
                 </div>
-                <div id="alert-list"></div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                    <div class="glass-card" data-rotation-panel="sector-chart" style="display:flex; flex-direction:column;">
+                        <div class="card-header">
+                            <h3>A-SHARE SECTOR ROTATION</h3>
+                            <span id="sr-indicator" class="status-indicator"></span>
+                        </div>
+                        <p id="sr-insight" class="card-desc" style="min-height: 40px; margin-bottom:12px;">--</p>
+                        <div id="sector-chart" class="chart-container" style="flex:1; min-height:300px;"><div class="skeleton"></div></div>
+                    </div>
+                    <div class="glass-card" data-rotation-panel="theme-chart" style="display:flex; flex-direction:column;">
+                        <div class="card-header">
+                            <h3>POLICY THEME MOMENTUM</h3>
+                            <span id="tr-indicator" class="status-indicator"></span>
+                        </div>
+                        <p id="tr-insight" class="card-desc" style="min-height: 40px; margin-bottom:12px;">--</p>
+                        <div id="theme-chart" class="chart-container" style="flex:1; min-height:300px;"><div class="skeleton"></div></div>
+                    </div>
+                    <div class="glass-card" data-rotation-panel="domestic-etf-chart" style="display:flex; flex-direction:column;">
+                        <div class="card-header">
+                            <h3>DOMESTIC ETF FLOWS</h3>
+                            <span id="de-indicator" class="status-indicator"></span>
+                        </div>
+                        <p id="de-insight" class="card-desc" style="min-height: 40px; margin-bottom:12px;">--</p>
+                        <div id="domestic-etf-chart" class="chart-container" style="flex:1; min-height:300px;"><div class="skeleton"></div></div>
+                    </div>
+                    <div class="glass-card" data-rotation-panel="global-etf-chart" style="display:flex; flex-direction:column;">
+                        <div class="card-header">
+                            <h3>GLOBAL ETF ROTATION</h3>
+                            <span id="ge-indicator" class="status-indicator"></span>
+                        </div>
+                        <p id="ge-insight" class="card-desc" style="min-height: 40px; margin-bottom:12px;">--</p>
+                        <div id="global-etf-chart" class="chart-container" style="flex:1; min-height:300px;"><div class="skeleton"></div></div>
+                    </div>
+                </div>
             </div>
-        </section>
 
-        <!-- ═══ Model Panels (collapsible groups) ═══ -->
-        <section class="section-container">
-
-            <!-- Group: Macro Radar -->
-            <details class="panel-group" open>
-                <summary class="panel-group-header">
-                    <span class="panel-group-icon">📡</span> 宏观雷达
-                    <span class="panel-group-badge" id="macro-alert-badge" style="display:none;">⚠</span>
-                </summary>
-                <div class="dashboard-grid">
-                    <div class="glass-card chart-card">
-                        <div class="card-header"><h3>美国10年期国债收益率 (10Y)</h3><span id="tnx-indicator" class="status-indicator">模型研判中...</span></div>
-                        <p id="tnx-insight" class="card-desc">正在拉取机构量化模型洞察...</p>
-                        <div id="erp-chart" class="chart-container"><div class="skeleton"></div></div>
+            <!-- View: Risk -->
+            <div id="view-risk" class="view-panel">
+                <div class="panel-header" style="display:flex; justify-content:space-between; align-items:flex-end; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 12px; margin-bottom: 20px;">
+                    <div>
+                        <h2 style="font-size: 1.5rem; letter-spacing: 1px; color: #fff;">RISK LAB & SIMULATION</h2>
+                        <div style="color:var(--text-tertiary); font-size:0.8rem; margin-top:6px; font-family:var(--font-mono); text-transform: uppercase;">
+                            Backtest Engine · Monte Carlo · Efficient Frontier
+                        </div>
                     </div>
-                    <div class="glass-card chart-card">
-                        <div class="card-header"><h3>标普500波动率指数 (VIX)</h3><span id="vix-indicator" class="status-indicator">模型研判中...</span></div>
-                        <p id="vix-insight" class="card-desc">正在拉取机构量化模型洞察...</p>
-                        <div id="spread-chart" class="chart-container"><div class="skeleton"></div></div>
+                    <div style="display:flex; gap:10px;">
+                        <span id="risk-engine-status" style="color:var(--accent-primary); font-size:0.8rem; font-family:var(--font-mono); padding:4px 8px; background:rgba(0,240,255,0.1); border-radius:4px;">ENGINE ONLINE</span>
                     </div>
                 </div>
-                <div class="yieldcurve-panel glass-card" style="margin-top: 24px;">
-                    <div class="card-header"><h3>利率期限结构 (Yield Curve)</h3><span id="yc-indicator" class="status-indicator">拉取曲线数据中...</span></div>
-                    <p id="yc-insight" class="card-desc">监控 2s10s 利差——全球金融市场最核心的衰退先行指标。</p>
-                    <div id="yieldcurve-chart" class="chart-container" style="height:400px;"><div class="skeleton"></div></div>
-                </div>
-
-                <!-- Institutional Rotation Grid -->
-                <div class="rotation-grid">
-                    <article class="rotation-panel glass-card" data-rotation-panel="sector-chart">
-                        <header class="terminal-panel-header">
-                            <div>
-                                <div class="panel-kicker">CN EQUITY / INDUSTRY</div>
-                                <h3>申万一级行业轮动</h3>
-                                <p>31 个一级行业近端相对强弱，识别风险偏好与主线扩散。</p>
-                            </div>
-                            <span id="sr-indicator" class="status-indicator">拉取31行业...</span>
-                        </header>
-                        <div class="rotation-signal-strip">
-                            <div><span>市场结构</span><strong id="sector-chart-market-read">--</strong></div>
-                            <div><span>覆盖范围</span><strong id="sector-chart-coverage">--</strong></div>
-                            <div><span>领涨方向</span><strong id="sector-chart-leader">--</strong></div>
-                            <div><span>承压方向</span><strong id="sector-chart-laggard">--</strong></div>
+                
+                <div class="glass-card" style="margin-bottom: 16px; display:flex; flex-direction:column;">
+                    <div class="card-header">
+                        <h3>HISTORICAL ALPHA BACKTEST</h3>
+                        <span id="bt-indicator" class="status-indicator"></span>
+                    </div>
+                    <div class="backtest-metrics-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:15px;margin-top:10px;margin-bottom:20px;">
+                        <div class="metric-box"><div class="metric-label">CAGR</div><div id="bt-cagr" class="metric-value">--%</div></div>
+                        <div class="metric-box"><div class="metric-label">Max Drawdown</div><div id="bt-mdd" class="metric-value" style="color:var(--negative);">--%</div></div>
+                        <div class="metric-box"><div class="metric-label">Sharpe Ratio</div><div id="bt-sharpe" class="metric-value" style="color:var(--accent-primary);">--</div></div>
+                    </div>
+                    <div id="backtest-chart" class="chart-container" style="flex:1; min-height:300px;"><div class="skeleton"></div></div>
+                    
+                    <div style="margin-top:24px; border-top: 1px solid rgba(255,255,255,0.05); padding-top:16px;">
+                        <div class="card-header" style="border-bottom:none; margin-bottom:8px; padding-bottom:0;">
+                            <h3>MACRO WARNINGS (TRADINGVIEW SIGNALS)</h3>
                         </div>
-                        <p id="sr-insight" class="rotation-insight">31 个申万一级行业近 20 日涨跌幅热力图。</p>
-                        <div class="rotation-controls" data-target="sector-chart">
-                            <button type="button" data-period="ret_5d">5D</button>
-                            <button type="button" data-period="ret_20d" class="is-active">20D</button>
-                            <button type="button" data-period="ret_60d">60D</button>
-                        </div>
-                        <div class="rotation-body">
-                            <div id="sector-chart" class="rotation-chart"><div class="skeleton"></div></div>
-                            <aside class="rotation-rank">
-                                <div>
-                                    <h4>Top Strength</h4>
-                                    <ol id="sector-chart-top"></ol>
-                                </div>
-                                <div>
-                                    <h4>Bottom Weakness</h4>
-                                    <ol id="sector-chart-bottom"></ol>
-                                </div>
-                            </aside>
-                        </div>
-                        <footer class="rotation-footer">Source: Tushare SW Daily · Metric: absolute return by selected window</footer>
-                    </article>
-
-                    <article class="rotation-panel glass-card" data-rotation-panel="theme-chart">
-                        <header class="terminal-panel-header">
-                            <div>
-                                <div class="panel-kicker">CN POLICY / THEMES</div>
-                                <h3>十五五政策驱动产业</h3>
-                                <p>政策主线与新质生产力方向的强弱排序，辅助主题仓位确认。</p>
-                            </div>
-                            <span id="tr-indicator" class="status-indicator">拉取政策主线...</span>
-                        </header>
-                        <div class="rotation-signal-strip">
-                            <div><span>市场结构</span><strong id="theme-chart-market-read">--</strong></div>
-                            <div><span>覆盖范围</span><strong id="theme-chart-coverage">--</strong></div>
-                            <div><span>领涨方向</span><strong id="theme-chart-leader">--</strong></div>
-                            <div><span>承压方向</span><strong id="theme-chart-laggard">--</strong></div>
-                        </div>
-                        <p id="tr-insight" class="rotation-insight">新质生产力与政策主线热点追踪。</p>
-                        <div class="rotation-controls" data-target="theme-chart">
-                            <button type="button" data-period="ret_5d">5D</button>
-                            <button type="button" data-period="ret_20d" class="is-active">20D</button>
-                            <button type="button" data-period="ret_60d">60D</button>
-                        </div>
-                        <div class="rotation-body">
-                            <div id="theme-chart" class="rotation-chart"><div class="skeleton"></div></div>
-                            <aside class="rotation-rank">
-                                <div>
-                                    <h4>Top Strength</h4>
-                                    <ol id="theme-chart-top"></ol>
-                                </div>
-                                <div>
-                                    <h4>Bottom Weakness</h4>
-                                    <ol id="theme-chart-bottom"></ol>
-                                </div>
-                            </aside>
-                        </div>
-                        <footer class="rotation-footer">Source: Tushare fund/index data · Metric: theme basket return</footer>
-                    </article>
-
-                    <article class="rotation-panel glass-card" data-rotation-panel="domestic-etf-chart">
-                        <header class="terminal-panel-header">
-                            <div>
-                                <div class="panel-kicker">CN ETF / BROAD BASE</div>
-                                <h3>A股核心宽基 ETF</h3>
-                                <p>核心宽基 ETF 强弱与风格切换，用于观察 A 股 beta 配置窗口。</p>
-                            </div>
-                            <span id="de-indicator" class="status-indicator">拉取A股宽基...</span>
-                        </header>
-                        <div class="rotation-signal-strip">
-                            <div><span>市场结构</span><strong id="domestic-etf-chart-market-read">--</strong></div>
-                            <div><span>覆盖范围</span><strong id="domestic-etf-chart-coverage">--</strong></div>
-                            <div><span>领涨方向</span><strong id="domestic-etf-chart-leader">--</strong></div>
-                            <div><span>承压方向</span><strong id="domestic-etf-chart-laggard">--</strong></div>
-                        </div>
-                        <p id="de-insight" class="rotation-insight">实盘 ETF 强弱追踪，绿色上涨、红色下跌。</p>
-                        <div class="rotation-controls" data-target="domestic-etf-chart">
-                            <button type="button" data-period="ret_5d">5D</button>
-                            <button type="button" data-period="ret_20d" class="is-active">20D</button>
-                            <button type="button" data-period="ret_60d">60D</button>
-                        </div>
-                        <div class="rotation-body">
-                            <div id="domestic-etf-chart" class="rotation-chart"><div class="skeleton"></div></div>
-                            <aside class="rotation-rank">
-                                <div>
-                                    <h4>Top Strength</h4>
-                                    <ol id="domestic-etf-chart-top"></ol>
-                                </div>
-                                <div>
-                                    <h4>Bottom Weakness</h4>
-                                    <ol id="domestic-etf-chart-bottom"></ol>
-                                </div>
-                            </aside>
-                        </div>
-                        <footer class="rotation-footer">Source: Tushare fund daily · Metric: listed ETF close return</footer>
-                    </article>
-
-                    <article class="rotation-panel glass-card" data-rotation-panel="global-etf-chart">
-                        <header class="terminal-panel-header">
-                            <div>
-                                <div class="panel-kicker">GLOBAL ETF / CROSS ASSET</div>
-                                <h3>海外核心宽基 ETF</h3>
-                                <p>QDII 与海外核心资产强弱，跟踪全球流动性与跨市场风险偏好。</p>
-                            </div>
-                            <span id="ge-indicator" class="status-indicator">拉取全球宽基...</span>
-                        </header>
-                        <div class="rotation-signal-strip">
-                            <div><span>市场结构</span><strong id="global-etf-chart-market-read">--</strong></div>
-                            <div><span>覆盖范围</span><strong id="global-etf-chart-coverage">--</strong></div>
-                            <div><span>领涨方向</span><strong id="global-etf-chart-leader">--</strong></div>
-                            <div><span>承压方向</span><strong id="global-etf-chart-laggard">--</strong></div>
-                        </div>
-                        <p id="ge-insight" class="rotation-insight">QDII 实盘 ETF 跟踪全球流动性。</p>
-                        <div class="rotation-controls" data-target="global-etf-chart">
-                            <button type="button" data-period="ret_5d">5D</button>
-                            <button type="button" data-period="ret_20d" class="is-active">20D</button>
-                            <button type="button" data-period="ret_60d">60D</button>
-                        </div>
-                        <div class="rotation-body">
-                            <div id="global-etf-chart" class="rotation-chart"><div class="skeleton"></div></div>
-                            <aside class="rotation-rank">
-                                <div>
-                                    <h4>Top Strength</h4>
-                                    <ol id="global-etf-chart-top"></ol>
-                                </div>
-                                <div>
-                                    <h4>Bottom Weakness</h4>
-                                    <ol id="global-etf-chart-bottom"></ol>
-                                </div>
-                            </aside>
-                        </div>
-                        <footer class="rotation-footer">Source: Tushare fund daily · Metric: listed ETF close return</footer>
-                    </article>
-                </div>
-
-                <!-- China Macro Indicators -->
-                <div class="china-macro-panel glass-card" style="margin-top:24px;">
-                    <div class="card-header"><h3>🇨🇳 中国宏观指标 (China Macro)</h3><span id="cm-indicator" class="status-indicator">拉取宏观数据...</span></div>
-                    <p id="cm-insight" class="card-desc">CPI / PMI / M2 同比 / GDP 增速，近 24 个月走势。</p>
-                    <div id="china-macro-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:12px;">
-                        <div class="skeleton" style="height:180px;"></div><div class="skeleton" style="height:180px;"></div>
-                        <div class="skeleton" style="height:180px;"></div><div class="skeleton" style="height:180px;"></div>
+                        <div id="signal-chart" style="height:400px;width:100%;"><div class="skeleton"></div></div>
                     </div>
                 </div>
 
-                <!-- Fed Rate Monitor -->
-                <div class="fed-panel glass-card" style="margin-top:24px;">
-                    <div class="card-header"><h3>🇺🇸 美联储利率监测 (Fed Rate Monitor)</h3><span id="fed-indicator" class="status-indicator">拉取利率数据...</span></div>
-                    <p id="fed-insight" class="card-desc">当前联邦基金利率区间 + 市场隐含利率方向，CME FedWatch 风格。</p>
-                    <div id="fed-chart" class="chart-container" style="height:280px;"><div class="skeleton"></div></div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                    <div class="glass-card" style="display:flex; flex-direction:column;">
+                        <div class="card-header">
+                            <h3>MONTE CARLO SIMULATIONS</h3>
+                            <span id="mc-indicator" class="status-indicator"></span>
+                        </div>
+                        <p id="mc-insight" class="card-desc" style="min-height: 40px; margin-bottom:12px;">--</p>
+                        <div id="mc-chart" class="chart-container" style="flex:1; min-height:280px;"><div class="skeleton"></div></div>
+                    </div>
+                    <div class="glass-card" style="display:flex; flex-direction:column;">
+                        <div class="card-header">
+                            <h3>EFFICIENT FRONTIER</h3>
+                            <span id="ef-indicator" class="status-indicator"></span>
+                        </div>
+                        <p id="ef-insight" class="card-desc" style="min-height: 40px; margin-bottom:12px;">--</p>
+                        <div id="frontier-chart" class="chart-container" style="flex:1; min-height:280px;"><div class="skeleton"></div></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- View: AI CIO -->
+            <div id="view-ai" class="view-panel">
+                <div class="panel-header" style="display:flex; justify-content:space-between; align-items:flex-end; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 12px; margin-bottom: 20px;">
+                    <div>
+                        <h2 style="font-size: 1.5rem; letter-spacing: 1px; color: #fff;">AI QUANTITATIVE CIO</h2>
+                        <div style="color:var(--text-tertiary); font-size:0.8rem; margin-top:6px; font-family:var(--font-mono); text-transform: uppercase;">
+                            Large Language Model · Real-time Narrative Synthesis
+                        </div>
+                    </div>
+                    <div style="display:flex; gap:10px;">
+                        <span id="ai-status-badge" style="color:#a855f7; font-size:0.8rem; font-family:var(--font-mono); padding:4px 8px; background:rgba(168,85,247,0.1); border-radius:4px;">LLM ACTIVE</span>
+                    </div>
+                </div>
+                <div class="glass-card" style="min-height: 60vh; display:flex; flex-direction:column;">
+                    <div class="card-header">
+                        <h3>REAL-TIME SYNTHESIS & MARKET NARRATIVE</h3>
+                        <span id="ai-indicator" class="status-indicator"></span>
+                    </div>
+                    <div id="ai-typewriter" class="card-desc" style="flex:1; font-family:var(--font-mono);color:var(--text-primary);font-size:0.95rem;line-height:1.8;margin-top:15px; padding: 24px; background:rgba(0,0,0,0.25); border:1px solid rgba(255,255,255,0.04); border-radius:6px; overflow-y:auto; box-shadow: inset 0 2px 10px rgba(0,0,0,0.5);">
+                        <div id="ai-text">Initializing AI models...</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- View: Institutional -->
+            <div id="view-institutional" class="view-panel">
+                <div class="panel-header" style="display:flex; justify-content:space-between; align-items:flex-end; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 12px; margin-bottom: 20px;">
+                    <div>
+                        <h2 style="font-size: 1.5rem; letter-spacing: 1px; color: #fff;">INSTITUTIONAL DECISION & COMPLIANCE</h2>
+                        <div style="color:var(--text-tertiary); font-size:0.8rem; margin-top:6px; font-family:var(--font-mono); text-transform: uppercase;">
+                            Portfolio Governance · Active Risk · Trade Auditing
+                        </div>
+                    </div>
+                    <div style="display:flex; gap:10px;">
+                        <span id="audit-status-badge" style="color:var(--warning); font-size:0.8rem; font-family:var(--font-mono); padding:4px 8px; background:rgba(245,158,11,0.1); border-radius:4px;">AUDIT TRAIL LOGGING</span>
+                    </div>
                 </div>
 
-                <!-- Valuation Thermometer -->
-                <div class="valuation-panel glass-card" style="margin-top:24px;">
-                    <div class="card-header"><h3>🇨🇳 估值温度计 (Valuation Thermometer)</h3><span id="val-indicator" class="status-indicator">拉取估值数据...</span></div>
-                    <p id="val-insight" class="card-desc">沪深300 / 中证500 / 创业板指 PE/PB 近 10 年分位数，一眼看穿贵还是便宜。</p>
-                    <div id="valuation-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:15px;margin-top:15px;"><div class="skeleton" style="height:160px;"></div><div class="skeleton" style="height:160px;"></div><div class="skeleton" style="height:160px;"></div></div>
-                </div>
-
-                <!-- North-bound Flow Monitor -->
-                <article class="flow-panel glass-card">
-                    <header class="terminal-panel-header">
+                <div class="glass-card" style="margin-bottom: 16px;">
+                    <div class="card-header"><h3>PORTFOLIO DECISION GATE</h3></div>
+                    <div style="display:grid;grid-template-columns:140px 1fr;gap:24px;align-items:center;padding-bottom:16px;border-bottom:1px solid rgba(255,255,255,0.05);">
+                        <div style="text-align:center;">
+                            <div id="decision-gauge-ring" style="position:relative;width:100px;height:100px;margin:0 auto;">
+                                <svg viewBox="0 0 120 120"><circle cx="60" cy="60" r="52" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="8"/><circle id="decision-gauge-arc" cx="60" cy="60" r="52" fill="none" stroke="#f59e0b" stroke-width="8" stroke-linecap="round" stroke-dasharray="327" stroke-dashoffset="327" transform="rotate(-90 60 60)"/></svg>
+                                <div id="decision-gauge-text" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-family:var(--font-mono);font-size:1.8rem;font-weight:700;">--</div>
+                            </div>
+                            <div id="decision-gauge-label" style="font-size:0.65rem;color:var(--text-tertiary);margin-top:8px; font-weight:600; letter-spacing:1px;">INST SCORE</div>
+                        </div>
                         <div>
-                            <div class="panel-kicker">CN CONNECT / CAPITAL FLOW</div>
-                            <h3>北向资金监控</h3>
-                            <p>跟踪沪深港通北向净流入、短期合计与窗口累计变化，识别外资风险偏好。</p>
+                            <div id="decision-action-hero" style="font-size:1.2rem;font-weight:700;color:var(--text-primary);margin-bottom:10px; text-transform:uppercase; letter-spacing:0.5px;">--</div>
+                            <div id="decision-reason-hero" style="font-size:0.85rem;color:var(--text-secondary); line-height:1.6; max-width:800px;">--</div>
                         </div>
-                        <span id="mb-indicator" class="status-indicator">拉取资金数据...</span>
-                    </header>
-                    <div class="flow-signal-strip">
-                        <div><span>今日净流</span><strong id="mb-current-flow">--</strong></div>
-                        <div><span>5日合计</span><strong id="mb-flow-5d">--</strong></div>
-                        <div><span>20日合计</span><strong id="mb-flow-20d">--</strong></div>
-                        <div><span>资金状态</span><strong id="mb-flow-signal">--</strong></div>
                     </div>
-                    <p id="mb-insight" class="flow-insight">北向资金累计净流入 + 每日净额，反映外资对A股的真实态度。</p>
-                    <div id="breadth-chart" class="flow-chart"><div class="skeleton"></div></div>
-                    <footer class="flow-footer">Source: Tushare HSGT moneyflow · Unit: CNY 100mn · Window: recent 60 sessions</footer>
-                </article>
-            </details>
-
-            <!-- Group: Risk Analysis -->
-            <details class="panel-group" open>
-                <summary class="panel-group-header">
-                    <span class="panel-group-icon">⚠️</span> 风险分析
-                    <span class="panel-group-badge" id="risk-alert-badge" style="display:none;">⚠</span>
-                </summary>
-                <div class="correlation-panel glass-card">
-                    <div class="card-header"><h3>大类资产相关性风险矩阵</h3><span id="corr-indicator" class="status-indicator">矩阵演算中...</span></div>
-                    <p id="corr-insight" class="card-desc">基于过去180天真实日收益率的皮尔逊相关性测算。</p>
-                    <div id="corr-action-banner" style="display:none;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.4);border-radius:8px;padding:15px;margin-top:15px;">
-                        <div style="font-size:0.9rem;color:#ef4444;font-weight:bold;display:flex;align-items:center;gap:8px;">⚠ 极端系统性风险警示</div>
-                        <div id="corr-extreme-action" style="font-size:1rem;color:#f8fafc;font-weight:500;">--</div>
+                    
+                    <div class="institutional-section-label" style="margin-top: 20px; margin-bottom: 12px; font-size: 0.75rem; color: var(--text-tertiary);">RISK PROFILE</div>
+                    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;">
+                        <div class="metric-cell"><span>VaR 95%</span><strong id="decision-var">--</strong></div>
+                        <div class="metric-cell"><span>Worst Scenario</span><strong id="decision-worst">--</strong></div>
+                        <div class="metric-cell"><span>Primary Driver</span><strong id="decision-primary-driver">--</strong></div>
+                        <div class="metric-cell"><span>Concentration</span><strong id="decision-concentration">--</strong></div>
                     </div>
-                    <div id="correlation-chart" class="chart-container" style="height:500px;"><div class="skeleton"></div></div>
                 </div>
-                <div class="montecarlo-panel glass-card" style="margin-top:24px;">
-                    <div class="card-header"><h3>蒙特卡洛压力测试推演</h3><span id="mc-indicator" class="status-indicator">算力涌现中...</span></div>
-                    <p id="mc-insight" class="card-desc">对核心组合进行未来252个交易日的平行宇宙走势测算。</p>
-                    <div id="mc-chart" class="chart-container" style="height:400px;"><div class="skeleton"></div></div>
-                </div>
-                <div class="scenario-panel glass-card" style="margin-top:24px;">
-                    <div class="card-header"><h3>历史极端情景压力测试</h3><span id="sc-indicator" class="status-indicator">推演中...</span></div>
-                    <p id="sc-insight" class="card-desc">将当前仓位穿透至三大历史危机中，测算策略在极端环境下的生存能力。</p>
-                    <div id="scenario-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:15px;margin-top:15px;"><div class="skeleton" style="height:200px;"></div><div class="skeleton" style="height:200px;"></div><div class="skeleton" style="height:200px;"></div></div>
-                </div>
-            </details>
 
-            <!-- Group: Portfolio Optimization -->
-            <details class="panel-group">
-                <summary class="panel-group-header">
-                    <span class="panel-group-icon">📐</span> 组合优化
-                </summary>
-                <div class="allocation-panel glass-card">
-                    <div class="card-header"><h3>智能资产配置沙盘</h3><span id="alloc-indicator" class="status-indicator">拉取量化信号中...</span></div>
-                    <p id="alloc-insight" class="card-desc">基于实时宏观锚点交叉推演的最优大类资产仓位分布。</p>
-                    <div id="allocation-chart" class="chart-container" style="height:400px;"><div class="skeleton"></div></div>
-                </div>
-                <div class="frontier-panel glass-card" style="margin-top:24px;">
-                    <div class="card-header"><h3>Markowitz 有效前沿</h3><span id="ef-indicator" class="status-indicator">优化中...</span></div>
-                    <p id="ef-insight" class="card-desc">基于 SPY/TLT/GLD 均值-协方差矩阵，计算最优组合配置地图。</p>
-                    <div id="frontier-chart" class="chart-container" style="height:420px;"><div class="skeleton"></div></div>
-                </div>
-                <div class="backtest-panel glass-card" style="margin-top:24px;">
-                    <div class="card-header"><h3>Alpha 策略回测与历史自证</h3><span id="bt-indicator" class="status-indicator">拉取18年时序数据中...</span></div>
-                    <div id="live-signal-banner" style="display:none;background:rgba(0,240,255,0.05);border:1px solid rgba(0,240,255,0.2);border-radius:8px;padding:15px;margin-top:15px;align-items:center;justify-content:space-between;">
-                        <div><div style="font-size:0.85rem;color:#9ca3af;">【AlphaCore 今日量化执行指令】( <span id="signal-date">--</span> )</div><div style="font-size:1.2rem;font-weight:bold;color:#fff;">当前宏观象限：<span id="signal-regime" style="color:#4ade80;">--</span></div></div>
-                        <div style="text-align:right;"><div style="font-size:0.85rem;color:#9ca3af;">系统目标极简配比</div><div id="signal-weights" style="font-family:var(--font-mono);font-size:1.1rem;">股 --% | 债 --% | 金 --% | 现金 --%</div></div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                    <div class="glass-card">
+                        <div class="card-header"><h3>FACTOR EXPOSURE & ACTIVE RISK</h3></div>
+                        <div style="display:grid;grid-template-columns:1fr;gap:12px;margin-top:12px;">
+                            <div class="metric-cell"><span>Top Factor Contribution</span><strong id="workbench-top-factor">--</strong></div>
+                            <div class="metric-cell"><span>Tracking Error (TE)</span><strong id="workbench-tracking-error">--</strong></div>
+                            <div class="metric-cell"><span>Max Active Deviation</span><strong id="workbench-largest-active">--</strong></div>
+                        </div>
                     </div>
-                    <div id="asset-strategies-grid" style="display:grid;grid-template-columns:repeat(2,1fr);gap:15px;margin-bottom:25px;display:none;"></div>
-                    <p id="bt-insight" class="card-desc">对比 AlphaCore 四资产动态对冲策略与死拿标普500在过去18年的净值曲线。</p>
-                    <div class="backtest-metrics-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:15px;margin-top:15px;margin-bottom:20px;">
-                        <div class="metric-box"><div style="font-size:0.8rem;color:#94a3b8;">年化收益率 (CAGR)</div><div id="bt-cagr" style="font-size:1.5rem;font-family:var(--font-mono);font-weight:bold;">--%</div></div>
-                        <div class="metric-box"><div style="font-size:0.8rem;color:#94a3b8;">最大回撤 (MDD)</div><div id="bt-mdd" style="font-size:1.5rem;font-family:var(--font-mono);font-weight:bold;color:#ef4444;">--%</div></div>
-                        <div class="metric-box"><div style="font-size:0.8rem;color:#94a3b8;">夏普比率</div><div id="bt-sharpe" style="font-size:1.5rem;font-family:var(--font-mono);font-weight:bold;color:#00F0FF;">--</div></div>
+
+                    <div class="glass-card">
+                        <div class="card-header"><h3>COMPLIANCE & AUDIT LOGS</h3></div>
+                        <div style="display:grid;grid-template-columns:1fr;gap:12px;margin-top:12px;">
+                            <div class="metric-cell" style="display:flex; flex-direction:row; justify-content:space-between; align-items:center;">
+                                <span>Execution Status</span><strong id="workbench-compliance-status">--</strong>
+                            </div>
+                            <div class="metric-cell" style="display:flex; flex-direction:row; justify-content:space-between; align-items:center;">
+                                <span>Pre-trade Issues</span><strong id="workbench-compliance-issues">--</strong>
+                            </div>
+                            <div class="metric-cell" style="display:flex; flex-direction:row; justify-content:space-between; align-items:center;">
+                                <span>Execution Readiness</span><strong id="decision-execution-readiness">--</strong>
+                            </div>
+                            <div class="metric-cell" style="display:flex; flex-direction:row; justify-content:space-between; align-items:center;">
+                                <span>Audit Record Count</span><strong id="decision-audit-count">--</strong>
+                            </div>
+                        </div>
                     </div>
-                    <div id="backtest-chart" class="chart-container" style="height:350px;"><div class="skeleton"></div></div>
-                    <h4 style="margin-top:30px;margin-bottom:15px;color:#e2e8f0;font-size:1.1rem;padding-top:20px;border-top:1px solid rgba(255,255,255,0.05);">宏观预警信号精准复盘</h4>
-                    <p class="card-desc" style="margin-bottom:15px;">标普500历史价格走势，红绿标记代表AlphaCore自动发出的<strong>[清仓避险]</strong>与<strong>[解除警报]</strong>指令。</p>
-                    <div id="signal-chart" style="height:500px;width:100%;position:relative;border:1px solid rgba(255,255,255,0.05);border-radius:8px;overflow:hidden;background:rgba(0,0,0,0.2);"><div class="skeleton"></div></div>
-                </div>
-            </details>
-
-            <!-- AI CIO -->
-            <div class="ai-cio-section glass-card" style="margin-top:24px;border-left:4px solid #7000FF;">
-                <div class="card-header"><h3>AI 首席量化决策中心</h3><span id="ai-indicator" class="status-indicator live">脑力风暴中...</span></div>
-                <div id="ai-typewriter" class="card-desc" style="min-height:80px;font-family:var(--font-mono);color:#e2e8f0;font-size:1.1rem;line-height:1.6;margin-top:15px;"><div id="ai-text">正在同步并组装实时宏观因子…</div></div>
-            </div>
-
-        </section>
-
-        <!-- Insights Section -->
-        <section id="insights" class="section-container">
-            <div class="section-header">
-                <h2>宏观对冲与策略推演</h2>
-                <p>将硬核量化信号降维转化为极具实操价值的投资策略研报。</p>
-            </div>
-            <div class="insights-grid">
-                <div class="insight-card glass-card">
-                    <div class="tag">宏观策略</div>
-                    <h4>穿越流动性陷阱：一种量化视角</h4>
-                    <p>当收益率曲线倒挂与利率剧烈波动并存时，我们的动态资产配置模型如何进行防御性切换。</p>
-                    <a href="reports/liquidity_trap.html" class="read-more" target="_blank">阅读研报 &rarr;</a>
-                </div>
-                <div class="insight-card glass-card">
-                    <div class="tag">信号解析</div>
-                    <h4>解构 AH 股溢价的均值回归</h4>
-                    <p>从机构视角剖析两地上市资产的历史回归规律，以及捕捉绝佳右侧买点的量化阈值。</p>
-                    <a href="reports/ah_premium.html" class="read-more" target="_blank">阅读研报 &rarr;</a>
-                </div>
-                <div class="insight-card glass-card">
-                    <div class="tag">风险管理</div>
-                    <h4>基于 VIX 衍生品的尾部风险对冲</h4>
-                    <p>如何构建具备凸性的投资组合，在抵御 3-Sigma 极端黑天鹅事件的同时，不牺牲长期复利 (CAGR)。</p>
-                    <a href="reports/vix_hedging.html" class="read-more" target="_blank">阅读研报 &rarr;</a>
                 </div>
             </div>
-        </section>
 
-
-
-
-    </main>
-
-    <footer>
-        <div class="footer-container">
-            <div class="footer-brand">
-                <span class="logo-text">AlphaCore <span class="highlight">Insights</span></span>
-                <p>专为聪明的投资者打造的量化决策引擎。</p>
-            </div>
-            <div class="footer-links">
-                <a href="#">服务条款</a>
-                <a href="#">隐私政策</a>
-                <a href="#">合规披露</a>
-            </div>
-        </div>
-        
-        <div class="institutional-disclaimer">
-            <p style="color: #ef4444; margin-bottom: 5px; font-weight: bold; display: flex; align-items: center; justify-content: center; gap: 8px;">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
-                机构级风控与免责声明 (Risk Disclaimer)
-            </p>
-            <p style="text-align: justify;">AlphaCore 平台提供的数据、量化模型推演、AI 生成的洞察以及研报内容仅供学术研究和信息参考，不构成针对任何个人或机构的具体投资建议。金融市场受多种不可预测因素影响，过去的回测业绩（如 8.58% 年化）<strong>绝不代表未来真实收益，也不提供任何策略穿透的数学保证</strong>。在极端黑天鹅事件、系统性流动性丧失或宏观范式发生结构性转移时，量化模型可能发生完全失效，并遭遇不可预见的尾部风险（Tail Risk）。大语言模型生成的投资大纲亦可能存在逻辑幻觉。本平台不对任何人因依赖上述指令或信息而产生的直接或间接本金损失负责。投资者应当在做出任何决策前独立判断。<strong>量化有风险，下场需敬畏。</strong></p>
-        </div>
-
-        <div class="copyright">
-            &copy; 2026 AlphaCore Institutional. 版权所有。<br>
-        </div>
-    </footer>
-
-    <script src="main.js?v=9"></script>
+            <!-- Footer -->
+            <footer style="margin-top: 40px; padding: 20px 0; border-top: 1px solid var(--glass-border); text-align: center; color: var(--text-tertiary); font-size: 0.75rem;">
+                AlphaCore Institutional Terminal &copy; 2026<br>
+                For Professional Investors Only.
+            </footer>
+        </main>
+    </div>
+    <script src="main.js?v=19"></script>
 </body>
 </html>

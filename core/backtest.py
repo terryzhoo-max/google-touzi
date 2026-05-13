@@ -34,11 +34,26 @@ def get_symbol_data(symbol, years=5):
 def run_backtest():
     init_db()
     
-    spy = get_symbol_data('SPY', years=18)
-    tlt = get_symbol_data('TLT', years=18)
-    gld = get_symbol_data('GLD', years=18)
-    vix = get_symbol_data('^VIX', years=18)
-    tnx = get_symbol_data('^TNX', years=18)
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    
+    symbols = ['SPY', 'TLT', 'GLD', '^VIX', '^TNX']
+    results = {}
+    
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        future_to_symbol = {executor.submit(get_symbol_data, sym, 18): sym for sym in symbols}
+        for future in as_completed(future_to_symbol):
+            sym = future_to_symbol[future]
+            try:
+                results[sym] = future.result()
+            except Exception as e:
+                print(f"Error fetching {sym} for backtest: {e}")
+                results[sym] = pd.DataFrame()
+                
+    spy = results.get('SPY', pd.DataFrame())
+    tlt = results.get('TLT', pd.DataFrame())
+    gld = results.get('GLD', pd.DataFrame())
+    vix = results.get('^VIX', pd.DataFrame())
+    tnx = results.get('^TNX', pd.DataFrame())
     
     if spy.empty or tlt.empty or vix.empty or tnx.empty or gld.empty:
         return {"error": "Missing data for backtest"}

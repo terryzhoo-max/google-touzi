@@ -2,6 +2,8 @@ from dataclasses import asdict, dataclass
 import hashlib
 import json
 
+from core.config import settings
+
 
 def _policy_hash(policy_payload: dict) -> str:
     body = json.dumps(policy_payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
@@ -16,8 +18,9 @@ class DecisionPolicy:
     scenario_loss_limit_pct: float = -8.0
     scenario_loss_watch_pct: float = -6.0
     scenario_loss_info_pct: float = -3.0
-    allow_min_score: int = 80
-    limited_min_score: int = 60
+    # ── calibrated defaults from 18-year backtest, overridable via config ──
+    allow_min_score: int = getattr(settings, 'CALIBRATED_ALLOW_MIN', 80)
+    limited_min_score: int = getattr(settings, 'CALIBRATED_LIMITED_MIN', 60)
     technology_exposure_watch: float = 0.35
     china_complex_exposure_watch: float = 0.40
 

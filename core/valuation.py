@@ -9,8 +9,11 @@ Broad ETFs: 恒生ETF(510900.SH), 标普500ETF(513500.SH), 纳指ETF(513100.SH),
 """
 
 import datetime
+import time
 import pandas as pd
 from core.data_providers import _tushare_items
+
+_last_ok: dict = {"data": None, "ts": 0, "errors": 0}
 
 
 INDICES = {
@@ -155,8 +158,18 @@ def get_valuation() -> dict:
     else:
         insight = "估值数据暂不可用"
 
-    return {
+    result = {
         "indices": result_indices,
         "insight": insight,
         "updated": end.strftime("%Y-%m-%d"),
     }
+
+    if len(result_indices) >= 2:
+        _last_ok["data"] = result; _last_ok["ts"] = time.time(); _last_ok["errors"] = 0
+        return result
+    _last_ok["errors"] = _last_ok.get("errors", 0) + 1
+    if _last_ok["data"] is not None:
+        stale = dict(_last_ok["data"])
+        stale["updated"] = f'{end.strftime("%Y-%m-%d")} (stale)'
+        return stale
+    return result

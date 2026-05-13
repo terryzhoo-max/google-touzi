@@ -1,9 +1,19 @@
+from core.config import settings
+
+# Calibrated from 18-year backtest; overridable via config
+_ASSET_VOL = getattr(settings, 'CALIBRATED_EQUITY_VOL', 0.016)
+_BOND_VOL   = getattr(settings, 'CALIBRATED_BOND_VOL', 0.007)
+_GOLD_VOL   = getattr(settings, 'CALIBRATED_GOLD_VOL', 0.012)
+
 ASSET_CLASS_DAILY_VOL = {
-    "equity": 0.016,
-    "bond": 0.007,
-    "gold": 0.012,
+    "equity": _ASSET_VOL,
+    "bond": _BOND_VOL,
+    "gold": _GOLD_VOL,
     "cash": 0.0001,
 }
+
+_VAR_HIGH   = getattr(settings, 'CALIBRATED_VAR_HIGH', -6.0)
+_VAR_MEDIUM = getattr(settings, 'CALIBRATED_VAR_MEDIUM', -1.0)
 
 
 def calculate_portfolio_risk(snapshot: dict) -> dict:
@@ -30,9 +40,9 @@ def calculate_portfolio_risk(snapshot: dict) -> dict:
         for k, v in risk_contribution.items()
     }
 
-    if var_95 <= -6 or max_weight > 0.5:
+    if var_95 <= _VAR_HIGH or max_weight > 0.5:
         level = "high"
-    elif var_95 <= -1:
+    elif var_95 <= _VAR_MEDIUM:
         level = "medium"
     else:
         level = "low"

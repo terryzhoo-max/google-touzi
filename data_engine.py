@@ -6,6 +6,7 @@ from fastapi import FastAPI, Query, Request
 from pydantic import BaseModel, Field
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 
 # Import refactored core modules
@@ -25,7 +26,7 @@ from core.fed_prob import get_fed_probability
 from core.global_assets import get_global_assets
 from core.valuation import get_valuation
 
-from core.cache_store import cached_async, ROUTE_TTL, get_cache_stats, invalidate
+from core.cache_store import cached, cached_async, ROUTE_TTL, get_cache_stats, invalidate
 from core.config import settings
 from core.data_quality import score_payload
 from core.action_generator import generate_action_recommendation
@@ -47,17 +48,26 @@ from core.review_scoring import score_review
 from core.runtime_diagnostics import build_runtime_diagnostics
 from core.scenario_engine import run_portfolio_scenarios
 from core.what_if_engine import build_default_risk_reduction_adjustments, run_what_if
+from core.alert_rules import get_rules, update_rules, evaluate_all_rules
+from core.surprise_index import get_surprise_index
+from core.portfolio_manager import get_portfolio_summary
+from core.margin_monitor import get_margin_data
+from core.dividend_yield import get_dividend_leaders
 
 
+async def _warm_cache():
+    pass
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     shutdown_event.clear()
     background_task = asyncio.create_task(background_data_fetcher())
+    warmup_task = asyncio.create_task(_warm_cache())
     try:
         yield
     finally:
         print("Shutting down background tasks...")
         shutdown_event.set()
+        warmup_task.cancel()
         try:
             await asyncio.wait_for(background_task, timeout=5)
         except asyncio.TimeoutError:
@@ -90,6 +100,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ── GZip compression — reduce backtest JSON from 200KB → ~30KB ──
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
 # --- Phase 12: Institutional Security (Rate Limiting) ---
 from collections import defaultdict
 RATE_LIMIT_DB = defaultdict(list)
@@ -114,15 +127,50 @@ async def rate_limit_middleware(request: Request, call_next):
     response = await call_next(request)
     return response
 
+# ── Request timeout guard (cold-start tolerant) ──
+_ROUTE_TIMEOUT = {
+    "/api/macro/backtest": 60,
+    "/api/macro/correlation": 30,
+    "/api/macro/montecarlo": 30,
+    "/api/macro/efficient_frontier": 30,
+    "/api/macro/decision": 45,
+    "/api/institutional/decision": 45,
+    "/api/macro/global_assets": 30,
+    "/api/macro/valuation": 30,
+}
+
+@app.middleware("http")
+async def timeout_middleware(request: Request, call_next):
+    timeout = _ROUTE_TIMEOUT.get(request.url.path, 25)
+    try:
+        return await asyncio.wait_for(call_next(request), timeout=timeout)
+    except asyncio.TimeoutError:
+        return JSONResponse(
+            status_code=504,
+            content={"error": f"Request timed out after {timeout}s", "hint": "Check /api/health for source status or retry shortly."},
+        )
+
 # --- API Routes ---
 
+@app.get("/api/alerts/rules")
+def api_get_rules():
+    return {"rules": get_rules()}
+
+class RulesUpdate(BaseModel):
+    rules: list[dict]
+
+@app.put("/api/alerts/rules")
+def api_update_rules(req: RulesUpdate):
+    return {"rules": update_rules(req.rules)}
+
 @app.get("/api/health")
-async def api_health():
+def api_health():
     """System health — data source status + cache metrics."""
-    from core.data_providers import get_provider_stats
+    from core.data_providers import get_provider_stats, get_circuit_state
     from core.alert_state import get_active_alerts
     ps = get_provider_stats()
-    degraded = [k for k, v in ps.items() if v.get("error_rate", 0) > 0.3]
+    circuit = get_circuit_state()
+    degraded = [k for k, v in ps.items() if v.get("error_rate", 0) > 0.3 or circuit.get(k, {}).get("state") != "closed"]
     diagnostics = build_runtime_diagnostics(settings, cwd=os.getcwd())
     if diagnostics["status"] == "misconfigured":
         status = "misconfigured"
@@ -134,6 +182,7 @@ async def api_health():
         "status": status,
         "degraded_sources": degraded,
         "sources": ps,
+        "circuit": circuit,
         "cache": get_cache_stats(),
         "diagnostics": diagnostics,
         "rate_limit": {
@@ -146,13 +195,13 @@ async def api_health():
     }
 
 @app.get("/api/macro/erp")
-@cached_async(ttl=ROUTE_TTL["erp"], key="erp")
-async def get_erp_data():
+@cached(ttl=ROUTE_TTL["erp"], key="erp")
+def get_erp_data():
     return fetch_yfinance_data("^TNX", "tnx")
 
 @app.get("/api/macro/spread")
-@cached_async(ttl=ROUTE_TTL["spread"], key="spread")
-async def get_spread_data():
+@cached(ttl=ROUTE_TTL["spread"], key="spread")
+def get_spread_data():
     return fetch_yfinance_data("^VIX", "vix")
 
 async def _build_decision_payload():
@@ -208,23 +257,23 @@ async def api_decision():
     return await _build_decision_payload()
 
 @app.get("/api/macro/yield_curve")
-@cached_async(ttl=ROUTE_TTL["yield_curve"], key="yield_curve")
-async def api_yield_curve():
+@cached(ttl=ROUTE_TTL["yield_curve"], key="yield_curve")
+def api_yield_curve():
     return get_yield_curve(days=120)
 
 @app.get("/api/macro/allocation")
-@cached_async(ttl=ROUTE_TTL["allocation"], key="allocation")
-async def get_asset_allocation():
+@cached(ttl=ROUTE_TTL["allocation"], key="allocation")
+def get_asset_allocation():
     return calculate_asset_allocation()
 
 @app.get("/api/macro/correlation")
-@cached_async(ttl=ROUTE_TTL["correlation"], key="correlation")
-async def get_correlation_matrix():
+@cached(ttl=ROUTE_TTL["correlation"], key="correlation")
+def get_correlation_matrix():
     return calculate_correlation_matrix()
 
 @app.get("/api/macro/montecarlo")
-@cached_async(ttl=ROUTE_TTL["montecarlo"], key="montecarlo")
-async def get_montecarlo_sim():
+@cached(ttl=ROUTE_TTL["montecarlo"], key="montecarlo")
+def get_montecarlo_sim():
     return run_montecarlo_sim()
 
 @app.get("/api/macro/efficient_frontier")
@@ -238,53 +287,73 @@ async def api_scenario():
     return await asyncio.to_thread(run_scenario_analysis)
 
 @app.get("/api/macro/sector_rotation")
-@cached_async(ttl=ROUTE_TTL["sector_rotation"], key="sector_rotation")
-async def api_sector_rotation():
+@cached(ttl=ROUTE_TTL["sector_rotation"], key="sector_rotation")
+def api_sector_rotation():
     return get_sector_rotation(days_back=90)
 
 @app.get("/api/macro/theme_rotation")
-@cached_async(ttl=ROUTE_TTL["theme_rotation"], key="theme_rotation")
-async def api_theme_rotation():
+@cached(ttl=ROUTE_TTL["theme_rotation"], key="theme_rotation")
+def api_theme_rotation():
     return get_theme_rotation()
 
 @app.get("/api/macro/domestic_etf")
-@cached_async(ttl=ROUTE_TTL["domestic_etf"], key="domestic_etf")
-async def api_domestic_etf():
+@cached(ttl=ROUTE_TTL["domestic_etf"], key="domestic_etf")
+def api_domestic_etf():
     return get_domestic_etf_rotation()
 
 @app.get("/api/macro/global_etf")
-@cached_async(ttl=ROUTE_TTL["global_etf"], key="global_etf")
-async def api_global_etf():
+@cached(ttl=ROUTE_TTL["global_etf"], key="global_etf")
+def api_global_etf():
     return get_global_etf_rotation()
 
 @app.get("/api/macro/fed_prob")
-@cached_async(ttl=ROUTE_TTL["fed_prob"], key="fed_prob")
-async def api_fed_prob():
+@cached(ttl=ROUTE_TTL["fed_prob"], key="fed_prob")
+def api_fed_prob():
     return get_fed_probability()
 
 @app.get("/api/macro/global_assets")
-@cached_async(ttl=ROUTE_TTL["global_assets"], key="global_assets")
-async def api_global_assets():
+@cached(ttl=ROUTE_TTL["global_assets"], key="global_assets_v4")
+def api_global_assets():
     return get_global_assets()
 
 @app.get("/api/macro/valuation")
-@cached_async(ttl=ROUTE_TTL["valuation"], key="valuation")
-async def api_valuation():
+@cached(ttl=ROUTE_TTL["valuation"], key="valuation")
+def api_valuation():
     return get_valuation()
 
+@app.get("/api/macro/surprise_index")
+@cached(ttl=43200, key="surprise_index")
+def api_surprise_index():
+    return get_surprise_index(months=36)
+
+@app.get("/api/portfolio/summary")
+@cached(ttl=600, key="portfolio_summary")
+def api_portfolio():
+    return get_portfolio_summary()
+
+@app.get("/api/macro/margin")
+@cached(ttl=3600, key="margin_v2")
+def api_margin():
+    return get_margin_data(days=60)
+
+@app.get("/api/macro/dividend")
+@cached(ttl=43200, key="dividend_v6")
+def api_dividend():
+    return get_dividend_leaders(limit=10)
+
 @app.get("/api/macro/china_macro")
-@cached_async(ttl=ROUTE_TTL["china_macro"], key="china_macro")
-async def api_china_macro():
+@cached(ttl=ROUTE_TTL["china_macro"], key="china_macro")
+def api_china_macro():
     return get_china_macro(months=24)
 
 @app.get("/api/macro/market_breadth")
-@cached_async(ttl=ROUTE_TTL["market_breadth"], key="market_breadth")
-async def api_market_breadth():
+@cached(ttl=ROUTE_TTL["market_breadth"], key="market_breadth")
+def api_market_breadth():
     return get_market_breadth(days=60)
 
 @app.get("/api/macro/signals")
-@cached_async(ttl=ROUTE_TTL["signals"], key="signals")
-async def api_signals():
+@cached(ttl=ROUTE_TTL["signals"], key="signals")
+def api_signals():
     return get_multi_timeframe_signals()
 
 @app.get("/api/macro/ai_insight")
@@ -506,68 +575,68 @@ def _build_institutional_what_if(portfolio: dict, adjustments: dict[str, float])
 
 
 @app.get("/api/institutional/portfolio")
-@cached_async(ttl=ROUTE_TTL["institutional_portfolio"], key="institutional_portfolio")
-async def api_institutional_portfolio():
+@cached(ttl=ROUTE_TTL["institutional_portfolio"], key="institutional_portfolio")
+def api_institutional_portfolio():
     return _build_institutional_portfolio()
 
 
 @app.get("/api/institutional/data_quality")
-@cached_async(ttl=ROUTE_TTL["institutional_data_quality"], key="institutional_data_quality")
-async def api_institutional_data_quality():
+@cached(ttl=ROUTE_TTL["institutional_data_quality"], key="institutional_data_quality")
+def api_institutional_data_quality():
     return _build_institutional_data_quality()
 
 
 @app.get("/api/institutional/risk")
-@cached_async(ttl=ROUTE_TTL["institutional_risk"], key="institutional_risk")
-async def api_institutional_risk():
+@cached(ttl=ROUTE_TTL["institutional_risk"], key="institutional_risk")
+def api_institutional_risk():
     portfolio = _build_institutional_portfolio()
     risk = calculate_portfolio_risk(portfolio)
     return risk
 
 
 @app.get("/api/institutional/scenarios")
-@cached_async(ttl=ROUTE_TTL["institutional_scenarios"], key="institutional_scenarios")
-async def api_institutional_scenarios():
+@cached(ttl=ROUTE_TTL["institutional_scenarios"], key="institutional_scenarios")
+def api_institutional_scenarios():
     portfolio = _build_institutional_portfolio()
     scenarios = run_portfolio_scenarios(portfolio)
     return scenarios
 
 
 @app.get("/api/institutional/factors")
-@cached_async(ttl=ROUTE_TTL["institutional_factors"], key="institutional_factors")
-async def api_institutional_factors():
+@cached(ttl=ROUTE_TTL["institutional_factors"], key="institutional_factors")
+def api_institutional_factors():
     return build_factor_risk_snapshot(_build_institutional_portfolio())
 
 
 @app.get("/api/institutional/benchmark")
-@cached_async(ttl=ROUTE_TTL["institutional_benchmark"], key="institutional_benchmark")
-async def api_institutional_benchmark():
+@cached(ttl=ROUTE_TTL["institutional_benchmark"], key="institutional_benchmark")
+def api_institutional_benchmark():
     return benchmark_to_dict(build_default_benchmark())
 
 
 @app.get("/api/institutional/active_risk")
-@cached_async(ttl=ROUTE_TTL["institutional_active_risk"], key="institutional_active_risk")
-async def api_institutional_active_risk():
+@cached(ttl=ROUTE_TTL["institutional_active_risk"], key="institutional_active_risk")
+def api_institutional_active_risk():
     portfolio = _build_institutional_portfolio()
     return build_active_risk_snapshot(portfolio, build_default_benchmark())
 
 
 @app.get("/api/institutional/attribution")
-async def api_institutional_attribution(period: str = "T+1"):
+def api_institutional_attribution(period: str = "T+1"):
     portfolio = _build_institutional_portfolio()
     return build_attribution_snapshot(portfolio, build_default_benchmark(), period=period)
 
 
 @app.get("/api/institutional/compliance")
-@cached_async(ttl=ROUTE_TTL["institutional_compliance"], key="institutional_compliance")
-async def api_institutional_compliance():
+@cached(ttl=ROUTE_TTL["institutional_compliance"], key="institutional_compliance")
+def api_institutional_compliance():
     portfolio = _build_institutional_portfolio()
     what_if = _build_institutional_what_if(portfolio, build_default_risk_reduction_adjustments(portfolio))
     return what_if["compliance"]
 
 
 @app.post("/api/institutional/compliance/check")
-async def api_institutional_compliance_check(request: WhatIfRequest):
+def api_institutional_compliance_check(request: WhatIfRequest):
     try:
         portfolio = _build_institutional_portfolio()
         what_if = _build_institutional_what_if(portfolio, request.adjustments)
@@ -577,31 +646,31 @@ async def api_institutional_compliance_check(request: WhatIfRequest):
 
 
 @app.get("/api/institutional/decision")
-@cached_async(ttl=ROUTE_TTL["institutional_decision"], key="institutional_decision")
-async def api_institutional_decision():
+@cached(ttl=ROUTE_TTL["institutional_decision"], key="institutional_decision")
+def api_institutional_decision():
     return _build_institutional_payload()
 
 
 @app.get("/api/institutional/policy")
-@cached_async(ttl=ROUTE_TTL["institutional_policy"], key="institutional_policy")
-async def api_institutional_policy():
+@cached(ttl=ROUTE_TTL["institutional_policy"], key="institutional_policy")
+def api_institutional_policy():
     return get_default_decision_policy()
 
 
 @app.get("/api/institutional/allocation_model")
-@cached_async(ttl=ROUTE_TTL["institutional_allocation_model"], key="institutional_allocation_model")
-async def api_institutional_allocation_model():
+@cached(ttl=ROUTE_TTL["institutional_allocation_model"], key="institutional_allocation_model")
+def api_institutional_allocation_model():
     return _build_institutional_allocation_model()
 
 
 @app.get("/api/institutional/allocation_model/policy")
-@cached_async(ttl=ROUTE_TTL["institutional_allocation_model_policy"], key="institutional_allocation_model_policy")
-async def api_institutional_allocation_model_policy():
+@cached(ttl=ROUTE_TTL["institutional_allocation_model_policy"], key="institutional_allocation_model_policy")
+def api_institutional_allocation_model_policy():
     return allocation_policy_to_dict(get_default_allocation_policy())
 
 
 @app.post("/api/institutional/allocation_model/simulate")
-async def api_institutional_allocation_model_simulate(request: AllocationModelSimulateRequest):
+def api_institutional_allocation_model_simulate(request: AllocationModelSimulateRequest):
     portfolio = _build_institutional_portfolio()
     return build_allocation_recommendation(
         portfolio,
@@ -611,7 +680,7 @@ async def api_institutional_allocation_model_simulate(request: AllocationModelSi
 
 
 @app.post("/api/institutional/allocation_model/audit")
-async def api_record_institutional_allocation_model():
+def api_record_institutional_allocation_model():
     payload = _build_institutional_payload()
     record = get_audit_store().record_decision(payload, source="allocation_model_api")
     invalidate("institutional_audit_log")
@@ -626,14 +695,14 @@ async def api_record_institutional_allocation_model():
 
 
 @app.get("/api/institutional/what_if")
-@cached_async(ttl=ROUTE_TTL["institutional_what_if"], key="institutional_what_if")
-async def api_institutional_what_if_default():
+@cached(ttl=ROUTE_TTL["institutional_what_if"], key="institutional_what_if")
+def api_institutional_what_if_default():
     portfolio = _build_institutional_portfolio()
     return _build_institutional_what_if(portfolio, build_default_risk_reduction_adjustments(portfolio))
 
 
 @app.post("/api/institutional/what_if")
-async def api_institutional_what_if(request: WhatIfRequest):
+def api_institutional_what_if(request: WhatIfRequest):
     try:
         portfolio = _build_institutional_portfolio()
         return _build_institutional_what_if(portfolio, request.adjustments)
@@ -642,14 +711,14 @@ async def api_institutional_what_if(request: WhatIfRequest):
 
 
 @app.get("/api/institutional/action")
-@cached_async(ttl=ROUTE_TTL["institutional_action"], key="institutional_action")
-async def api_institutional_action():
+@cached(ttl=ROUTE_TTL["institutional_action"], key="institutional_action")
+def api_institutional_action():
     payload = _build_institutional_payload()
     return payload["recommended_action"]
 
 
 @app.post("/api/institutional/audit/decisions")
-async def api_record_institutional_decision():
+def api_record_institutional_decision():
     payload = _build_institutional_payload()
     record = get_audit_store().record_decision(payload, source="api")
     invalidate("institutional_audit_log")
@@ -664,17 +733,17 @@ async def api_record_institutional_decision():
 
 
 @app.get("/api/institutional/audit/decisions")
-async def api_list_institutional_decisions(limit: int = 20):
+def api_list_institutional_decisions(limit: int = 20):
     return {"decisions": get_audit_store().list_decisions(limit=limit)}
 
 
 @app.get("/api/institutional/audit/verify")
-async def api_verify_institutional_audit(limit: int = Query(100, ge=1, le=500)):
+def api_verify_institutional_audit(limit: int = Query(100, ge=1, le=500)):
     return get_audit_store().verify_recent_decisions(limit=limit)
 
 
 @app.get("/api/institutional/audit/decisions/{ticket_id}")
-async def api_get_institutional_decision(ticket_id: str):
+def api_get_institutional_decision(ticket_id: str):
     record = get_audit_store().get_decision(ticket_id)
     if record is None:
         return JSONResponse(content={"error": "decision ticket not found"}, status_code=404)
@@ -682,7 +751,7 @@ async def api_get_institutional_decision(ticket_id: str):
 
 
 @app.get("/api/institutional/audit/decisions/{ticket_id}/verify")
-async def api_verify_institutional_decision(ticket_id: str):
+def api_verify_institutional_decision(ticket_id: str):
     verification = get_audit_store().verify_decision(ticket_id)
     if verification is None:
         return JSONResponse(content={"error": "decision ticket not found"}, status_code=404)
@@ -690,8 +759,8 @@ async def api_verify_institutional_decision(ticket_id: str):
 
 
 @app.get("/api/institutional/reviews/due")
-@cached_async(ttl=ROUTE_TTL["institutional_reviews_due"], key="institutional_reviews_due")
-async def api_institutional_due_reviews():
+@cached(ttl=ROUTE_TTL["institutional_reviews_due"], key="institutional_reviews_due")
+def api_institutional_due_reviews():
     store = get_audit_store()
     rows = store.list_decisions(limit=100)
     review_scores = store.list_review_scores(limit=500)
@@ -699,8 +768,8 @@ async def api_institutional_due_reviews():
 
 
 @app.get("/api/institutional/reviews/summary")
-@cached_async(ttl=ROUTE_TTL["institutional_reviews_summary"], key="institutional_reviews_summary")
-async def api_institutional_review_summary():
+@cached(ttl=ROUTE_TTL["institutional_reviews_summary"], key="institutional_reviews_summary")
+def api_institutional_review_summary():
     store = get_audit_store()
     rows = store.list_decisions(limit=100)
     review_scores = store.list_review_scores(limit=500)
@@ -708,7 +777,7 @@ async def api_institutional_review_summary():
 
 
 @app.get("/api/institutional/reviews/queue")
-async def api_institutional_review_queue(priority: str | None = None, limit: int = Query(50, ge=1, le=100)):
+def api_institutional_review_queue(priority: str | None = None, limit: int = Query(50, ge=1, le=100)):
     store = get_audit_store()
     rows = store.list_decisions(limit=100)
     review_scores = store.list_review_scores(limit=500)
@@ -727,7 +796,7 @@ async def api_institutional_review_queue(priority: str | None = None, limit: int
 
 
 @app.get("/api/institutional/reviews/{ticket_id}/score")
-async def api_score_institutional_review(ticket_id: str, window: str = "T+1"):
+def api_score_institutional_review(ticket_id: str, window: str = "T+1"):
     record = get_audit_store().get_decision(ticket_id)
     if record is None:
         return JSONResponse(content={"error": "decision ticket not found"}, status_code=404)
@@ -735,7 +804,7 @@ async def api_score_institutional_review(ticket_id: str, window: str = "T+1"):
 
 
 @app.post("/api/institutional/reviews/{ticket_id}/score")
-async def api_record_institutional_review_score(ticket_id: str, window: str = "T+1"):
+def api_record_institutional_review_score(ticket_id: str, window: str = "T+1"):
     store = get_audit_store()
     record = store.get_decision(ticket_id)
     if record is None:
@@ -750,13 +819,13 @@ async def api_record_institutional_review_score(ticket_id: str, window: str = "T
 
 
 @app.get("/api/institutional/reviews/scores")
-async def api_list_institutional_review_scores(ticket_id: str | None = None, limit: int = 50):
+def api_list_institutional_review_scores(ticket_id: str | None = None, limit: int = 50):
     return {"scores": get_audit_store().list_review_scores(ticket_id=ticket_id, limit=limit)}
 
 
 @app.get("/api/institutional/reviews/scores/due")
-@cached_async(ttl=ROUTE_TTL["institutional_review_scores"], key="institutional_review_scores")
-async def api_score_due_institutional_reviews():
+@cached(ttl=ROUTE_TTL["institutional_review_scores"], key="institutional_review_scores")
+def api_score_due_institutional_reviews():
     store = get_audit_store()
     review_scores = store.list_review_scores(limit=500)
     due = list_due_reviews(store.list_decisions(limit=100), now=time.time(), review_scores=review_scores)
@@ -769,7 +838,7 @@ async def api_score_due_institutional_reviews():
 
 
 @app.post("/api/institutional/reviews/scores/due")
-async def api_record_due_institutional_review_scores():
+def api_record_due_institutional_review_scores():
     store = get_audit_store()
     review_scores = store.list_review_scores(limit=500)
     due = list_due_reviews(store.list_decisions(limit=100), now=time.time(), review_scores=review_scores)

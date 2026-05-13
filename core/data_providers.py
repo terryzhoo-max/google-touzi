@@ -32,9 +32,50 @@ _provider_stats: dict[str, dict] = {
     "tushare_index": {"calls": 0, "hits": 0, "errors": 0, "last_ok": 0, "last_err": "", "avg_ms": 0},
     "akshare":    {"calls": 0, "hits": 0, "errors": 0, "last_ok": 0, "last_err": "", "avg_ms": 0},
 }
-PROVIDER_CACHE_TTL = 3600       # 1-hour default
-MACRO_CACHE_TTL     = 900        # 15-min for VIX/TNX/DXY (aligns with 30-min background sync)
-EQUITY_CACHE_TTL    = 3600       # 1-hour for ETF/equity data (daily close doesn't change intraday)
+PROVIDER_CACHE_TTL = 3600
+MACRO_CACHE_TTL     = 900
+EQUITY_CACHE_TTL    = 3600
+
+# ── Circuit breaker ────────────────────────────────────────────
+CIRCUIT_FAIL_THRESH = 5    # consecutive failures before opening
+CIRCUIT_COOLDOWN_S  = 300  # 5 minutes before half-open probe
+
+_circuit: dict[str, dict] = {
+    "fred":          {"state": "closed", "failures": 0, "opened_at": 0},
+    "tushare_fund":  {"state": "closed", "failures": 0, "opened_at": 0},
+    "tushare_fx":    {"state": "closed", "failures": 0, "opened_at": 0},
+    "tushare_index": {"state": "closed", "failures": 0, "opened_at": 0},
+}
+
+def _circuit_allow(source: str) -> bool:
+    """Return True if this source is allowed to make HTTP calls."""
+    cb = _circuit.get(source)
+    if not cb: return True
+    now = time.time()
+    if cb["state"] == "closed": return True
+    if cb["state"] == "open":
+        if now - cb["opened_at"] > CIRCUIT_COOLDOWN_S:
+            cb["state"] = "half-open"
+            print(f"[circuit] {source} → half-open, probing …")
+            return True
+        return False
+    return True  # half-open: allow one probe
+
+def _circuit_record(source: str, success: bool):
+    cb = _circuit.get(source)
+    if not cb: return
+    if success:
+        cb["failures"] = 0
+        cb["state"] = "closed"
+    else:
+        cb["failures"] += 1
+        if cb["failures"] >= CIRCUIT_FAIL_THRESH and cb["state"] != "open":
+            cb["state"] = "open"
+            cb["opened_at"] = time.time()
+            print(f"[circuit] {source} OPEN — {CIRCUIT_FAIL_THRESH} consecutive failures")
+
+def get_circuit_state() -> dict:
+    return {k: dict(v) for k, v in _circuit.items()}
 
 def get_provider_stats() -> dict:
     """Return provider health summary for the /api/health endpoint."""
@@ -108,6 +149,8 @@ def _fred_series(series_id: str, limit: int = 60) -> pd.Series:
             _provider_stats["fred"]["hits"] += 1
             return val
 
+    if not _circuit_allow("fred"):
+        raise Exception("FRED circuit breaker open — serving from cache")
     _rate_limit("fred", 1.0)
     _provider_stats["fred"]["calls"] += 1
     t0 = time.time()
@@ -137,10 +180,12 @@ def _fred_series(series_id: str, limit: int = 60) -> pd.Series:
             (_provider_stats["fred"]["avg_ms"] * (_provider_stats["fred"]["calls"] - 1) + (time.time() - t0) * 1000)
             / _provider_stats["fred"]["calls"], 1)
         _provider_cache[cache_key] = (now, result)
+        _circuit_record("fred", True)
         return result
     except Exception as e:
         _provider_stats["fred"]["errors"] += 1
         _provider_stats["fred"]["last_err"] = str(e)[:120]
+        _circuit_record("fred", False)
         raise
 
 
@@ -160,8 +205,10 @@ def _tushare_items(api_name: str, params: dict, fields: str) -> list:
             _provider_stats[src]["hits"] += 1
             return val
 
-    _rate_limit("tushare", 1.0)
     src = "tushare_fund" if "fund" in api_name else ("tushare_fx" if "fx" in api_name else "tushare_index")
+    if not _circuit_allow(src):
+        raise Exception(f"Tushare {src} circuit breaker open — serving from cache")
+    _rate_limit("tushare", 1.0)
     _provider_stats[src]["calls"] += 1
     t0 = time.time()
     payload = {
@@ -178,10 +225,12 @@ def _tushare_items(api_name: str, params: dict, fields: str) -> list:
             (_provider_stats[src]["avg_ms"] * (_provider_stats[src]["calls"] - 1) + (time.time() - t0) * 1000)
             / _provider_stats[src]["calls"], 1)
         _provider_cache[cache_key] = (now, items)
+        _circuit_record(src, True)
         return items
     except Exception as e:
         _provider_stats[src]["errors"] += 1
         _provider_stats[src]["last_err"] = str(e)[:120]
+        _circuit_record(src, False)
         raise
 
 

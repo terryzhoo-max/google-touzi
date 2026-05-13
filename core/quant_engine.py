@@ -62,32 +62,45 @@ def calculate_correlation_matrix():
         return DATA_CACHE["correlation"]["data"]
 
     try:
-        # fetch raw series for each asset
-        ticker_map = {
-            "SP500": ("SPY", get_us_etf_history("SPY", months=6)),
-            "TLT":   ("TLT", get_us_etf_history("TLT", months=6)),
-            "GLD":   ("GLD", get_us_etf_history("GLD", months=6)),
-            "VIX":   ("^VIX", get_vix_history(130)),
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        
+        # Parallelize data fetching
+        fetch_tasks = {
+            "SP500": lambda: get_us_etf_history("SPY", months=6),
+            "TLT":   lambda: get_us_etf_history("TLT", months=6),
+            "GLD":   lambda: get_us_etf_history("GLD", months=6),
+            "VIX":   lambda: get_vix_history(130),
+            "CSI300": lambda: fetch_tushare_csi300_history(months=6)
         }
+        
+        results = {}
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            future_to_label = {executor.submit(func): label for label, func in fetch_tasks.items()}
+            for future in as_completed(future_to_label):
+                label = future_to_label[future]
+                try:
+                    results[label] = future.result()
+                except Exception as e:
+                    print(f"  ⚠ fetching {label} failed: {e}")
+                    results[label] = pd.Series()
+                    
         df_list = []
         active_labels = []
-        for label, (ticker, hist) in ticker_map.items():
+        
+        # Ensure specific order and handle naming
+        ticker_names = {"SP500": "SPY", "TLT": "TLT", "GLD": "GLD", "VIX": "^VIX", "CSI300": "CSI300"}
+        for label in ["SP500", "TLT", "GLD", "VIX", "CSI300"]:
+            hist = results.get(label, pd.Series())
             if hist.empty:
-                print(f"  ⚠ skipping {label} ({ticker}) — no data")
+                print(f"  ⚠ skipping {label} — no data")
                 continue
-            hist.name = ticker
+            hist.name = ticker_names[label]
             if hasattr(hist.index, 'tz') and hist.index.tz is not None:
                 hist.index = hist.index.tz_localize(None)
             df_list.append(hist)
             active_labels.append(label)
 
-        # Add CSI 300 (A-Share) from Tushare
-        csi300_hist = fetch_tushare_csi300_history(months=6)
-        has_csi = False
-        if not csi300_hist.empty:
-            df_list.append(csi300_hist)
-            active_labels.append("CSI300")
-            has_csi = True
+        has_csi = "CSI300" in active_labels
 
         if len(df_list) < 2:
             raise ValueError(f"Only {len(df_list)} assets available; need ≥2 for correlation")
@@ -229,20 +242,32 @@ def run_montecarlo_sim():
         else:
             w_spy = 1.0 # fallback
             
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        
         tickers = ["SPY", "TLT", "GLD"]
+        fetch_tasks = {t: lambda t=t: get_us_etf_history(t, months=6) for t in tickers}
+        fetch_tasks["CSI300"] = lambda: fetch_tushare_csi300_history(months=6)
+        
+        results = {}
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            future_to_label = {executor.submit(func): label for label, func in fetch_tasks.items()}
+            for future in as_completed(future_to_label):
+                label = future_to_label[future]
+                try:
+                    results[label] = future.result()
+                except Exception:
+                    results[label] = pd.Series()
+                    
         df_list = []
         for t in tickers:
-            try:
-                hist = get_us_etf_history(t, months=6)
-                if not hist.empty:
-                    hist.name = t
-                    df_list.append(hist)
-            except Exception:
-                pass
+            hist = results.get(t, pd.Series())
+            if not hist.empty:
+                hist.name = t
+                df_list.append(hist)
                 
         if not df_list:
             # Fallback
-            hist = fetch_tushare_csi300_history(months=6)
+            hist = results.get("CSI300", pd.Series())
             if hist.empty:
                 raise ValueError("No historical data available for Monte Carlo")
             daily_returns_hist = hist.pct_change().dropna()

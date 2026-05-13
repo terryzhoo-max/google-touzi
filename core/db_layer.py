@@ -15,8 +15,42 @@ def init_db():
             PRIMARY KEY (symbol, date)
         )
     ''')
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS api_cache (
+            endpoint_key TEXT PRIMARY KEY,
+            payload_json TEXT,
+            updated_at REAL
+        )
+    ''')
     conn.commit()
     conn.close()
+
+import json
+import time
+
+def save_api_cache(endpoint_key: str, payload: dict):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    payload_str = json.dumps(payload, ensure_ascii=False)
+    cursor.execute('''
+        INSERT OR REPLACE INTO api_cache (endpoint_key, payload_json, updated_at)
+        VALUES (?, ?, ?)
+    ''', (endpoint_key, payload_str, time.time()))
+    conn.commit()
+    conn.close()
+
+def get_api_cache(endpoint_key: str) -> tuple[dict | None, float]:
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('SELECT payload_json, updated_at FROM api_cache WHERE endpoint_key = ?', (endpoint_key,))
+    row = cursor.fetchone()
+    conn.close()
+    if row:
+        try:
+            return json.loads(row[0]), row[1]
+        except Exception:
+            return None, 0.0
+    return None, 0.0
 
 def save_timeseries(symbol, df):
     if df.empty: return

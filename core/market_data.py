@@ -263,6 +263,12 @@ async def background_data_fetcher():
             # selectively invalidate only routes whose source data was refreshed
             for rk in ("erp", "spread", "yield_curve", "decision", "signals", "allocation"):
                 invalidate(rk)
+            # evaluate alert rules against fresh data
+            try:
+                from core.alert_rules import evaluate_all_rules
+                evaluate_all_rules()
+            except Exception as e:
+                print(f"[Background Daemon] alert rules eval failed: {e}")
             print("[Background Daemon] Sync complete. Macro caches refreshed.")
             
             try:

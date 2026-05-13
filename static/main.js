@@ -1,26 +1,48 @@
 // main.js - Logic and Chart Initialization
 
 document.addEventListener("DOMContentLoaded", () => {
+    const totalPanels = 21;
+    let loadedCount = 0;
+    const updateProgress = () => {
+        loadedCount++;
+        const fi = document.getElementById('freshness-indicator');
+        if (fi && loadedCount <= totalPanels) {
+            fi.textContent = `加载面板中... ${loadedCount}/${totalPanels}`;
+            if (loadedCount >= totalPanels) fi.textContent = '● 数据正常';
+        }
+    };
+    const track = (fn) => async () => { try { await fn(); } catch(e) {} finally { updateProgress(); } };
+
+    // Phase 0: immediate — Dashboard + core macro
     scheduleInitializers([
-        [initDashboard, 0],
-        [initERPChart, 120],
-        [initSpreadChart, 240],
-        [initSignals, 360],
-        [initInstitutionalDecision, 520],
-        [initYieldCurve, 650],
-        [initAllocationChart, 800],
-        [initCorrelationChart, 950],
-        [initMonteCarloChart, 1100],
-        [initEfficientFrontier, 1300],
-        [initScenarioTest, 1500],
-        [initBacktest, 1700],
-        [initChinaMacro, 1900],
-        [initMarketBreadth, 2100],
-        [initFedProb, 2300],
-        [initGlobalAssets, 2500],
-        [initValuation, 2700],
-        [initRotationPanels, 3000],
-        [initGenAI, 3600],
+        [track(initDashboard), 0],
+        [track(initERPChart), 80],
+        [track(initSpreadChart), 160],
+        [track(initSignals), 240],
+        // Phase 1: 0.5-1.5s — primary panels
+        [track(initYieldCurve), 500],
+        [track(initAllocationChart), 650],
+        [track(initCorrelationChart), 800],
+        [track(initPortfolio), 300],
+        [track(initChinaMacro), 1000],
+        [track(initSurpriseIndex), 1050],
+        [track(initMarginMonitor), 1100],
+        [track(initDividendLeaders), 1150],
+        [track(initAlertCenter), 1000],
+        [track(initMarketBreadth), 1100],
+        [track(initFedProb), 1200],
+        // Phase 2: 1.5-2.5s — visual panels
+        [track(initMonteCarloChart), 1500],
+        [track(initGlobalAssets), 1700],
+        [track(initValuation), 1900],
+        [track(initScenarioTest), 2100],
+        // Phase 3: 2.5-4s — heavy computation
+        [track(initEfficientFrontier), 2500],
+        [track(initRotationPanels), 2800],
+        [track(initBacktest), 3200],
+        // Phase 4: 4s+ — institutional blocks
+        [track(initInstitutionalDecision), 4000],
+        [track(initGenAI), 5000],
     ]);
 
     // Simple smooth scroll for nav links
@@ -50,8 +72,7 @@ function scheduleInitializers(jobs) {
 
 async function initDashboard() {
     try {
-        const resp = await fetch('/api/macro/decision');
-        const d = await resp.json();
+        const d = await fetchJsonWithRetry('/api/macro/decision');
 
         // ── signal ring ──
         const perc = d.score / 100;
@@ -138,11 +159,15 @@ async function initDashboard() {
         if (fi) {
             const degraded = hd.degraded_sources || [];
             const hitPct = Math.round((hd.cache?.hit_ratio || 0) * 100);
-            if (degraded.length > 0) {
-                fi.textContent = `Data source degraded: ${degraded.join(', ')} | cache hit ${hitPct}%`;
+            const circuitOpen = hd.circuit ? Object.entries(hd.circuit).filter(([,v])=>v.state==='open').map(([k])=>k) : [];
+            if (circuitOpen.length > 0) {
+                fi.textContent = `🔴 Circuit open: ${circuitOpen.join(',')} | cache hit ${hitPct}%`;
+                fi.style.color = '#ef4444';
+            } else if (degraded.length > 0) {
+                fi.textContent = `⚠️ Degraded: ${degraded.join(', ')} | cache hit ${hitPct}%`;
                 fi.style.color = '#fbbf24';
             } else {
-                fi.textContent = `Data healthy | cache hit ${hitPct}% | active alerts ${hd.active_alerts}`;
+                fi.textContent = `● Healthy | cache hit ${hitPct}% | alerts ${hd.active_alerts}`;
                 fi.style.color = '#4ade80';
             }
         }
@@ -365,19 +390,63 @@ function renderAllocationModel(model) {
     if (!model) return;
     setFlowText('allocation-model-version', model.model_version || '--');
     setFlowText('allocation-model-hash', shortHash(model.model_hash));
-    setFlowText('allocation-model-risk-delta', `${model.expected_effect?.var_95_delta_pct ?? '--'}%`);
+    const riskDelta = model.expected_effect?.var_95_delta_pct ?? 0;
+    setFlowText('allocation-model-risk-delta', `${riskDelta}%`);
     setFlowText('allocation-model-stress-delta', `${model.expected_effect?.worst_scenario_delta_pct ?? '--'}%`);
     setFlowText('allocation-model-turnover', `${model.expected_effect?.turnover_pct ?? '--'}%`);
-    setFlowText('allocation-model-constraint', model.constraint_result?.status || '--');
+    const cStatus = model.constraint_result?.status || '--';
+    setFlowText('allocation-model-constraint', cStatus);
     renderAllocationReviewSchedule(model);
-    renderAllocationWeightRows(model);
-    renderAllocationTradeRows(model);
+    renderAllocationTradeTable(model);
     renderAllocationEvidenceRows(model);
-    const status = document.getElementById('allocation-model-status');
-    if (status) {
-        status.textContent = model.status || 'unknown';
-        status.classList.toggle('live', model.status === 'allow');
+
+    // ── Zone indicator ──
+    const mStatus = model.status || 'unknown';
+    const zone = document.getElementById('allocation-model-zone');
+    if (zone) {
+        let zt, zb, zc, za;
+        if (mStatus === 'allow') {
+            zt='● 允许调仓'; zb='rgba(34,197,94,0.12)'; zc='#22c55e'; za='风险预算充足，建议按信号执行权重调整';
+        } else if (mStatus === 'limited') {
+            zt='● 分批执行'; zb='rgba(251,191,36,0.12)'; zc='#fbbf24'; za='合规警告或风险接近上限，建议分步执行';
+        } else {
+            zt='● 观察不调'; zb='rgba(239,68,68,0.12)'; zc='#ef4444'; za='合规拦截或压力恶化，暂停调仓等待改善';
+        }
+        zone.innerHTML = `${zt} <span style="font-size:0.65rem;font-weight:400;color:${zc};margin-left:8px;">${za}</span>`;
+        zone.style.background=zb; zone.style.color=zc;
+        zone.style.fontWeight='700'; zone.style.fontSize='0.85rem';
+        zone.style.textTransform='uppercase'; zone.style.letterSpacing='1px';
+        zone.style.padding='6px 16px'; zone.style.borderRadius='6px';
+        zone.style.border=`1px solid ${zc}30`;
     }
+
+    // color constraint cell
+    const cs = document.getElementById('allocation-model-constraint');
+    if (cs) {
+        if (cStatus === 'pass') cs.className = 'risk-low';
+        else if (cStatus === 'block') cs.className = 'risk-high';
+        else cs.className = 'risk-medium';
+    }
+}
+
+function renderAllocationTradeTable(model) {
+    const el = document.getElementById('allocation-model-trades-table');
+    if (!el) return;
+    const trades = model.proposed_trades || [];
+    if (!trades.length) { el.innerHTML = '<div style="color:#64748b;font-size:0.75rem;padding:8px;">无建议调仓</div>'; return; }
+    el.innerHTML = `<table class="institutional-table"><thead><tr><th>标的</th><th>当前</th><th>目标</th><th>变化</th><th>信号</th></tr></thead><tbody>` +
+        trades.map(t => {
+            const isBuy = t.delta_weight > 0;
+            const color = isBuy ? '#22c55e' : '#ef4444';
+            const label = isBuy ? 'BUY' : 'SELL';
+            return `<tr>
+                <td>${t.symbol}</td>
+                <td>${(t.current_weight*100).toFixed(1)}%</td>
+                <td>${(t.target_weight*100).toFixed(1)}%</td>
+                <td style="color:${color};font-weight:600;">${isBuy?'+':''}${(t.delta_weight*100).toFixed(1)}%</td>
+                <td><span style="background:${color}20;color:${color};padding:1px 8px;border-radius:3px;font-size:0.65rem;font-weight:700;">${label}</span></td>
+            </tr>`;
+        }).join('') + '</tbody></table>';
 }
 
 async function initInstitutionalDecision() {
@@ -386,8 +455,7 @@ async function initInstitutionalDecision() {
     if (!panel) return;
 
     try {
-        const response = await fetch('/api/institutional/decision');
-        const data = await response.json();
+        const data = await fetchJsonWithRetry('/api/institutional/decision');
         const [auditResp, auditVerifyResp, summaryResp, queueResp, scoreResp] = await Promise.all([
             fetch('/api/institutional/audit/decisions?limit=10'),
             fetch('/api/institutional/audit/verify?limit=10'),
@@ -414,8 +482,37 @@ async function initInstitutionalDecision() {
         const latestScore = (scoreData.scores || [])[0] || {};
         const topQueueItem = (queueData.queue || [])[0] || {};
 
-        setFlowText('decision-score', `${ticket.score ?? '--'} / 100`);
-        setFlowText('decision-action', action.action || ticket.suggested_action || '--');
+        // ── Score Gauge ──
+        const score = ticket.score ?? 0;
+        const perc = score / 100;
+        const arc = document.getElementById('decision-gauge-arc');
+        if (arc) {
+            const len = 327 * Math.max(0.02, perc);
+            arc.setAttribute('stroke-dasharray', `${len} ${327 - len}`);
+            const gaugeColor = score >= 80 ? '#22c55e' : score >= 60 ? '#fbbf24' : score >= 40 ? '#f97316' : '#ef4444';
+            arc.setAttribute('stroke', gaugeColor);
+        }
+        const gtxt = document.getElementById('decision-gauge-text');
+        if (gtxt) { gtxt.textContent = score; gtxt.style.color = score >= 80 ? '#22c55e' : score >= 60 ? '#fbbf24' : '#ef4444'; }
+        document.getElementById('decision-gauge-label') && (document.getElementById('decision-gauge-label').style.color = '#64748b');
+
+        // ── Hero action + reason ──
+        const actionHero = document.getElementById('decision-action-hero');
+        if (actionHero) {
+            const actText = action.action || ticket.suggested_action || '';
+            const ticketStatus = ticket.decision_status || '';
+            if (ticketStatus === 'allow') actionHero.style.color = '#22c55e';
+            else if (ticketStatus === 'observe') actionHero.style.color = '#ef4444';
+            else actionHero.style.color = '#fbbf24';
+            actionHero.textContent = actText || '--';
+        }
+        const reasonHero = document.getElementById('decision-reason-hero');
+        if (reasonHero) {
+            const codes = explanation.reason_codes || [];
+            const driver = explanation.primary_driver?.code || '';
+            reasonHero.textContent = codes.length ? codes.map(c => c.code || c).join('  |  ') : (driver || '--');
+        }
+
         setFlowText('decision-var', `${risk.var_95_pct ?? '--'}%`);
         setFlowText('decision-worst', `${worst.portfolio_loss_pct ?? '--'}%`);
         setFlowText('decision-asset-exposure', formatTopExposure(portfolio.asset_class_exposure));
@@ -425,7 +522,21 @@ async function initInstitutionalDecision() {
         setFlowText('decision-concentration', portfolio.concentration_level || '--');
         setFlowText('decision-primary-driver', explanation.primary_driver?.code || '--');
         setFlowText('decision-execution-readiness', explanation.execution_readiness || '--');
-        setFlowText('decision-reason-codes', formatReasonCodes(explanation.reason_codes));
+        // color-code risk/status cells
+        ['decision-primary-driver', 'decision-concentration', 'decision-execution-readiness'].forEach(id => {
+            const el = document.getElementById(id); if (!el) return;
+            const v = el.textContent || '';
+            if (/high|block|observe|fail/i.test(v)) { el.className = 'risk-high'; }
+            else if (/medium|warn|limited|review/i.test(v)) { el.className = 'risk-medium'; }
+            else if (/low|pass|allow|executable/i.test(v)) { el.className = 'risk-low'; }
+        });
+        // color-code compliance, audit cells
+        ['decision-audit-integrity', 'decision-last-verdict'].forEach(id => {
+            const el = document.getElementById(id); if (!el) return;
+            const v = el.textContent || '';
+            if (/passed|effective|clean/i.test(v)) { el.className = 'risk-low'; }
+            else if (/failed|violation/i.test(v)) { el.className = 'risk-high'; }
+        });
         setFlowText('decision-policy-version', explanation.policy_version || ticket.policy_version || data.policy?.version || '--');
         setFlowText('decision-policy-hash', shortHash(explanation.policy_hash || ticket.policy_hash || data.policy?.policy_hash));
         setFlowText('decision-audit-count', String((auditData.decisions || []).length));
@@ -446,14 +557,91 @@ async function initInstitutionalDecision() {
         setFlowText('decision-review', `复盘计划: ${(ticket.review_schedule || []).join(' / ')}`);
         renderAllocationModel(data.allocation_model || data);
 
+        // ── Dashboard Guard Strip ──
+        const gComp = document.getElementById('guard-compliance');
+        const gFactor = document.getElementById('guard-factor');
+        const gTrack = document.getElementById('guard-tracking');
+        if (gComp) {
+            const cs = compliance.status || '--';
+            gComp.textContent = cs.toUpperCase();
+            gComp.style.color = cs === 'pass' ? '#22c55e' : cs === 'block' ? '#ef4444' : '#fbbf24';
+        }
+        if (gFactor) {
+            const tf = formatTopFactor(factor_risk);
+            gFactor.textContent = tf || '--';
+            gFactor.style.color = '#e2e8f0';
+        }
+        if (gTrack) {
+            const te = active_risk.tracking_error_proxy_pct || '--';
+            gTrack.textContent = te + '%';
+            gTrack.style.color = parseFloat(te) > 6 ? '#ef4444' : parseFloat(te) > 3 ? '#fbbf24' : '#22c55e';
+        }
+
         if (workbench) {
-            setFlowText('workbench-top-factor', formatTopFactor(factor_risk));
+            // ── Workbench risk zone ──
+            const wz = document.getElementById('workbench-risk-zone');
+            const compStatus = compliance.status || '--';
+            const trackingErr = parseFloat(active_risk.tracking_error_proxy_pct) || 0;
+            if (wz) {
+                let wzText, wzBg, wzColor, wzAction;
+                if (compStatus === 'block' || trackingErr > 8) {
+                    wzText = '● 高风险区'; wzBg = 'rgba(239,68,68,0.12)'; wzColor = '#ef4444';
+                    wzAction = '合规拦截或跟踪误差过高，暂停新增风险敞口';
+                } else if (compStatus === 'warn' || trackingErr > 4) {
+                    wzText = '● 关注区'; wzBg = 'rgba(251,191,36,0.12)'; wzColor = '#fbbf24';
+                    wzAction = '合规警告或主动风险偏高，建议小步调仓';
+                } else {
+                    wzText = '● 安全区'; wzBg = 'rgba(34,197,94,0.12)'; wzColor = '#22c55e';
+                    wzAction = '因子风险可控，合规通过，可执行目标调仓';
+                }
+                wz.innerHTML = `${wzText} <span style="font-size:0.65rem;font-weight:400;color:${wzColor};margin-left:8px;">${wzAction}</span>`;
+                wz.style.background = wzBg; wz.style.color = wzColor;
+                wz.style.fontWeight = '700'; wz.style.fontSize = '0.85rem';
+                wz.style.textTransform = 'uppercase'; wz.style.letterSpacing = '1px';
+                wz.style.padding = '6px 16px'; wz.style.borderRadius = '6px';
+                wz.style.border = `1px solid ${wzColor}30`;
+            }
+
+            const topFactor = formatTopFactor(factor_risk);
+            setFlowText('workbench-top-factor', topFactor);
+            if (factor_risk.top_factor?.exposure) {
+                setFlowText('workbench-top-exposure', `暴露度 ${(factor_risk.top_factor.exposure*100).toFixed(1)}%`);
+            }
             setFlowText('workbench-tracking-error', `${active_risk.tracking_error_proxy_pct ?? '--'}%`);
             setFlowText('workbench-largest-active', formatLargestActive(active_risk));
-            setFlowText('workbench-compliance-status', compliance.status || '--');
+            setFlowText('workbench-compliance-status', compStatus);
             setFlowText('workbench-compliance-issues', formatComplianceIssues(compliance));
             setFlowText('workbench-attribution', formatAttribution(attribution));
             setFlowText('workbench-evidence', formatEvidence(evidence_chain));
+
+            // compliance alert in workbench
+            const wca = document.getElementById('workbench-compliance-alert');
+            if (wca) {
+                const violations = compliance.violations || [];
+                const warnings = compliance.warnings || [];
+                if (violations.length || warnings.length) {
+                    wca.style.display = 'block';
+                    wca.style.background = violations.length ? 'rgba(239,68,68,0.08)' : 'rgba(251,191,36,0.06)';
+                    wca.style.border = `1px solid ${violations.length ? 'rgba(239,68,68,0.25)' : 'rgba(251,191,36,0.2)'}`;
+                    wca.style.margin = '8px 0';
+                    wca.style.padding = '8px 14px';
+                    wca.style.borderRadius = '6px';
+                    wca.style.fontSize = '0.72rem';
+                    const parts = [
+                        ...violations.map(v => `<span style="color:#ef4444;">▸ ${v}</span>`),
+                        ...warnings.map(w => `<span style="color:#fbbf24;">▸ ${w}</span>`)
+                    ];
+                    wca.innerHTML = parts.join('<br>');
+                }
+            }
+
+            // color compliance status cell
+            const csEl = document.getElementById('workbench-compliance-status');
+            if (csEl) {
+                if (compStatus === 'pass') csEl.className = 'risk-low';
+                else if (compStatus === 'block') csEl.className = 'risk-high';
+                else csEl.className = 'risk-medium';
+            }
         }
 
         const status = document.getElementById('decision-status');
@@ -503,32 +691,34 @@ async function initInstitutionalDecision() {
         if (compAlert) {
             const violations = compliance.violations || [];
             const warnings = compliance.warnings || [];
-            const compScore = compliance.score ?? 100;
+            const compScore = compliance.score ?? null;
             const gates = ticket.gates_failed || [];
             const allIssues = [
                 ...gates.map(g => ({text: g, level: 'danger'})),
                 ...violations.map(v => ({text: v, level: 'danger'})),
                 ...warnings.map(w => ({text: w, level: 'warning'}))
             ];
+
+            compAlert.style.display = 'block';  // always visible
+
             if (allIssues.length > 0) {
-                compAlert.style.display = 'block';
-                if (compStatus === 'block') {
-                    compAlert.style.background = 'rgba(239,68,68,0.08)';
-                    compAlert.style.border = '1px solid rgba(239,68,68,0.25)';
-                } else {
-                    compAlert.style.background = 'rgba(251,191,36,0.06)';
-                    compAlert.style.border = '1px solid rgba(251,191,36,0.2)';
-                }
-                compAlert.innerHTML = `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
-                    <span style="font-weight:700;color:${compStatus==='block'?'#ef4444':'#fbbf24'};">⚠ 合规门禁: ${compStatus.toUpperCase()}</span>
-                    <span style="color:#64748b;font-size:0.7rem;">评分 ${compScore}/100</span>
+                const isBlock = compStatus === 'block' || allIssues.some(i => i.level === 'danger' && i.text.includes('block'));
+                compAlert.style.background = isBlock ? 'rgba(239,68,68,0.08)' : 'rgba(251,191,36,0.06)';
+                compAlert.style.border = `1px solid ${isBlock ? 'rgba(239,68,68,0.25)' : 'rgba(251,191,36,0.2)'}`;
+                const scoreStr = compScore !== null ? `评分 ${compScore}/100` : '';
+                compAlert.innerHTML = `<div style="display:flex;align-items:center;gap:8px;margin-bottom:${allIssues.length>1?6:0}px;">
+                    <span style="font-weight:700;color:${isBlock?'#ef4444':'#fbbf24'};">⚠ 合规门禁: ${compStatus.toUpperCase()}</span>
+                    ${scoreStr ? `<span style="color:#64748b;font-size:0.7rem;">${scoreStr}</span>` : ''}
                 </div>` +
                 allIssues.map(i => `<div style="margin-left:8px;color:${i.level==='danger'?'#ef4444':'#fbbf24'};font-size:0.72rem;">▸ ${i.text}</div>`).join('');
-            } else if (compStatus === 'pass') {
-                compAlert.style.display = 'block';
+            } else if (compStatus === 'pass' || compStatus === 'unknown' || !compStatus || compStatus === '--') {
                 compAlert.style.background = 'rgba(34,197,94,0.04)';
                 compAlert.style.border = '1px solid rgba(34,197,94,0.15)';
                 compAlert.innerHTML = `<span style="color:#22c55e;font-size:0.72rem;">✓ 合规门禁通过 | 无风险超标</span>`;
+            } else {
+                compAlert.style.background = 'rgba(148,163,184,0.04)';
+                compAlert.style.border = '1px solid rgba(148,163,184,0.12)';
+                compAlert.innerHTML = `<span style="color:#94a3b8;font-size:0.72rem;">合规门禁: ${compStatus.toUpperCase()}</span>`;
             }
         }
     } catch (error) {
@@ -545,7 +735,7 @@ async function initInstitutionalDecision() {
 }
 
 function initPanel({url, indicatorId, insightId, onData, onError}) {
-    fetch(url).then(r=>r.json()).then(d=>{
+    fetchJsonWithRetry(url).then(d=>{
         if(d.error)throw new Error(d.error);
         onData(d);
     }).catch(e=>{
@@ -573,9 +763,8 @@ const chartTheme = {
 async function fetchMacroData(endpoint) {
     try {
         // Now using relative path since backend and frontend are on the same server
-        const response = await fetch(`/api/macro/${endpoint}`);
-        if (!response.ok) throw new Error('Network response was not ok');
-        return await response.json();
+        const data = await fetchJsonWithRetry(`/api/macro/${endpoint}`);
+        return data;
     } catch (error) {
         console.error('Failed to fetch data, falling back to cached view:', error);
         // Fallback robust data if backend is offline
@@ -739,8 +928,7 @@ function initSpreadChart() {
 
 async function initSignals() {
     try {
-        const resp = await fetch('/api/macro/signals');
-        const data = await resp.json();
+        const data = await fetchJsonWithRetry('/api/macro/signals');
         if (data.error) return;
 
         const containers = { tnx: 'tnx-insight', vix: 'vix-insight' };
@@ -765,8 +953,7 @@ async function initYieldCurve() {
     myChart.showLoading({ text: '拉取期限结构...', color: '#fbbf24', textColor: '#fff', maskColor: 'rgba(20, 20, 25, 0.8)' });
 
     try {
-        const resp = await fetch('/api/macro/yield_curve');
-        const data = await resp.json();
+        const data = await fetchJsonWithRetry('/api/macro/yield_curve');
         myChart.hideLoading();
 
         const ind = document.getElementById('yc-indicator');
@@ -835,8 +1022,7 @@ async function initAllocationChart() {
     myChart.showLoading({ text: '量化沙盘推演中...', color: '#4ade80', textColor: '#fff', maskColor: 'rgba(20, 20, 25, 0.8)' });
     
     try {
-        const response = await fetch('/api/macro/allocation');
-        const allocData = await response.json();
+        const allocData = await fetchJsonWithRetry('/api/macro/allocation');
         myChart.hideLoading();
 
         const ind = document.getElementById('alloc-indicator');
@@ -911,8 +1097,7 @@ async function initCorrelationChart() {
     myChart.showLoading({ text: '风险矩阵演算中...', color: '#ef4444', textColor: '#fff', maskColor: 'rgba(20, 20, 25, 0.8)' });
     
     try {
-        const response = await fetch('/api/macro/correlation');
-        const corrData = await response.json();
+        const corrData = await fetchJsonWithRetry('/api/macro/correlation');
         myChart.hideLoading();
 
         if (corrData.error) throw new Error(corrData.error);
@@ -1006,8 +1191,7 @@ async function initEfficientFrontier() {
     myChart.showLoading({ text: '优化计算中...', color: '#7000FF', textColor: '#fff', maskColor: 'rgba(20, 20, 25, 0.8)' });
 
     try {
-        const resp = await fetch('/api/macro/efficient_frontier');
-        const data = await resp.json();
+        const data = await fetchJsonWithRetry('/api/macro/efficient_frontier');
         myChart.hideLoading();
         if (data.error) throw new Error(data.error);
 
@@ -1067,8 +1251,7 @@ async function initScenarioTest() {
     if (!grid || !ind) return;
 
     try {
-        const resp = await fetch('/api/macro/scenario');
-        const data = await resp.json();
+        const data = await fetchJsonWithRetry('/api/macro/scenario');
 
         ind.innerText = '三情景穿透完成';
         ind.style.color = '#fbbf24';
@@ -1091,8 +1274,7 @@ async function initMonteCarloChart() {
     myChart.showLoading({ text: '千次平行宇宙演算中...', color: '#00F0FF', textColor: '#fff', maskColor: 'rgba(20, 20, 25, 0.8)' });
     
     try {
-        const response = await fetch('/api/macro/montecarlo');
-        const mcData = await response.json();
+        const mcData = await fetchJsonWithRetry('/api/macro/montecarlo');
         myChart.hideLoading();
 
         if (mcData.error) throw new Error(mcData.error);
@@ -1218,20 +1400,13 @@ async function initTreemapChart(config) {
     const panel = document.querySelector(`[data-rotation-panel="${domId}"]`);
     if (!chartDom || !panel) return;
 
-    const chart = echarts.init(chartDom, 'dark');
     let activePeriod = 'ret_20d';
     let items = [];
 
-    chart.showLoading({
-        text: '引擎演算中...',
-        color: '#2563eb',
-        textColor: '#cbd5e1',
-        maskColor: 'rgba(11,15,20,0.82)'
-    });
+    chartDom.innerHTML = '<div style="height:100%; display:flex; align-items:center; justify-content:center; color:#2563eb; font-family:var(--font-mono); font-size:0.9rem;">引擎演算中...</div>';
 
     try {
         const payload = await fetchJsonWithRetry(apiUrl, 3, 650);
-        chart.hideLoading();
         if (payload.error) throw new Error(payload.error);
 
         items = normalizeRotationItems(payload);
@@ -1241,23 +1416,21 @@ async function initTreemapChart(config) {
         const insight = document.getElementById(insightId);
         if (insight) insight.textContent = payload.insight || buildRotationInsight(items, activePeriod);
 
-        bindRotationControls(panel, chart, items, theme, activePeriod, nextPeriod => {
+        bindRotationControls(panel, chartDom, items, theme, activePeriod, nextPeriod => {
             activePeriod = nextPeriod;
-            renderRotationPanel(panel, chart, items, theme, activePeriod);
+            renderRotationPanel(panel, chartDom, items, theme, activePeriod);
         });
-        renderRotationPanel(panel, chart, items, theme, activePeriod);
-        window.addEventListener('resize', () => chart.resize());
+        renderRotationPanel(panel, chartDom, items, theme, activePeriod);
     } catch (e) {
-        chart.hideLoading();
         setRotationStatus(indicatorId, '加载失败', 'error');
         const insight = document.getElementById(insightId);
         if (insight) insight.textContent = `数据源异常：${e.message}`;
-        chartDom.innerHTML = '<div class="rotation-empty">数据暂不可用</div>';
+        chartDom.innerHTML = '<div class="rotation-empty" style="color:#ef4444; padding:12px; font-family:var(--font-mono);">[SYS_ERR] 引擎演算失败</div>';
         console.error(domId + ' failed:', e);
     }
 }
 
-async function fetchJsonWithRetry(url, attempts = 3, baseDelay = 500) {
+async function fetchJsonWithRetry(url, attempts = 25, delayMs = 1500) {
     let lastError;
     for (let attempt = 1; attempt <= attempts; attempt++) {
         try {
@@ -1265,11 +1438,17 @@ async function fetchJsonWithRetry(url, attempts = 3, baseDelay = 500) {
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}`);
             }
-            return await response.json();
+            const data = await response.json();
+            // Handle backend cold cache syncing state
+            if (data && data.status === "syncing") {
+                console.log(`[Syncing] ${url} is building cache (attempt ${attempt}/${attempts})...`);
+                throw new Error("Data syncing");
+            }
+            return data;
         } catch (error) {
             lastError = error;
             if (attempt < attempts) {
-                await sleep(baseDelay * attempt);
+                await sleep(delayMs);
             }
         }
     }
@@ -1303,7 +1482,7 @@ function bindRotationControls(panel, chart, items, theme, activePeriod, onPeriod
     });
 }
 
-function renderRotationPanel(panel, chart, items, theme, periodKey) {
+function renderRotationPanel(panel, chartDom, items, theme, periodKey) {
     const ranked = [...items].sort((a, b) => b[periodKey] - a[periodKey]);
     const top = ranked.slice(0, 5);
     const bottom = ranked.slice(-5).reverse();
@@ -1317,7 +1496,7 @@ function renderRotationPanel(panel, chart, items, theme, periodKey) {
     setPanelText(panel, 'laggard', bottom[0]?.name || '--');
     renderRankList(panel, 'top', top, periodKey);
     renderRankList(panel, 'bottom', bottom, periodKey);
-    renderTreemap(chart, items, theme, periodKey);
+    renderSparklineTable(chartDom, ranked, theme, periodKey);
 }
 
 function setPanelText(panel, suffix, value) {
@@ -1337,60 +1516,68 @@ function renderRankList(panel, suffix, rows, periodKey) {
     }).join('');
 }
 
-function renderTreemap(chart, items, theme, periodKey) {
-    const data = items.map(item => ({
-        ...item,
-        value: Math.max(Number(item.value) || Math.abs(item[periodKey]) || 1, 1),
-        itemStyle: { color: rotationColor(item[periodKey], theme) },
-    }));
+function renderSparklineTable(chartDom, items, theme, periodKey) {
+    const cols = ['ret_5d', 'ret_20d', 'ret_60d'];
+    const colLabels = ['5D', '20D', '60D'];
+    
+    // Calculate global max absolute return for proper cross-asset visual scaling within the panel
+    const globalMaxAbs = Math.max(...items.flatMap(a => cols.map(k => Math.abs(Number(a[k]||0)))), 0.01);
+    
+    const tableHtml = `<div style="overflow-y:auto; height:100%; border:1px solid rgba(255,255,255,0.08); border-radius:6px; background:rgba(0,0,0,0.2); box-shadow:inset 0 0 20px rgba(0,0,0,0.5);">
+        <table class="institutional-table" style="margin:0; width:100%;">
+            <thead style="position:sticky; top:0; z-index:10; background:rgba(15,23,42,0.95); backdrop-filter:blur(8px); border-bottom:1px solid rgba(255,255,255,0.1);">
+                <tr>
+                    <th style="padding:12px 16px; text-align:left;">ASSET / SECTOR</th>
+                    <th style="text-align:left;">MOMENTUM</th>
+                    <th style="text-align:center;">TREND PROFILE (5D → 60D)</th>
+                </tr>
+            </thead>
+            <tbody>` +
+        items.map(a => {
+            const dir = cols.filter(k=>(a[k]||0)>0).length;
+            const arrow = dir>=3 ? 'STRONG BUY' : dir>=2 ? 'BUY' : dir<=0 ? 'STRONG SELL' : 'SELL';
+            const arrowColor = dir>=2 ? '#10b981' : dir<=0 ? '#ef4444' : '#f59e0b';
+            const arrowBg = dir>=2 ? 'rgba(16,185,129,0.15)' : dir<=0 ? 'rgba(239,68,68,0.15)' : 'rgba(245,158,11,0.15)';
+            const rowBg = a[periodKey] < -5 ? 'rgba(239,68,68,0.04)' : a[periodKey] > 5 ? 'rgba(16,185,129,0.03)' : 'transparent';
+            
+            const sparklines = cols.map((k, idx) => {
+                const val = Number(a[k]||0);
+                const h = Math.round((Math.abs(val) / globalMaxAbs) * 20); 
+                const isPos = val >= 0;
+                const bg = isPos ? 'linear-gradient(0deg, rgba(16,185,129,0.2) 0%, rgba(16,185,129,0.8) 100%)' : 'linear-gradient(180deg, rgba(239,68,68,0.2) 0%, rgba(239,68,68,0.8) 100%)';
+                const sign = isPos ? '+' : '';
+                const valColor = isPos ? '#34d399' : '#f87171';
+                const isTarget = k === periodKey;
+                const borderHighlight = isTarget ? `border-bottom: 2px solid ${valColor};` : '';
+                
+                const barStyle = isPos 
+                    ? `bottom:50%; height:${Math.max(h, 2)}px; border-radius:2px 2px 0 0;` 
+                    : `top:50%; height:${Math.max(h, 2)}px; border-radius:0 0 2px 2px;`;
+                    
+                const labelStyle = isPos
+                    ? `bottom:calc(50% + ${Math.max(h, 2) + 2}px);`
+                    : `top:calc(50% + ${Math.max(h, 2) + 2}px);`;
+                
+                return `<div style="display:flex; flex-direction:column; align-items:center; height:60px; width:40px; position:relative; ${borderHighlight}">
+                    <div style="font-size:0.65rem; font-family:var(--font-mono); font-weight:${isTarget?'800':'600'}; color:${valColor}; position:absolute; ${labelStyle} text-shadow:0 0 6px ${valColor}40; line-height:1;">${sign}${val.toFixed(1)}</div>
+                    <div style="position:absolute; width:12px; height:1px; background:rgba(255,255,255,0.15); top:50%; z-index:1;"></div>
+                    <div style="position:absolute; width:8px; ${barStyle} background:${bg}; box-shadow:0 0 4px ${isPos?'rgba(16,185,129,0.4)':'rgba(239,68,68,0.4)'}; z-index:2;"></div>
+                    <div style="font-size:0.6rem; color:${isTarget?'#e2e8f0':'var(--text-tertiary)'}; position:absolute; bottom:0; font-weight:${isTarget?'800':'600'}; line-height:1;">${colLabels[idx]}</div>
+                </div>`;
+            }).join('');
 
-    chart.setOption({
-        backgroundColor: 'transparent',
-        tooltip: {
-            trigger: 'item',
-            backgroundColor: 'rgba(15, 23, 42, 0.96)',
-            borderColor: 'rgba(148, 163, 184, 0.22)',
-            borderWidth: 1,
-            textStyle: { color: '#e5e7eb', fontFamily: 'Inter, sans-serif' },
-            extraCssText: 'box-shadow:0 12px 30px rgba(0,0,0,.35);border-radius:6px;',
-            formatter: p => {
-                const d = p.data;
-                return `<div class="chart-tooltip-title">${d.name}</div>
-                    <div>5D <b>${formatPct(d.ret_5d)}</b></div>
-                    <div>20D <b>${formatPct(d.ret_20d)}</b></div>
-                    <div>60D <b>${formatPct(d.ret_60d)}</b></div>`;
-            }
-        },
-        series: [{
-            type: 'treemap',
-            roam: false,
-            nodeClick: false,
-            breadcrumb: { show: false },
-            left: 0,
-            right: 0,
-            top: 0,
-            bottom: 0,
-            itemStyle: {
-                borderColor: '#111827',
-                borderWidth: 1,
-                gapWidth: 1,
-            },
-            upperLabel: { show: false },
-            label: {
-                show: true,
-                color: '#f8fafc',
-                fontSize: 11,
-                lineHeight: 15,
-                overflow: 'truncate',
-                formatter: p => `${p.name}\n${formatPct(p.data[periodKey])}`,
-            },
-            emphasis: {
-                itemStyle: { borderColor: '#e5e7eb', borderWidth: 1 },
-                label: { color: '#ffffff' },
-            },
-            data,
-        }]
-    }, true);
+            return `<tr style="background:${rowBg}; border-bottom:1px solid rgba(255,255,255,0.03);">
+                <td style="padding-left:16px; font-weight:700; color:var(--text-primary); font-size:0.85rem; letter-spacing:0.5px;">${a.name}</td>
+                <td style="text-align:left;"><span style="background:${arrowBg}; color:${arrowColor}; border: 1px solid ${arrowColor}60; padding:4px 8px; border-radius:4px; font-size:0.65rem; font-weight:800; letter-spacing:1px; box-shadow: 0 0 10px ${arrowBg};">${arrow}</span></td>
+                <td style="padding-right:16px;">
+                    <div style="display:flex; gap:16px; justify-content:center; align-items:flex-end; height:50px; margin-top:14px; margin-bottom:4px;">
+                        ${sparklines}
+                    </div>
+                </td>
+            </tr>`;
+        }).join('') + `</tbody></table></div>`;
+        
+    chartDom.innerHTML = tableHtml;
 }
 
 function rotationColor(value, theme) {
@@ -1432,8 +1619,7 @@ async function initChinaMacro() {
     const gd = document.getElementById('china-macro-grid');
     if (!gd) return;
     try {
-        const r = await fetch('/api/macro/china_macro');
-        const d = await r.json();
+        const d = await fetchJsonWithRetry('/api/macro/china_macro');
         const labels={cpi:'CPI 同比(%)',pmi:'PMI 制造业',m2:'M2 同比(%)',gdp:'GDP 增速(%)'};
         gd.innerHTML = Object.entries(labels).map(([k,lb]) => {
             const v = d[k];
@@ -1463,8 +1649,7 @@ async function initMarketBreadth() {
     if (!cd) return;
     const mc = echarts.init(cd, 'dark');
     try {
-        const r = await fetch('/api/macro/market_breadth');
-        const d = await r.json();
+        const d = await fetchJsonWithRetry('/api/macro/market_breadth');
         const flow = d.flow || d.ad_ratio || [];
         const cumulative = d.cumulative || d.ad_line || [];
         const today = d.today || {};
@@ -1531,7 +1716,7 @@ async function initFedProb() {
     const cd=document.getElementById('fed-chart'); if(!cd)return;
     const mc=echarts.init(cd,'dark');
     try{
-        const r=await fetch('/api/macro/fed_prob'); const d=await r.json();
+        const d=await fetchJsonWithRetry('/api/macro/fed_prob');
         document.getElementById('fed-indicator').innerText=d.signal;
         document.getElementById('fed-insight').innerText=d.insight;
         mc.setOption({
@@ -1552,33 +1737,129 @@ async function initFedProb() {
 async function initGlobalAssets() {
     const el=document.getElementById('global-assets-table'); if(!el)return;
     try{
-        const r=await fetch('/api/macro/global_assets'); const d=await r.json();
-        document.getElementById('ga-indicator').innerText='已更新 '+d.updated;
-        const cats=[...new Set(d.assets.map(a=>a.cat))];
+        // Global assets takes ~21s to warm cache due to 14 sequential API calls (1.5s rate limit each)
+        const d=await fetchJsonWithRetry('/api/macro/global_assets', 20, 1500);
+
+        // ── Backend composite sentiment ──
+        const sig = d.composite || {};
+        document.getElementById('ga-indicator').innerHTML =
+            `已更新 ${d.updated} <span style="display:inline-flex;align-items:center;gap:4px;margin-left:8px;padding:2px 10px;background:${sig.color||'#64748b'}20;border:1px solid ${sig.color||'#64748b'}30;border-radius:4px;font-size:0.7rem;font-weight:600;color:${sig.color||'#64748b'};box-shadow: 0 0 8px ${sig.color||'#64748b'}40;">${sig.zone||'--'} ${sig.pct_up||0}%↑</span>`;
+
+        if (!d.assets || !d.assets.length) { el.innerHTML='<div style="color:#64748b;padding:12px;">暂无数据</div>'; return; }
         const cols=['daily','weekly','monthly','quarterly','ytd'];
-        const headers=['资产','类别','日涨跌','周涨跌','月涨跌','季涨跌','YTD'];
-        el.innerHTML=`<table style="width:100%;border-collapse:collapse;"><thead><tr style="border-bottom:1px solid rgba(255,255,255,0.08);color:#64748b;font-size:0.7rem;">${headers.map(h=>`<th style="padding:6px 10px;text-align:right;">${h}</th>`).join('')}</tr></thead><tbody>`+
-            d.assets.map(a=>`<tr style="border-bottom:1px solid rgba(255,255,255,0.03);">
-                <td style="padding:6px 10px;text-align:left;color:#e2e8f0;font-weight:500;">${a.name}</td>
-                <td style="padding:6px 10px;text-align:right;color:#64748b;font-size:0.7rem;">${a.cat}</td>
-                ${cols.map(k=>`<td style="padding:6px 10px;text-align:right;font-family:var(--font-mono);font-weight:600;color:${a[k]>=0?'#4ade80':'#ef4444'};">${a[k]>0?'+':''}${a[k]}%</td>`).join('')}
-            </tr>`).join('')+'</tbody></table>';
-    }catch(e){console.error('Global assets:',e);}
+        const colLabels=['1D','1W','1M','1Q','YTD'];
+        
+        // Calculate global max absolute return for proper cross-asset visual scaling
+        const globalMaxAbs = Math.max(...d.assets.flatMap(a => cols.map(k => Math.abs(Number(a[k]||0)))), 0.01);
+
+        const tableHtml = `<div style="overflow-y:auto; height:100%; max-height: 480px; border:1px solid rgba(255,255,255,0.08); border-radius:6px; background:rgba(0,0,0,0.2); box-shadow:inset 0 0 20px rgba(0,0,0,0.5);">
+            <table class="institutional-table" style="margin:0; width:100%;">
+                <thead style="position:sticky; top:0; z-index:10; background:rgba(15,23,42,0.95); backdrop-filter:blur(8px); border-bottom:1px solid rgba(255,255,255,0.1);">
+                    <tr>
+                        <th style="padding:12px 16px; text-align:left;">ASSET</th>
+                        <th style="text-align:left;">CLASS</th>
+                        <th style="text-align:left;">MOMENTUM</th>
+                        <th style="text-align:center;">TREND PROFILE (1D → YTD)</th>
+                    </tr>
+                </thead>
+                <tbody>` +
+            d.assets.map(a=>{
+                const dir = cols.filter(k=>(a[k]||0)>0).length;
+                const arrow = dir>=4 ? 'STRONG BUY' : dir>=3 ? 'BUY' : dir<=1 ? 'STRONG SELL' : 'SELL';
+                const arrowColor = dir>=3 ? '#10b981' : dir<=1 ? '#ef4444' : '#f59e0b';
+                const arrowBg = dir>=3 ? 'rgba(16,185,129,0.15)' : dir<=1 ? 'rgba(239,68,68,0.15)' : 'rgba(245,158,11,0.15)';
+                const rowBg = (a.quarterly||0) < -5 ? 'rgba(239,68,68,0.04)' : (a.quarterly||0) > 5 ? 'rgba(16,185,129,0.03)' : 'transparent';
+                
+                // CSS Micro Bar Chart Generation
+                const sparklines = cols.map((k, idx) => {
+                    const val = Number(a[k]||0);
+                    const h = Math.round((Math.abs(val) / globalMaxAbs) * 20); // Max height 20px per half
+                    const isPos = val >= 0;
+                    const bg = isPos ? 'linear-gradient(0deg, rgba(16,185,129,0.2) 0%, rgba(16,185,129,0.8) 100%)' : 'linear-gradient(180deg, rgba(239,68,68,0.2) 0%, rgba(239,68,68,0.8) 100%)';
+                    const sign = isPos ? '+' : '';
+                    const valColor = isPos ? '#34d399' : '#f87171';
+                    
+                    const barStyle = isPos 
+                        ? `bottom:50%; height:${Math.max(h, 2)}px; border-radius:2px 2px 0 0;` 
+                        : `top:50%; height:${Math.max(h, 2)}px; border-radius:0 0 2px 2px;`;
+                        
+                    const labelStyle = isPos
+                        ? `bottom:calc(50% + ${Math.max(h, 2) + 2}px);`
+                        : `top:calc(50% + ${Math.max(h, 2) + 2}px);`;
+                    
+                    return `<div style="display:flex; flex-direction:column; align-items:center; height:60px; width:40px; position:relative;">
+                        <div style="font-size:0.65rem; font-family:var(--font-mono); font-weight:600; color:${valColor}; position:absolute; ${labelStyle} text-shadow:0 0 6px ${valColor}40; line-height:1;">${sign}${val.toFixed(1)}</div>
+                        <div style="position:absolute; width:12px; height:1px; background:rgba(255,255,255,0.15); top:50%; z-index:1;"></div>
+                        <div style="position:absolute; width:8px; ${barStyle} background:${bg}; box-shadow:0 0 4px ${isPos?'rgba(16,185,129,0.4)':'rgba(239,68,68,0.4)'}; z-index:2;"></div>
+                        <div style="font-size:0.6rem; color:var(--text-tertiary); position:absolute; bottom:0; font-weight:600; line-height:1;">${colLabels[idx]}</div>
+                    </div>`;
+                }).join('');
+
+                const score = Number(a.score || 0);
+                const rsRating = Number(a.rs_rating || 0);
+                
+                const rsColor = rsRating >= 70 ? '#10b981' : rsRating >= 30 ? '#f59e0b' : '#ef4444';
+                const rsBg = rsRating >= 70 ? 'rgba(16,185,129,0.15)' : rsRating >= 30 ? 'rgba(245,158,11,0.15)' : 'rgba(239,68,68,0.15)';
+                
+                const rsPill = `<span style="background:${rsBg}; color:${rsColor}; padding:3px 6px; border-radius:4px; font-family:var(--font-mono); font-size:0.65rem; font-weight:800; border:1px solid ${rsColor}40; box-shadow:0 0 6px ${rsBg}; letter-spacing:0.5px;" title="Momentum Factor: ${score.toFixed(2)}">RS ${rsRating}</span>`;
+                
+                return `<tr style="background:${rowBg}; border-bottom:1px solid rgba(255,255,255,0.03);">
+                    <td style="padding-left:16px; font-weight:700; color:var(--text-primary); font-size:0.85rem; letter-spacing:0.5px;">${a.name}</td>
+                    <td style="text-align:left;"><span style="background:rgba(255,255,255,0.05); padding:3px 6px; border-radius:4px; font-size:0.7rem; color:var(--text-secondary); border:1px solid rgba(255,255,255,0.08);">${a.cat}</span></td>
+                    <td style="text-align:left;">
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <span style="background:${arrowBg}; color:${arrowColor}; border: 1px solid ${arrowColor}60; padding:4px 8px; border-radius:4px; font-size:0.65rem; font-weight:800; letter-spacing:1px; box-shadow: 0 0 10px ${arrowBg}; width:80px; text-align:center;">${arrow}</span>
+                            ${rsPill}
+                        </div>
+                    </td>
+                    <td style="padding-right:16px;">
+                        <div style="display:flex; gap:16px; justify-content:center; align-items:flex-end; height:50px; margin-top:14px; margin-bottom:4px;">
+                            ${sparklines}
+                        </div>
+                    </td>
+                </tr>`;
+            }).join('') + `</tbody></table></div>`;
+            
+        el.innerHTML = tableHtml;
+    }catch(e){console.error('Global assets:',e); el.innerHTML='<div style="color:#ef4444;padding:12px;font-family:var(--font-mono);">[SYS_ERR] 数据流断开或触发断路器保护</div>';}
 }
 
 async function initValuation() {
     const gd=document.getElementById('valuation-grid'); if(!gd)return;
     try{
-        const r=await fetch('/api/macro/valuation'); const d=await r.json();
+        const d=await fetchJsonWithRetry('/api/macro/valuation');
         document.getElementById('val-indicator').innerText='已更新 '+d.updated;
-        document.getElementById('val-insight').innerText=d.insight;
-        gd.innerHTML=d.indices.map(i=>{
+
+        // ── Composite Zone Indicator ──
+        const items = d.indices || [];
+        const extreme = items.filter(i => (i.pe_pct||i.price_pct||0) > 95).length;
+        const high = items.filter(i => (i.pe_pct||i.price_pct||0) > 70).length;
+        const total = items.length;
+        let zt, zb, zc, za;
+        if (extreme >= 2 || (high/total) > 0.6) {
+            zt='● 整体高估'; zb='rgba(239,68,68,0.12)'; zc='#ef4444';
+            za=`${high}/${total} 标的在 70% 分位以上${extreme>0?'，'+extreme+'个极端泡沫':''}`;
+        } else if (high/total > 0.3) {
+            zt='● 估值偏高'; zb='rgba(249,115,22,0.12)'; zc='#f97316';
+            za=`${high}/${total} 标的在 70% 分位以上`;
+        } else {
+            zt='● 估值合理'; zb='rgba(34,197,94,0.12)'; zc='#22c55e';
+            za=`仅 ${high}/${total} 标的在 70% 分位以上`;
+        }
+        document.getElementById('val-insight').innerHTML =
+            `${d.insight}<br><span style="display:inline-flex;align-items:center;gap:6px;margin-top:4px;padding:4px 12px;background:${zb};border:1px solid ${zc}30;border-radius:4px;font-size:0.72rem;font-weight:600;color:${zc};">${zt} ${za}</span>`;
+
+        gd.innerHTML=items.map(i=>{
+            const isExtreme = (i.pe_pct||i.price_pct||0) > 95;
+            const extremeBorder = isExtreme ? 'border-color:rgba(239,68,68,0.4)!important;box-shadow:0 0 12px rgba(239,68,68,0.15);' : '';
             if (i.metric_type === 'price') {
                 const pct = Number(i.price_pct || 0);
                 const barW = Math.max(2, pct);
-                return `<div style="background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.05);border-radius:8px;padding:16px;">
+                const isExt2 = pct > 95;
+                const extStyle = isExt2 ? 'border-color:rgba(239,68,68,0.4)!important;box-shadow:0 0 12px rgba(239,68,68,0.15);animation:alertPulse 3s infinite;' : '';
+                return `<div style="background:rgba(255,255,255,0.02);${extStyle}border:1px solid rgba(255,255,255,0.05);border-radius:8px;padding:16px;">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:8px;">
-                        <div style="font-weight:bold;color:#e2e8f0;font-size:0.95rem;">${i.name}</div>
+                        <div style="font-weight:bold;color:#e2e8f0;font-size:0.95rem;">${i.name}${isExt2?' <span style="color:#ef4444;font-size:0.6rem;">⚠极端</span>':''}</div>
                         <div style="font-size:0.65rem;color:#64748b;font-family:var(--font-mono);border:1px solid rgba(255,255,255,0.08);border-radius:4px;padding:2px 6px;">${i.category || 'ETF'}</div>
                     </div>
                     <div style="display:flex;justify-content:space-between;font-size:0.75rem;color:#94a3b8;margin-bottom:4px;"><span>价格 ${i.price_current}</span><span>分位 ${pct}% ${i.price_signal}</span></div>
@@ -1589,9 +1870,11 @@ async function initValuation() {
                 </div>`;
             }
             const pct=i.pe_pct; const barW=Math.max(2,pct);
-            return `<div style="background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.05);border-radius:8px;padding:16px;">
+            const isExt3 = pct > 95;
+            const extStyle3 = isExt3 ? 'border-color:rgba(239,68,68,0.4)!important;box-shadow:0 0 12px rgba(239,68,68,0.15);animation:alertPulse 3s infinite;' : '';
+            return `<div style="background:rgba(255,255,255,0.02);${extStyle3}border:1px solid rgba(255,255,255,0.05);border-radius:8px;padding:16px;">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:8px;">
-                    <div style="font-weight:bold;color:#e2e8f0;font-size:0.95rem;">${i.name}</div>
+                    <div style="font-weight:bold;color:#e2e8f0;font-size:0.95rem;">${i.name}${isExt3?' <span style="color:#ef4444;font-size:0.6rem;">⚠极端</span>':''}</div>
                     <div style="font-size:0.65rem;color:#64748b;font-family:var(--font-mono);border:1px solid rgba(255,255,255,0.08);border-radius:4px;padding:2px 6px;">${i.category || 'INDEX'}</div>
                 </div>
                 <div style="display:flex;justify-content:space-between;font-size:0.75rem;color:#94a3b8;margin-bottom:4px;"><span>PE ${i.pe_current}</span><span>分位 ${pct}% ${i.pe_signal}</span></div>
@@ -1607,14 +1890,205 @@ async function initValuation() {
     }catch(e){console.error('Valuation:',e);}
 }
 
+async function initAlertCenter() {
+    const el = document.getElementById('alert-rules-list');
+    if (!el) return;
+    const ind = document.getElementById('ac-indicator');
+    try {
+        const d = await fetchJsonWithRetry('/api/alerts/rules');
+        const rules = d.rules || [];
+        const triggered = rules.filter(r => r.last_triggered > Date.now()/1000 - 3600).length;
+        if (ind) ind.innerText = triggered ? `⚠ ${triggered} triggered` : '监控中';
+        el.innerHTML = rules.map(r => {
+            const opLabel = {gt: '>', lt: '<', gte: '≥', lte: '≤'}[r.operator] || r.operator;
+            return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid rgba(255,255,255,0.04);font-size:0.78rem;">
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <span style="color:${r.enabled?'#22c55e':'#64748b'};font-size:0.65rem;">${r.enabled?'●':'○'}</span>
+                    <span style="color:#e2e8f0;">${r.name}</span>
+                    <span style="color:#64748b;font-family:var(--font-mono);font-size:0.68rem;">${opLabel} ${r.threshold}</span>
+                    ${r.push_wx ? '<span style="color:#7000FF;font-size:0.6rem;">📱微信</span>' : ''}
+                </div>
+                <span style="color:${r.last_triggered>Date.now()/1000-3600?'#ef4444':'#64748b'};font-size:0.65rem;">${r.last_triggered>Date.now()/1000-3600?'最近触发':'待命中'}</span>
+            </div>`;
+        }).join('');
+    } catch (e) {
+        console.error('Alert center:', e);
+    }
+}
+
+async function initSurpriseIndex() {
+    const cd = document.getElementById('surprise-chart');
+    if (!cd) return;
+    const mc = echarts.init(cd, 'dark');
+    try {
+        const d = await fetchJsonWithRetry('/api/macro/surprise_index');
+        document.getElementById('si-indicator').innerText = d.signal || '--';
+        document.getElementById('si-insight').innerText = d.insight || '--';
+        mc.setOption({
+            backgroundColor: 'transparent',
+            tooltip: { trigger: 'axis' },
+            grid: { left: '3%', right: '4%', top: '5%', bottom: '3%', containLabel: true },
+            xAxis: { type: 'category', data: d.dates, axisLabel: { color: '#94a3b8' } },
+            yAxis: { type: 'value', splitLine: { lineStyle: { color: 'rgba(255,255,255,0.05)' } }, axisLabel: { color: '#94a3b8' } },
+            series: [{
+                name: '累计意外指数', type: 'line', data: d.values, smooth: true, symbol: 'none',
+                lineStyle: { width: 2, color: d.color || '#fbbf24' },
+                areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                    { offset: 0, color: (d.color || '#fbbf24') + '40' }, { offset: 1, color: 'rgba(0,0,0,0)' }
+                ]) },
+                markLine: { silent: true, data: [{ yAxis: 0 }], lineStyle: { color: '#64748b', type: 'dashed' } }
+            }]
+        });
+        window.addEventListener('resize', () => mc.resize());
+    } catch (e) { console.error('Surprise index:', e); }
+}
+
+async function initPortfolio() {
+    try {
+        const d = await fetchJsonWithRetry('/api/portfolio/summary');
+        if (!d.holdings || !d.holdings.length) return;
+        document.getElementById('portfolio-card').style.display = 'block';
+        document.getElementById('pf-total').textContent = `总市值 ¥${d.total_value.toLocaleString()} | 成本 ¥${d.total_cost.toLocaleString()}`;
+        const pnlEl = document.getElementById('pf-pnl');
+        pnlEl.textContent = `${d.total_pnl >= 0 ? '+' : ''}¥${d.total_pnl.toLocaleString()} (${d.total_pnl_pct > 0 ? '+' : ''}${d.total_pnl_pct}%)`;
+        pnlEl.style.color = d.total_pnl >= 0 ? '#22c55e' : '#ef4444';
+        document.getElementById('portfolio-table').innerHTML = `<table class="institutional-table"><thead><tr><th>标的</th><th>持仓</th><th>成本</th><th>现价</th><th>市值</th><th>盈亏</th></tr></thead><tbody>` +
+            d.holdings.map(h => `<tr><td>${h.name||h.symbol}</td><td>${h.qty}</td><td>${h.cost}</td><td>${h.current}</td><td>${h.market_value.toLocaleString()}</td><td style="color:${h.pnl_pct>=0?'#22c55e':'#ef4444'};font-weight:600;">${h.pnl_pct>0?'+':''}${h.pnl_pct}%</td></tr>`).join('') + '</tbody></table>';
+    } catch (e) { console.error('Portfolio:', e); }
+}
+
+async function initMarginMonitor() {
+    const cd = document.getElementById('margin-chart');
+    if (!cd) return;
+    const mc = echarts.init(cd, 'dark');
+    try {
+        const d = await fetchJsonWithRetry('/api/macro/margin');
+        const mgInd = document.getElementById('mg-indicator');
+        if (mgInd) {
+            mgInd.innerHTML = `${d.trend || '--'} <span style="margin-left:8px;padding:2px 8px;background:${d.zone_color}20;border-radius:3px;color:${d.zone_color};font-size:0.65rem;font-weight:700;box-shadow: 0 0 8px ${d.zone_color}40;">${d.zone||''}</span>`;
+        }
+        
+        // Highlight numerical insights
+        document.getElementById('mg-insight').innerHTML = 
+            `两融余额 <span style="color:var(--text-primary);font-family:var(--font-mono);font-weight:700;">${d.total}亿</span> · ` +
+            `融资 <span style="color:#f97316;font-family:var(--font-mono);font-weight:700;">${d.current_rz}亿</span> · ` +
+            `融券 <span style="color:#ef4444;font-family:var(--font-mono);font-weight:700;">${d.current_rq}亿</span> · ` +
+            `券资比 <span style="color:var(--text-secondary);font-family:var(--font-mono);">${d.ratio}%</span>`;
+            
+        mc.setOption({
+            backgroundColor: 'transparent',
+            tooltip: { trigger: 'axis', axisPointer: { type: 'cross', label: { backgroundColor: '#1e293b' } } },
+            legend: { data: ['融资余额(亿)', '融券余额(亿)'], textStyle: { color: '#94a3b8' }, top: 0, right: 0 },
+            grid: { left: '2%', right: '2%', top: '15%', bottom: '3%', containLabel: true },
+            xAxis: { 
+                type: 'category', data: d.dates, 
+                axisLabel: { color: '#64748b', fontSize: 10 },
+                axisLine: { lineStyle: { color: 'rgba(255,255,255,0.1)' } }
+            },
+            yAxis: [
+                { 
+                    type: 'value', name: '融资(亿)', nameTextStyle: { color: '#64748b', fontSize: 10 },
+                    splitLine: { lineStyle: { color: 'rgba(255,255,255,0.03)', type: 'dashed' } },
+                    axisLabel: { color: '#94a3b8', fontSize: 10 },
+                    scale: true
+                },
+                { 
+                    type: 'value', name: '融券(亿)', nameTextStyle: { color: '#64748b', fontSize: 10 },
+                    splitLine: { show: false },
+                    axisLabel: { color: '#94a3b8', fontSize: 10 },
+                    scale: true
+                }
+            ],
+            series: [
+                { 
+                    name: '融资余额(亿)', type: 'line', yAxisIndex: 0,
+                    data: d.rz_balance, symbol: 'none', smooth: true,
+                    lineStyle: { color: '#f97316', width: 2 },
+                    areaStyle: { 
+                        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{offset: 0, color: 'rgba(249,115,22,0.3)'},{offset: 1, color: 'rgba(0,0,0,0)'}])
+                    }
+                },
+                { 
+                    name: '融券余额(亿)', type: 'bar', yAxisIndex: 1,
+                    data: d.rq_balance, itemStyle: { color: '#ef4444', borderRadius: [2,2,0,0] },
+                    barWidth: '35%'
+                }
+            ]
+        });
+        window.addEventListener('resize', () => mc.resize());
+    } catch (e) { console.error('Margin:', e); }
+}
+
+async function initDividendLeaders() {
+    const el = document.getElementById('dividend-table');
+    if (!el) return;
+    try {
+        const d = await fetchJsonWithRetry('/api/macro/dividend');
+        document.getElementById('dv-indicator').innerText = d.updated || '--';
+        document.getElementById('dv-insight').innerText = d.insight || '--';
+        
+        const tableHtml = `<div style="overflow-y:auto; height:100%; border:1px solid rgba(255,255,255,0.05); border-radius:4px; margin-top:8px;">
+            <table class="institutional-table" style="margin:0;">
+                <thead style="position:sticky; top:0; z-index:1;">
+                    <tr><th style="padding-left:16px;">ASSET</th><th>YIELD</th><th>PE</th><th>PB</th><th>MKT CAP(亿)</th></tr>
+                </thead>
+                <tbody>` +
+            (d.stocks||[]).map(s => {
+                const codeParts = (s.code || '').split('.');
+                const formattedCode = codeParts.length === 2 
+                    ? `<span style="font-family:var(--font-mono);color:var(--text-secondary);font-size:0.7rem;letter-spacing:0.5px;">${codeParts[0]}</span><span style="color:var(--text-tertiary);font-size:0.6rem;margin-left:4px;padding:1px 3px;background:rgba(255,255,255,0.05);border-radius:2px;">${codeParts[1]}</span>`
+                    : `<span style="font-family:var(--font-mono);color:var(--text-secondary);font-size:0.7rem;">${s.code}</span>`;
+                
+                const assetName = s.name || '--';
+                const assetCell = `<div style="display:flex; flex-direction:column; gap:2px; justify-content:center; min-height: 36px;">
+                    <span style="color:var(--text-primary);font-weight:700;font-size:0.85rem;letter-spacing:0.5px;">${assetName}</span>
+                    <div>${formattedCode}</div>
+                </div>`;
+
+                const yieldPct = Math.min((Number(s.div_yield) / 12) * 100, 100);
+                const barColor = s.div_yield >= 8 ? 'rgba(16,185,129,0.2)' : 'rgba(52,211,153,0.1)';
+                const textColor = s.div_yield >= 8 ? '#10b981' : '#34d399';
+                const yieldStyle = s.div_yield >= 8 
+                    ? `color:${textColor};font-weight:800;text-shadow:0 0 10px rgba(16,185,129,0.4);` 
+                    : `color:${textColor};font-weight:600;`;
+                    
+                const yieldCell = `<div style="position:relative; width:100%; display:flex; align-items:center; min-height: 24px;">
+                    <div style="position:absolute; left:0; top:2px; bottom:2px; width:${yieldPct}%; background:${barColor}; border-radius:2px; z-index:0;"></div>
+                    <span style="position:relative; z-index:1; padding-left:4px; ${yieldStyle} font-family:var(--font-mono);">${Number(s.div_yield).toFixed(2)}%</span>
+                </div>`;
+                    
+                const peVal = Number(s.pe);
+                const peStyle = peVal < 10 
+                    ? `<span style="color:#60a5fa;background:rgba(96,165,250,0.1);padding:2px 6px;border-radius:4px;font-weight:600;">${peVal.toFixed(1)}</span>`
+                    : `<span style="color:var(--text-secondary);">${peVal.toFixed(1)}</span>`;
+                    
+                const pbVal = Number(s.pb);
+                const pbStyle = pbVal < 1.0
+                    ? `<span style="color:#c084fc;background:rgba(192,132,252,0.1);padding:2px 6px;border-radius:4px;font-weight:600;">${pbVal.toFixed(2)}</span>`
+                    : `<span style="color:var(--text-secondary);">${pbVal.toFixed(2)}</span>`;
+                
+                const mvStr = Number(s.mv).toLocaleString('en-US', {minimumFractionDigits: 1, maximumFractionDigits: 1});
+
+                return `<tr style="transition:background 0.2s; cursor:pointer;" onmouseover="this.style.background='rgba(255,255,255,0.02)'" onmouseout="this.style.background='transparent'">
+                    <td style="padding-left:16px;">${assetCell}</td>
+                    <td style="padding:4px;">${yieldCell}</td>
+                    <td style="font-family:var(--font-mono);">${peStyle}</td>
+                    <td style="font-family:var(--font-mono);">${pbStyle}</td>
+                    <td style="font-family:var(--font-mono);color:var(--text-primary);font-weight:600;">${mvStr}</td>
+                </tr>`;
+            }).join('') + `</tbody></table></div>`;
+            
+        el.innerHTML = tableHtml;
+    } catch (e) { console.error('Dividend:', e); }
+}
+
 async function initGenAI() {
     const tw = document.getElementById('ai-text');
     const ind = document.getElementById('ai-indicator');
     if (!tw || !ind) return;
 
     try {
-        const response = await fetch('/api/macro/ai_insight');
-        const data = await response.json();
+        const data = await fetchJsonWithRetry('/api/macro/ai_insight');
         
         ind.innerText = "DeepSeek 官方智算中心推演完成";
         ind.style.color = "#7000FF";
@@ -1668,8 +2142,7 @@ async function initBacktest() {
     let myChart = echarts.init(chartDom);
     
     try {
-        const response = await fetch('/api/macro/backtest');
-        const data = await response.json();
+        const data = await fetchJsonWithRetry('/api/macro/backtest');
         
         if (data.error) throw new Error(data.error);
         
@@ -1814,5 +2287,38 @@ async function initBacktest() {
         ind.innerText = "时序数据拉取失败";
         ind.style.color = "#ef4444";
         chartDom.innerHTML = "<div style='color:#ef4444; padding:20px;'>本地时序数据库连接失败。</div>";
+    }
+}
+
+
+// --- Terminal UI Controls ---
+function switchView(viewId) {
+    document.querySelectorAll('.view-panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.terminal-nav a').forEach(a => a.classList.remove('active'));
+    document.getElementById(viewId).classList.add('active');
+    document.querySelector(`.terminal-nav a[href='#${viewId}']`).classList.add('active');
+    
+    // Resize charts in the active view
+    setTimeout(() => {
+        if(window.echarts) {
+            const doms = document.getElementById(viewId).querySelectorAll('.chart-container');
+            doms.forEach(dom => {
+                const chart = echarts.getInstanceByDom(dom);
+                if (chart) chart.resize();
+            });
+        }
+    }, 50);
+}
+
+window.currentRotationPeriod = 'ret_20d';
+window.setRotationPeriod = function(period) {
+    window.currentRotationPeriod = period;
+    document.querySelectorAll('#global-rotation-controls button').forEach(btn => btn.classList.remove('is-active'));
+    event.target.classList.add('is-active');
+    // We assume initRotationPanels or similar handles reading window.currentRotationPeriod
+    if(typeof initRotationPanels === 'function') {
+        initRotationPanels();
+    } else if (typeof initSectorRotation === 'function') {
+        initSectorRotation(); // Fallback
     }
 }
