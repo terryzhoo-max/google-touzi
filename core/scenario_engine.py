@@ -2,6 +2,7 @@ SCENARIO_SHOCKS = [
     {
         "id": "equity_liquidity_shock",
         "name": "Equity liquidity shock",
+        "name_zh": "权益流动性枯竭",
         "shocks": {"equity": -0.15, "bond": 0.0, "gold": 0.0, "cash": 0.0},
         "region_shocks": {},
         "strategy_shocks": {},
@@ -9,6 +10,7 @@ SCENARIO_SHOCKS = [
     {
         "id": "rate_shock",
         "name": "Rate shock",
+        "name_zh": "全球利率飙升",
         "shocks": {"equity": -0.06, "bond": -0.10, "gold": -0.03, "cash": 0.0},
         "region_shocks": {},
         "strategy_shocks": {},
@@ -16,6 +18,7 @@ SCENARIO_SHOCKS = [
     {
         "id": "risk_on",
         "name": "Risk-on recovery",
+        "name_zh": "避险情绪消退",
         "shocks": {"equity": 0.08, "bond": -0.02, "gold": -0.01, "cash": 0.0},
         "region_shocks": {},
         "strategy_shocks": {},
@@ -23,6 +26,7 @@ SCENARIO_SHOCKS = [
     {
         "id": "china_equity_shock",
         "name": "China equity shock",
+        "name_zh": "亚太权益震荡",
         "shocks": {},
         "region_shocks": {"China": -0.12, "HongKong": -0.10},
         "strategy_shocks": {},
@@ -30,6 +34,7 @@ SCENARIO_SHOCKS = [
     {
         "id": "us_tech_shock",
         "name": "US technology shock",
+        "name_zh": "北美科技股崩盘",
         "shocks": {},
         "region_shocks": {"US": -0.10},
         "strategy_shocks": {},
@@ -37,6 +42,7 @@ SCENARIO_SHOCKS = [
     {
         "id": "technology_drawdown",
         "name": "Technology drawdown",
+        "name_zh": "核心科技估值杀跌",
         "shocks": {},
         "region_shocks": {},
         "strategy_shocks": {"technology": -0.18},
@@ -67,6 +73,7 @@ def run_portfolio_scenarios(snapshot: dict) -> dict:
         rows.append({
             "id": scenario["id"],
             "name": scenario["name"],
+            "name_zh": scenario.get("name_zh", ""),
             "portfolio_loss_pct": _scenario_loss(
                 snapshot,
                 scenario["shocks"],

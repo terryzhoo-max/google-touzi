@@ -42,6 +42,7 @@ document.addEventListener("DOMContentLoaded", () => {
         [track(initBacktest), 3200],
         // Phase 4: 4s+ — institutional blocks
         [track(initInstitutionalDecision), 4000],
+        [track(initPortfolioLedger), 4500],
         [track(initGenAI), 5000],
     ]);
 
@@ -449,25 +450,52 @@ function renderAllocationTradeTable(model) {
         }).join('') + '</tbody></table>';
 }
 
+
+const ACTION_ZH = {
+    "Proceed with proposed rebalance.": "准予执行该调仓计划 (PROCEED)",
+    "Do not execute the proposed rebalance.": "拒绝/中止该调仓计划 (BLOCK)",
+    "Wait for better execution window.": "建议暂缓执行寻找更佳窗口 (WAIT)",
+    "Requires manual review.": "需要人工风控介入复核 (REVIEW)"
+};
+
+const REASON_ZH = {
+    "scenario_loss_high": "尾部风险超限 (Scenario Loss)",
+    "constraint_cash_below_minimum": "现金流耗竭警告 (Cash Minimum)",
+    "portfolio_china_exposure": "亚太敞口异常暴露 (China Exposure)",
+    "concentration_limit_breach": "单一资产集中度超限 (Concentration)",
+    "factor_volatility_high": "组合波动率因子过高 (Factor Volatility)",
+    "compliance_passed": "各项合规/风控指标均达标 (Compliance Passed)"
+};
+
 async function initInstitutionalDecision() {
-    const panel = document.getElementById('institutional-decision-panel');
-    const workbench = document.getElementById('institutional-workbench');
+    const panel = document.getElementById('view-institutional');
     if (!panel) return;
 
     try {
         const data = await fetchJsonWithRetry('/api/institutional/decision');
-        const [auditResp, auditVerifyResp, summaryResp, queueResp, scoreResp] = await Promise.all([
-            fetch('/api/institutional/audit/decisions?limit=10'),
-            fetch('/api/institutional/audit/verify?limit=10'),
-            fetch('/api/institutional/reviews/summary'),
-            fetch('/api/institutional/reviews/queue?limit=1'),
-            fetch('/api/institutional/reviews/scores?limit=1')
-        ]);
+        const auditResp = await fetch('/api/institutional/audit/decisions?limit=10');
+        
+        
+        // Fetch AI CRO review asynchronously without blocking
+        const aiStatus = document.getElementById('ai-cro-status');
+        const aiText = document.getElementById('ai-cro-text');
+        if (aiStatus) aiStatus.textContent = 'EVALUATING...';
+        fetch('/api/institutional/ai_compliance_review')
+            .then(res => res.json())
+            .then(aiData => {
+                if (aiStatus) aiStatus.textContent = 'REPORT READY';
+                if (aiText) {
+                    aiText.innerHTML = renderSafeAIInsight(aiData.insight);
+                    aiText.style.opacity = 0;
+                    aiText.style.animation = "fadeIn 1s forwards";
+                }
+            })
+            .catch(err => {
+                if (aiStatus) aiStatus.textContent = 'EVALUATION FAILED';
+                if (aiText) aiText.innerHTML = '<span style="color:#ef4444;">Failed to connect to AI CRO engine.</span>';
+            });
         const auditData = await auditResp.json();
-        const auditVerifyData = await auditVerifyResp.json();
-        const summaryData = await summaryResp.json();
-        const queueData = await queueResp.json();
-        const scoreData = await scoreResp.json();
+        
         const ticket = data.decision_ticket || {};
         const action = data.recommended_action || {};
         const risk = data.risk || {};
@@ -478,11 +506,8 @@ async function initInstitutionalDecision() {
         const active_risk = data.active_risk || {};
         const compliance = data.compliance || {};
         const attribution = data.attribution || {};
-        const evidence_chain = data.evidence_chain || {};
-        const latestScore = (scoreData.scores || [])[0] || {};
-        const topQueueItem = (queueData.queue || [])[0] || {};
 
-        // ── Score Gauge ──
+        // Score Gauge
         const score = ticket.score ?? 0;
         const perc = score / 100;
         const arc = document.getElementById('decision-gauge-arc');
@@ -494,243 +519,85 @@ async function initInstitutionalDecision() {
         }
         const gtxt = document.getElementById('decision-gauge-text');
         if (gtxt) { gtxt.textContent = score; gtxt.style.color = score >= 80 ? '#22c55e' : score >= 60 ? '#fbbf24' : '#ef4444'; }
-        document.getElementById('decision-gauge-label') && (document.getElementById('decision-gauge-label').style.color = '#64748b');
-
-        // ── Hero action + reason ──
+        
+        // Hero Action
         const actionHero = document.getElementById('decision-action-hero');
         if (actionHero) {
-            const actText = action.action || ticket.suggested_action || '';
+            const actText = action.action || ticket.suggested_action || '--';
+            const mappedText = ACTION_ZH[actText] || actText;
             const ticketStatus = ticket.decision_status || '';
             if (ticketStatus === 'allow') actionHero.style.color = '#22c55e';
-            else if (ticketStatus === 'observe') actionHero.style.color = '#ef4444';
+            else if (ticketStatus === 'observe' || ticketStatus === 'block') actionHero.style.color = '#ef4444';
             else actionHero.style.color = '#fbbf24';
-            actionHero.textContent = actText || '--';
+            actionHero.textContent = mappedText;
         }
+        
         const reasonHero = document.getElementById('decision-reason-hero');
         if (reasonHero) {
             const codes = explanation.reason_codes || [];
             const driver = explanation.primary_driver?.code || '';
-            reasonHero.textContent = codes.length ? codes.map(c => c.code || c).join('  |  ') : (driver || '--');
+            const text = codes.length 
+                ? codes.map(c => { const code = c.code || c; return REASON_ZH[code] || code; }).join('  |  ') 
+                : (REASON_ZH[driver] || driver || '--');
+            reasonHero.innerHTML = `<span style="color:var(--text-tertiary);">▸</span> <span>${text}</span>`;
+        }
+        
+        const tradesAlert = document.getElementById('decision-trades-alert');
+        if (tradesAlert) {
+            const trades = ticket.proposed_trades || [];
+            if (trades.length > 0) {
+                tradesAlert.style.display = 'flex';
+                tradesAlert.innerHTML = trades.map(t => {
+                    const isBuy = t.action === 'buy';
+                    const color = isBuy ? '#22c55e' : '#ef4444';
+                    const bg = isBuy ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)';
+                    return `<span style="font-family:var(--font-mono); font-size:0.75rem; color:${color}; background:${bg}; padding:4px 8px; border-radius:4px; border:1px solid ${color}55;">${isBuy ? 'BUY' : 'SELL'} ${t.ticker} ${(t.weight * 100).toFixed(1)}%</span>`;
+                }).join('');
+            } else {
+                tradesAlert.style.display = 'none';
+                tradesAlert.innerHTML = '';
+            }
         }
 
+        // Risk Profile
         setFlowText('decision-var', `${risk.var_95_pct ?? '--'}%`);
         setFlowText('decision-worst', `${worst.portfolio_loss_pct ?? '--'}%`);
-        setFlowText('decision-asset-exposure', formatTopExposure(portfolio.asset_class_exposure));
-        setFlowText('decision-region-exposure', formatTopExposure(portfolio.region_exposure));
-        setFlowText('decision-strategy-exposure', formatTopExposure(portfolio.strategy_exposure));
-        setFlowText('decision-currency-exposure', formatTopExposure(portfolio.currency_exposure));
-        setFlowText('decision-concentration', portfolio.concentration_level || '--');
         setFlowText('decision-primary-driver', explanation.primary_driver?.code || '--');
-        setFlowText('decision-execution-readiness', explanation.execution_readiness || '--');
-        // color-code risk/status cells
-        ['decision-primary-driver', 'decision-concentration', 'decision-execution-readiness'].forEach(id => {
-            const el = document.getElementById(id); if (!el) return;
-            const v = el.textContent || '';
-            if (/high|block|observe|fail/i.test(v)) { el.className = 'risk-high'; }
-            else if (/medium|warn|limited|review/i.test(v)) { el.className = 'risk-medium'; }
-            else if (/low|pass|allow|executable/i.test(v)) { el.className = 'risk-low'; }
-        });
-        // color-code compliance, audit cells
-        ['decision-audit-integrity', 'decision-last-verdict'].forEach(id => {
-            const el = document.getElementById(id); if (!el) return;
-            const v = el.textContent || '';
-            if (/passed|effective|clean/i.test(v)) { el.className = 'risk-low'; }
-            else if (/failed|violation/i.test(v)) { el.className = 'risk-high'; }
-        });
-        setFlowText('decision-policy-version', explanation.policy_version || ticket.policy_version || data.policy?.version || '--');
-        setFlowText('decision-policy-hash', shortHash(explanation.policy_hash || ticket.policy_hash || data.policy?.policy_hash));
-        setFlowText('decision-audit-count', String((auditData.decisions || []).length));
-        setFlowText(
-            'decision-audit-integrity',
-            auditVerifyData.status === 'empty'
-                ? 'empty'
-                : `${auditVerifyData.status || 'unknown'} ${Math.round((auditVerifyData.verified_rate ?? 0) * 100)}%`
-        );
-        setFlowText('decision-review-due', String(summaryData.summary?.due_count ?? 0));
-        setFlowText(
-            'decision-review-sla',
-            `${summaryData.summary?.critical_due_count ?? 0}C / ${summaryData.summary?.elevated_due_count ?? 0}E`
-        );
-        setFlowText('decision-review-priority', topQueueItem.priority || 'none');
-        setFlowText('decision-last-verdict', latestScore.verdict || 'none');
-        setFlowText('decision-risk-improvement', action.risk_improvement || '等待风险改善测算。');
-        setFlowText('decision-review', `复盘计划: ${(ticket.review_schedule || []).join(' / ')}`);
-        renderAllocationModel(data.allocation_model || data);
+        setFlowText('decision-concentration', portfolio.concentration_level || '--');
 
-        // ── Dashboard Guard Strip ──
-        const gComp = document.getElementById('guard-compliance');
-        const gFactor = document.getElementById('guard-factor');
-        const gTrack = document.getElementById('guard-tracking');
-        if (gComp) {
-            const cs = compliance.status || '--';
-            gComp.textContent = cs.toUpperCase();
-            gComp.style.color = cs === 'pass' ? '#22c55e' : cs === 'block' ? '#ef4444' : '#fbbf24';
-        }
-        if (gFactor) {
-            const tf = formatTopFactor(factor_risk);
-            gFactor.textContent = tf || '--';
-            gFactor.style.color = '#e2e8f0';
-        }
-        if (gTrack) {
-            const te = active_risk.tracking_error_proxy_pct || '--';
-            gTrack.textContent = te + '%';
-            gTrack.style.color = parseFloat(te) > 6 ? '#ef4444' : parseFloat(te) > 3 ? '#fbbf24' : '#22c55e';
-        }
+        // Factor Exposure
+        setFlowText('workbench-top-factor', formatTopFactor(factor_risk));
+        setFlowText('workbench-tracking-error', `${active_risk.tracking_error_proxy_pct ?? '--'}%`);
+        setFlowText('workbench-largest-active', formatLargestActive(active_risk));
 
-        if (workbench) {
-            // ── Workbench risk zone ──
-            const wz = document.getElementById('workbench-risk-zone');
-            const compStatus = compliance.status || '--';
-            const trackingErr = parseFloat(active_risk.tracking_error_proxy_pct) || 0;
-            if (wz) {
-                let wzText, wzBg, wzColor, wzAction;
-                if (compStatus === 'block' || trackingErr > 8) {
-                    wzText = '● 高风险区'; wzBg = 'rgba(239,68,68,0.12)'; wzColor = '#ef4444';
-                    wzAction = '合规拦截或跟踪误差过高，暂停新增风险敞口';
-                } else if (compStatus === 'warn' || trackingErr > 4) {
-                    wzText = '● 关注区'; wzBg = 'rgba(251,191,36,0.12)'; wzColor = '#fbbf24';
-                    wzAction = '合规警告或主动风险偏高，建议小步调仓';
-                } else {
-                    wzText = '● 安全区'; wzBg = 'rgba(34,197,94,0.12)'; wzColor = '#22c55e';
-                    wzAction = '因子风险可控，合规通过，可执行目标调仓';
-                }
-                wz.innerHTML = `${wzText} <span style="font-size:0.65rem;font-weight:400;color:${wzColor};margin-left:8px;">${wzAction}</span>`;
-                wz.style.background = wzBg; wz.style.color = wzColor;
-                wz.style.fontWeight = '700'; wz.style.fontSize = '0.85rem';
-                wz.style.textTransform = 'uppercase'; wz.style.letterSpacing = '1px';
-                wz.style.padding = '6px 16px'; wz.style.borderRadius = '6px';
-                wz.style.border = `1px solid ${wzColor}30`;
-            }
-
-            const topFactor = formatTopFactor(factor_risk);
-            setFlowText('workbench-top-factor', topFactor);
-            if (factor_risk.top_factor?.exposure) {
-                setFlowText('workbench-top-exposure', `暴露度 ${(factor_risk.top_factor.exposure*100).toFixed(1)}%`);
-            }
-            setFlowText('workbench-tracking-error', `${active_risk.tracking_error_proxy_pct ?? '--'}%`);
-            setFlowText('workbench-largest-active', formatLargestActive(active_risk));
-            setFlowText('workbench-compliance-status', compStatus);
-            setFlowText('workbench-compliance-issues', formatComplianceIssues(compliance));
-            setFlowText('workbench-attribution', formatAttribution(attribution));
-            setFlowText('workbench-evidence', formatEvidence(evidence_chain));
-
-            // compliance alert in workbench
-            const wca = document.getElementById('workbench-compliance-alert');
-            if (wca) {
-                const violations = compliance.violations || [];
-                const warnings = compliance.warnings || [];
-                if (violations.length || warnings.length) {
-                    wca.style.display = 'block';
-                    wca.style.background = violations.length ? 'rgba(239,68,68,0.08)' : 'rgba(251,191,36,0.06)';
-                    wca.style.border = `1px solid ${violations.length ? 'rgba(239,68,68,0.25)' : 'rgba(251,191,36,0.2)'}`;
-                    wca.style.margin = '8px 0';
-                    wca.style.padding = '8px 14px';
-                    wca.style.borderRadius = '6px';
-                    wca.style.fontSize = '0.72rem';
-                    const parts = [
-                        ...violations.map(v => `<span style="color:#ef4444;">▸ ${v}</span>`),
-                        ...warnings.map(w => `<span style="color:#fbbf24;">▸ ${w}</span>`)
-                    ];
-                    wca.innerHTML = parts.join('<br>');
-                }
-            }
-
-            // color compliance status cell
-            const csEl = document.getElementById('workbench-compliance-status');
-            if (csEl) {
-                if (compStatus === 'pass') csEl.className = 'risk-low';
-                else if (compStatus === 'block') csEl.className = 'risk-high';
-                else csEl.className = 'risk-medium';
-            }
-        }
-
-        const status = document.getElementById('decision-status');
-        if (status) {
-            status.innerText = ticket.decision_status || 'unknown';
-            status.classList.toggle('is-ok', ticket.decision_status === 'allow');
-            status.classList.toggle('is-error', ticket.decision_status === 'observe');
-        }
-
-        // ── Buy/Sell Zone Indicator ──────────────────────
-        const zone = document.getElementById('decision-zone');
-        if (zone) {
-            const score = ticket.score ?? 0;
-            const ticketStatus = ticket.decision_status || 'unknown';
-            const compStatus = compliance.status || 'pass';
-            const riskLevel = risk.risk_level || 'low';
-            const gateFailures = ticket.gates_failed || [];
-
-            let zoneText, zoneBg, zoneColor, zoneAction;
-            if (score >= 80 && ticketStatus === 'allow' && compStatus !== 'block') {
-                zoneText = '● 买入区间'; zoneBg = 'rgba(34,197,94,0.12)'; zoneColor = '#22c55e';
-                zoneAction = 'risk budget充足，建议按目标权重执行调仓';
-            } else if (score >= 60 && ticketStatus !== 'observe') {
-                zoneText = '● 持有/观察'; zoneBg = 'rgba(251,191,36,0.12)'; zoneColor = '#fbbf24';
-                zoneAction = '部分风险指标承压，建议分批小步执行';
-            } else if (ticketStatus === 'observe' || compStatus === 'block') {
-                zoneText = '● 卖出/减仓'; zoneBg = 'rgba(239,68,68,0.12)'; zoneColor = '#ef4444';
-                zoneAction = '风险超标或合规拦截，不建议新增风险敞口';
+        // Audit Trail Table
+        const tbody = document.getElementById('audit-log-table-body');
+        if (tbody) {
+            const decisions = auditData.decisions || [];
+            if (decisions.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:20px; color:var(--text-tertiary);">No audit records found</td></tr>`;
             } else {
-                zoneText = '● 中性/观望'; zoneBg = 'rgba(148,163,184,0.1)'; zoneColor = '#94a3b8';
-                zoneAction = '等待数据质量改善后重新评估';
-            }
-            zone.innerHTML = `${zoneText} <span style="font-size:0.7rem;font-weight:400;color:${zoneColor};margin-left:8px;">${zoneAction}</span>`;
-            zone.style.background = zoneBg;
-            zone.style.color = zoneColor;
-            zone.style.fontWeight = '700';
-            zone.style.fontSize = '0.9rem';
-            zone.style.textTransform = 'uppercase';
-            zone.style.letterSpacing = '1px';
-            zone.style.padding = '6px 16px';
-            zone.style.borderRadius = '6px';
-            zone.style.border = `1px solid ${zoneColor}30`;
-        }
-
-        // ── Compliance Alert Strip ────────────────────────
-        const compAlert = document.getElementById('decision-compliance-alert');
-        if (compAlert) {
-            const violations = compliance.violations || [];
-            const warnings = compliance.warnings || [];
-            const compScore = compliance.score ?? null;
-            const gates = ticket.gates_failed || [];
-            const allIssues = [
-                ...gates.map(g => ({text: g, level: 'danger'})),
-                ...violations.map(v => ({text: v, level: 'danger'})),
-                ...warnings.map(w => ({text: w, level: 'warning'}))
-            ];
-
-            compAlert.style.display = 'block';  // always visible
-
-            if (allIssues.length > 0) {
-                const isBlock = compStatus === 'block' || allIssues.some(i => i.level === 'danger' && i.text.includes('block'));
-                compAlert.style.background = isBlock ? 'rgba(239,68,68,0.08)' : 'rgba(251,191,36,0.06)';
-                compAlert.style.border = `1px solid ${isBlock ? 'rgba(239,68,68,0.25)' : 'rgba(251,191,36,0.2)'}`;
-                const scoreStr = compScore !== null ? `评分 ${compScore}/100` : '';
-                compAlert.innerHTML = `<div style="display:flex;align-items:center;gap:8px;margin-bottom:${allIssues.length>1?6:0}px;">
-                    <span style="font-weight:700;color:${isBlock?'#ef4444':'#fbbf24'};">⚠ 合规门禁: ${compStatus.toUpperCase()}</span>
-                    ${scoreStr ? `<span style="color:#64748b;font-size:0.7rem;">${scoreStr}</span>` : ''}
-                </div>` +
-                allIssues.map(i => `<div style="margin-left:8px;color:${i.level==='danger'?'#ef4444':'#fbbf24'};font-size:0.72rem;">▸ ${i.text}</div>`).join('');
-            } else if (compStatus === 'pass' || compStatus === 'unknown' || !compStatus || compStatus === '--') {
-                compAlert.style.background = 'rgba(34,197,94,0.04)';
-                compAlert.style.border = '1px solid rgba(34,197,94,0.15)';
-                compAlert.innerHTML = `<span style="color:#22c55e;font-size:0.72rem;">✓ 合规门禁通过 | 无风险超标</span>`;
-            } else {
-                compAlert.style.background = 'rgba(148,163,184,0.04)';
-                compAlert.style.border = '1px solid rgba(148,163,184,0.12)';
-                compAlert.innerHTML = `<span style="color:#94a3b8;font-size:0.72rem;">合规门禁: ${compStatus.toUpperCase()}</span>`;
+                tbody.innerHTML = decisions.map(d => {
+                    const timeStr = new Date(d.created_at * 1000).toLocaleTimeString([], {hour12: false});
+                    const dateStr = new Date(d.created_at * 1000).toLocaleDateString([], {month:'2-digit', day:'2-digit'});
+                    const tid = (d.ticket_id || '').slice(0, 12);
+                    
+                    let compColor = '#22c55e', compBg = 'rgba(34,197,94,0.1)';
+                    if (d.compliance_status === 'block') { compColor = '#ef4444'; compBg = 'rgba(239,68,68,0.1)'; }
+                    else if (d.compliance_status === 'warn') { compColor = '#fbbf24'; compBg = 'rgba(251,191,36,0.1)'; }
+                    
+                    return `<tr>
+                        <td style="padding-left:16px; font-family:var(--font-mono); font-size:0.8rem; color:var(--text-secondary);">${dateStr} ${timeStr}</td>
+                        <td style="font-family:var(--font-mono); font-size:0.8rem; color:var(--text-tertiary);">${tid}</td>
+                        <td style="font-weight:700;">${d.score}</td>
+                        <td><span style="padding:2px 8px; border-radius:4px; font-size:0.7rem; font-weight:700; color:${compColor}; background:${compBg}; text-transform:uppercase;">${d.compliance_status}</span></td>
+                        <td style="font-size:0.8rem; color:var(--text-secondary);">${d.action_status || d.decision_status}</td>
+                    </tr>`;
+                }).join('');
             }
         }
     } catch (error) {
-        console.error('Institutional decision failed:', error);
-        setFlowText('decision-action', '决策引擎暂不可用');
-        try {
-            const fallback = await fetch('/api/institutional/allocation_model');
-            const data = await fallback.json();
-            renderAllocationModel(data.allocation_model || data);
-        } catch (fallbackError) {
-            console.error('Allocation model failed:', fallbackError);
-        }
+        console.error('Error fetching institutional decision:', error);
     }
 }
 
@@ -2308,6 +2175,28 @@ function switchView(viewId) {
             });
         }
     }, 50);
+
+    if (viewId === 'view-simu') {
+        if (typeof initSimuSandbox === 'function') {
+            initSimuSandbox();
+        }
+    } else if (viewId === 'view-risk') {
+        if (typeof initFactorRisk === 'function') {
+            initFactorRisk();
+        }
+    } else if (viewId === 'view-stress') {
+        if (typeof initStressTesting === 'function') {
+            initStressTesting();
+        }
+    } else if (viewId === 'view-strategy') {
+        initStrategyLab();
+    } else if (viewId === 'view-hub') {
+        initDecisionHub();
+    
+        if (typeof initStrategyLab === 'function') {
+            initStrategyLab();
+        }
+    }
 }
 
 window.currentRotationPeriod = 'ret_20d';
@@ -2320,5 +2209,1491 @@ window.setRotationPeriod = function(period) {
         initRotationPanels();
     } else if (typeof initSectorRotation === 'function') {
         initSectorRotation(); // Fallback
+    }
+}
+
+
+function importTDX() {
+    const fileInput = document.getElementById('tdx-file-input');
+    if (fileInput) fileInput.click();
+}
+
+async function handleTDXUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    // There are multiple buttons with onclick="importTDX()" (in AUDT and PORT)
+    // We'll update all of them visually during the upload
+    const btns = document.querySelectorAll('button[onclick="importTDX()"]');
+    const originalTexts = [];
+    btns.forEach((btn, i) => {
+        originalTexts[i] = btn.innerText;
+        btn.innerText = '[IMPORTING...]';
+        btn.style.opacity = '0.7';
+    });
+    
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    try {
+        const response = await fetch('/api/institutional/import_tdx', {
+            method: 'POST',
+            body: formData
+        });
+        if (response.ok) {
+            btns.forEach((btn, i) => {
+                btn.innerText = '[SYNC SUCCESS]';
+                btn.style.background = '#22c55e'; // Green
+                setTimeout(() => {
+                    btn.innerText = originalTexts[i];
+                    btn.style.background = 'var(--accent-primary)';
+                    btn.style.opacity = '1';
+                }, 1500);
+            });
+            setTimeout(() => {
+                // Refresh the panel
+                if(document.getElementById('view-institutional').classList.contains('active')) {
+                    initInstitutionalDecision();
+                }
+                if(document.getElementById('view-portfolio').classList.contains('active')) {
+                    initPortfolioLedger();
+                }
+            }, 1500);
+        } else {
+            throw new Error('Import failed');
+        }
+    } catch (e) {
+        console.error('TDX import error:', e);
+        btns.forEach((btn, i) => {
+            btn.innerText = '[SYNC FAILED]';
+            btn.style.background = '#ef4444'; // Red
+            setTimeout(() => {
+                btn.innerText = originalTexts[i];
+                btn.style.background = 'var(--accent-primary)';
+                btn.style.opacity = '1';
+            }, 2000);
+        });
+    }
+    
+    // Clear input so same file can be selected again if needed
+    event.target.value = '';
+}
+
+async function initPortfolioLedger() {
+    try {
+        const data = await fetchJsonWithRetry('/api/institutional/portfolio_raw');
+        const positions = data.positions || [];
+        
+        const mvEl = document.getElementById('port-total-mv');
+        const pnlEl = document.getElementById('port-total-pnl');
+        const cashEl = document.getElementById('port-total-cash');
+        const tbody = document.getElementById('port-ledger-body');
+        
+        if (!tbody) return;
+        
+        let totalMv = 0;
+        let totalPnl = 0;
+        let totalCash = 0;
+        
+        let rowsHtml = '';
+        
+        let assetAllocation = {};
+        
+        // PnL Badge Formatter
+        const fmtPnLBadge = (val, pct) => {
+            if (val === 0) return `<span style="color:var(--text-tertiary);">-</span>`;
+            const color = val > 0 ? '#10b981' : '#f43f5e';
+            const sign = val > 0 ? '+' : '';
+            const intensity = Math.min(Math.abs(pct) / 10.0, 1); // 10% is max heat
+            const bgRgb = val > 0 ? `16,185,129` : `244,63,94`;
+            const bgStr = `rgba(${bgRgb}, ${Math.max(intensity * 0.35, 0.1)})`;
+            const borderStr = `1px solid rgba(${bgRgb}, ${Math.max(intensity, 0.2)})`;
+            
+            return `<span style="display:inline-block; background:${bgStr}; color:${color}; font-family:var(--font-mono); font-weight:800; text-align:right; padding:4px 8px; border-radius:4px; border-right:${borderStr}; box-sizing:border-box; text-shadow:0 0 8px rgba(${bgRgb},0.4);">${sign}${val.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})} (${sign}${pct.toFixed(2)}%)</span>`;
+        };
+
+        if (positions.length === 0) {
+            rowsHtml = '<tr><td colspan="7" style="text-align:center; padding:20px; color:var(--text-tertiary);">No portfolio data available. Sync TDX to begin.</td></tr>';
+        } else {
+            positions.sort((a, b) => b.market_value - a.market_value);
+            
+            positions.forEach(pos => {
+                totalMv += pos.market_value || 0;
+                if (pos.asset_class === 'cash') {
+                    totalCash += pos.market_value || 0;
+                } else {
+                    totalPnl += pos.float_pnl || 0;
+                }
+                
+                // Accumulate asset allocation
+                const aclass = pos.asset_class || 'unknown';
+                if (!assetAllocation[aclass]) assetAllocation[aclass] = 0;
+                assetAllocation[aclass] += (pos.market_value || 0);
+                
+                // Add a subtle weight bar indicator under the market value
+                const weightPct = totalMv > 0 ? ((pos.market_value || 0) / totalMv * 100).toFixed(1) : 0;
+                const weightBar = `<div style="width:100%; height:2px; background:rgba(255,255,255,0.05); margin-top:4px; border-radius:1px;"><div style="width:${weightPct}%; height:100%; background:var(--accent-primary); border-radius:1px; box-shadow:0 0 4px var(--accent-primary);"></div></div>`;
+                
+                rowsHtml += `
+                    <tr class="clickable-row" onclick="openActionModal('${pos.symbol}', '${pos.name || ''}', ${pos.quantity || 0}, ${pos.current_price || 0})">
+                        <td style="padding-left:16px;">
+                            <div style="display:flex; flex-direction:column; gap:2px;">
+                                <span style="font-family:var(--font-mono); font-weight:700; color:var(--text-primary); font-size:0.85rem;">${pos.symbol}</span>
+                                <span style="font-size:0.7rem; color:var(--text-tertiary);">${pos.name}</span>
+                            </div>
+                        </td>
+                        <td><span style="font-size:0.65rem; padding:2px 6px; border-radius:3px; background:rgba(255,255,255,0.05); color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.5px;">${pos.asset_class}</span></td>
+                        <td style="text-align:right; font-family:var(--font-mono);">${(pos.quantity || 0).toLocaleString()}</td>
+                        <td style="text-align:right; font-family:var(--font-mono); color:var(--text-tertiary);">${(pos.cost_basis || 0).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+                        <td style="text-align:right; font-family:var(--font-mono);">${(pos.current_price || 0).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+                        <td style="text-align:right; font-family:var(--font-mono); font-weight:600;">
+                            <div>${(pos.market_value || 0).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</div>
+                            ${weightBar}
+                        </td>
+                        <td style="text-align:right; padding-right:16px; font-family:var(--font-mono);">
+                            ${fmtPnLBadge(pos.float_pnl || 0, pos.pnl_pct || 0)}
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+        
+        if (mvEl) mvEl.textContent = '¥ ' + totalMv.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+        if (pnlEl) {
+            pnlEl.textContent = (totalPnl > 0 ? '+' : '') + totalPnl.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+            pnlEl.style.color = totalPnl >= 0 ? '#10b981' : '#f43f5e';
+            pnlEl.style.textShadow = totalPnl >= 0 ? '0 0 15px rgba(16,185,129,0.4)' : '0 0 15px rgba(244,63,94,0.4)';
+        }
+        if (cashEl) cashEl.textContent = '¥ ' + totalCash.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+        
+        tbody.innerHTML = rowsHtml;
+        
+        // --- ECharts L2 Visualization ---
+        
+        // 1. Asset Allocation Chart
+        const allocChartDom = document.getElementById('chart-port-allocation');
+        if (allocChartDom && window.echarts) {
+            let allocChart = echarts.getInstanceByDom(allocChartDom);
+            if (!allocChart) allocChart = echarts.init(allocChartDom);
+            
+            const assetZH = {
+                'EQUITY': '权益资产',
+                'BOND': '固定收益',
+                'CASH': '现金流',
+                'GOLD': '避险金属',
+                'COMMODITY': '大宗商品',
+                'CRYPTO': '数字资产'
+            };
+            
+            const allocData = Object.keys(assetAllocation).map(key => {
+                const k = key.toUpperCase();
+                return {
+                    name: k,
+                    value: assetAllocation[key],
+                    name_zh: assetZH[k] || ''
+                };
+            });
+            
+            allocChart.setOption({
+                tooltip: { 
+                    className: 'terminal-hud-tooltip',
+                    trigger: 'item',
+                    formatter: function(params) {
+                        const d = params.data;
+                        const zh = d.name_zh ? `<span style="font-size:0.8em; color:var(--text-tertiary); margin-left:8px;">${d.name_zh}</span>` : '';
+                        return `<div class="hud-title" style="border-bottom-color:${params.color};">${d.name}${zh}</div>
+                                <div class="hud-value" style="color:${params.color};">¥${d.value.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})} <span style="font-size:0.5em; opacity:0.8;">(${params.percent}%)</span></div>`;
+                    }
+                },
+                title: {
+                    text: 'ALLOCATION',
+                    subtext: '¥' + (totalMv/10000).toFixed(0) + 'w',
+                    left: 'center',
+                    top: 'center',
+                    textStyle: { color: 'var(--text-secondary)', fontSize: 10, fontFamily: 'var(--font-mono)' },
+                    subtextStyle: { color: 'var(--accent-primary)', fontSize: 16, fontWeight: 'bold', fontFamily: 'var(--font-mono)', textShadow: '0 0 10px rgba(56,189,248,0.5)' }
+                },
+                series: [{
+                    type: 'pie',
+                    radius: ['55%', '80%'],
+                    itemStyle: { borderRadius: 4, borderColor: 'rgba(0,0,0,0.5)', borderWidth: 2 },
+                    label: { show: false },
+                    data: allocData
+                }],
+                color: ['#00f0ff', '#10b981', '#a855f7', '#f59e0b', '#3b82f6', '#f43f5e']
+            });
+        }
+        
+        // 2. Top PnL Attribution Chart
+        const attrChartDom = document.getElementById('chart-port-attribution');
+        if (attrChartDom && window.echarts) {
+            let attrChart = echarts.getInstanceByDom(attrChartDom);
+            if (!attrChart) attrChart = echarts.init(attrChartDom);
+            
+            // Filter out cash and sort by absolute PnL
+            const sortedByPnl = [...positions].filter(p => p.asset_class !== 'cash')
+                .sort((a,b) => Math.abs(b.float_pnl || 0) - Math.abs(a.float_pnl || 0))
+                .slice(0, 5);
+            
+            attrChart.setOption({
+                tooltip: { 
+                    className: 'terminal-hud-tooltip',
+                    trigger: 'axis', 
+                    axisPointer: {type:'shadow'},
+                    formatter: function(params) {
+                        const p = params[0];
+                        return `<div class="hud-title">${p.name}</div><div class="hud-value" style="color:${p.value >= 0 ? '#10b981' : '#f43f5e'}">${p.value >= 0 ? '+' : ''}${p.value.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</div>`;
+                    }
+                },
+                grid: { left: '10%', right: '10%', bottom: '5%', top: '5%', containLabel: true },
+                xAxis: { 
+                    type: 'value', 
+                    splitLine: { show: true, lineStyle: { color: 'rgba(255,255,255,0.05)', type: 'dashed' } }, 
+                    axisLabel: { color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)', fontSize: 10 },
+                    axisLine: { show: true, lineStyle: { color: 'rgba(255,255,255,0.3)', width: 2 } }
+                },
+                yAxis: { 
+                    type: 'category', 
+                    data: sortedByPnl.map(p => p.name ? `${p.symbol} ${p.name}` : p.symbol).reverse(), 
+                    axisLabel: { color: '#e2e8f0', fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 'bold' },
+                    axisLine: { show: false },
+                    axisTick: { show: false }
+                },
+                series: [{
+                    name: 'P&L',
+                    type: 'bar',
+                    barWidth: '45%',
+                    data: sortedByPnl.map(p => {
+                        const val = p.float_pnl || 0;
+                        return {
+                            value: val,
+                            itemStyle: { 
+                                borderRadius: 3,
+                                color: new echarts.graphic.LinearGradient(1, 0, 0, 0, [
+                                    { offset: 0, color: val >= 0 ? 'rgba(16,185,129,0.9)' : 'rgba(244,63,94,0.3)' },
+                                    { offset: 1, color: val >= 0 ? 'rgba(16,185,129,0.3)' : 'rgba(244,63,94,0.9)' }
+                                ]),
+                                shadowBlur: 10,
+                                shadowColor: val >= 0 ? 'rgba(16,185,129,0.4)' : 'rgba(244,63,94,0.4)'
+                            }
+                        };
+                    }).reverse()
+                }]
+            });
+        }
+        
+    } catch (e) {
+        console.error('Failed to init portfolio ledger:', e);
+    }
+}
+
+// --- [SIMU] Pre-Trade Sandbox State & Engine ---
+let simuBasePortfolio = [];
+let simuTrades = []; 
+let simuMode = 'qty'; // 'qty' or 'weight'
+let simuFrictionRate = 0.0015; // 15bps per trade
+
+async function initSimuSandbox() {
+    try {
+        const res = await fetch('/api/institutional/portfolio_raw');
+        if(!res.ok) return;
+        const data = await res.json();
+        simuBasePortfolio = data.positions || [];
+        recomputeSandbox();
+    } catch (e) {
+        console.error('Failed to init sandbox', e);
+    }
+}
+
+window.toggleSimuMode = function() {
+    const radio = document.querySelector('input[name="simu-mode"]:checked');
+    if (radio) {
+        simuMode = radio.value;
+        const input = document.getElementById('simu-input-val');
+        if (simuMode === 'weight') {
+            input.placeholder = "TARGET WT (%)";
+        } else {
+            input.placeholder = "QTY";
+        }
+    }
+};
+
+window.resetSimuSandbox = function() {
+    simuTrades = [];
+    recomputeSandbox();
+};
+
+window.addSimuTrade = function() {
+    const ticker = document.getElementById('simu-ticker').value.toUpperCase().trim();
+    const action = document.getElementById('simu-action').value;
+    const valInput = parseFloat(document.getElementById('simu-input-val').value);
+    
+    if(!ticker || isNaN(valInput) || valInput <= 0) return;
+    
+    simuTrades.push({
+        id: Date.now(),
+        ticker: ticker,
+        action: action,
+        val: valInput,
+        mode: simuMode
+    });
+    
+    document.getElementById('simu-ticker').value = '';
+    document.getElementById('simu-input-val').value = '';
+    
+    recomputeSandbox();
+};
+
+window.removeSimuTrade = function(id) {
+    simuTrades = simuTrades.filter(t => t.id !== id);
+    recomputeSandbox();
+};
+
+window.executeSimuCLI = function() {
+    const inputEl = document.getElementById('simu-cli-input');
+    const cmd = inputEl.value.trim().toUpperCase();
+    if (!cmd) return;
+    
+    // Pattern 1: BUY 600519 1000
+    // Pattern 2: SELL 600519 1000
+    // Pattern 3: TGT 600519 5%
+    const parts = cmd.split(/\s+/);
+    if (parts.length < 3) return;
+    
+    const action = parts[0];
+    const ticker = parts[1];
+    const valStr = parts[2];
+    
+    let mode, parsedAction, valInput;
+    if (action === 'TGT') {
+        mode = 'weight';
+        parsedAction = 'BUY'; // Action ignored in weight mode
+        valInput = parseFloat(valStr.replace('%', ''));
+    } else if (action === 'BUY' || action === 'SELL') {
+        mode = 'qty';
+        parsedAction = action;
+        valInput = parseFloat(valStr);
+    } else {
+        return;
+    }
+    
+    if (isNaN(valInput) || valInput < 0) return;
+    
+    simuTrades.push({
+        id: Date.now(),
+        ticker: ticker,
+        action: parsedAction,
+        val: valInput,
+        mode: mode
+    });
+    
+    inputEl.value = '';
+    recomputeSandbox();
+};
+
+window.exportSimuCSV = function() {
+    if (simuTrades.length === 0) return;
+    let csvContent = "data:text/csv;charset=utf-8,";
+    csvContent += "TICKER,ACTION,MODE,VALUE,EST_QTY,EST_COST\n";
+    
+    simuTrades.forEach(t => {
+        const estQty = (t._calcQty || 0).toFixed(0);
+        const estCost = (t._estCost || 0).toFixed(2);
+        csvContent += `${t.ticker},${t.action},${t.mode},${t.val},${estQty},${estCost}\n`;
+    });
+    
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `alpha_core_trades_${new Date().getTime()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+};
+
+window.injectSimuCashPrompt = function() {
+    const amount = prompt("请输入划拨资金数额 (输入正数代表入金，负数代表出金):", "1000000");
+    if (amount) {
+        const val = parseFloat(amount);
+        if (!isNaN(val)) {
+            // Find cash pos in base portfolio and modify it
+            let cashPos = simuBasePortfolio.find(p => p.asset_class === 'cash');
+            if (cashPos) {
+                cashPos.quantity += val;
+                cashPos.market_value += val;
+            } else {
+                simuBasePortfolio.push({ symbol: 'CASH', name: '现金', asset_class: 'cash', quantity: val, current_price: 1.0, market_value: val });
+            }
+            recomputeSandbox();
+        }
+    }
+};
+
+window.setSimuFrictionPrompt = function() {
+    const rate = prompt("请设定双边摩擦系数 (例如 万五请输入 0.0005，千1.5 请输入 0.0015):", simuFrictionRate.toString());
+    if (rate) {
+        const val = parseFloat(rate);
+        if (!isNaN(val) && val >= 0) {
+            simuFrictionRate = val;
+            recomputeSandbox();
+        }
+    }
+};
+
+function recomputeSandbox() {
+    if(!simuBasePortfolio || simuBasePortfolio.length === 0) return;
+    
+    let proj = JSON.parse(JSON.stringify(simuBasePortfolio));
+    let baseCash = 0;
+    let baseMv = 0;
+    
+    proj.forEach(p => {
+        if (p.asset_class === 'cash') baseCash += (p.market_value || 0);
+        baseMv += (p.market_value || 0);
+    });
+    
+    let cashImpact = 0;
+    let totalFriction = 0;
+    let complianceFailed = false;
+    let complianceMsgs = [];
+    
+    simuTrades.forEach(t => {
+        let pos = proj.find(p => p.symbol === t.ticker);
+        if (!pos) {
+            pos = { symbol: t.ticker, name: t.ticker, asset_class: 'equity', quantity: 0, current_price: 10.0, market_value: 0 };
+            proj.push(pos);
+        }
+        
+        let tradeQty = 0;
+        let isBuy = true;
+        
+        if (t.mode === 'qty') {
+            tradeQty = t.val;
+            isBuy = (t.action === 'BUY');
+        } else if (t.mode === 'weight') {
+            const currentWt = baseMv > 0 ? (pos.market_value / baseMv) : 0;
+            const targetWt = t.val / 100.0;
+            const targetValue = targetWt * baseMv;
+            const valDiff = targetValue - pos.market_value;
+            tradeQty = Math.abs(valDiff / pos.current_price);
+            isBuy = valDiff >= 0;
+        }
+        
+        t._calcQty = tradeQty;
+        t._isBuy = isBuy;
+        
+        const cost = tradeQty * pos.current_price;
+        t._estCost = cost;
+        const friction = cost * simuFrictionRate;
+        totalFriction += friction;
+        
+        if (isBuy) {
+            pos.quantity += tradeQty;
+            pos.market_value += cost;
+            cashImpact -= cost;
+        } else {
+            if (pos.quantity < tradeQty) {
+                complianceFailed = true;
+                complianceMsgs.push(`裸卖空熔断: ${t.ticker}`);
+            }
+            pos.quantity = Math.max(0, pos.quantity - tradeQty);
+            pos.market_value = Math.max(0, pos.market_value - cost);
+            cashImpact += cost;
+        }
+    });
+    
+    const postTradeCash = baseCash + cashImpact - totalFriction;
+    if (postTradeCash < 0) {
+        complianceFailed = true;
+        complianceMsgs.push('现金流透支');
+    }
+    
+    let projMv = 0;
+    proj.forEach(p => {
+        if (p.asset_class !== 'cash') {
+            projMv += p.market_value;
+        }
+    });
+    projMv += postTradeCash; 
+    
+    let cashPos = proj.find(p => p.asset_class === 'cash');
+    if (cashPos) {
+        cashPos.quantity = postTradeCash;
+        cashPos.market_value = postTradeCash;
+    } else if (postTradeCash !== 0) {
+        proj.push({ symbol: 'CASH', name: '现金', asset_class: 'cash', quantity: postTradeCash, current_price: 1.0, market_value: postTradeCash });
+    }
+    
+    proj.forEach(p => {
+        p._baseWt = baseMv > 0 ? ((simuBasePortfolio.find(bp => bp.symbol === p.symbol)?.market_value || 0) / baseMv) : 0;
+        p._projWt = projMv > 0 ? (p.market_value / projMv) : 0;
+        p._drift = p._projWt - p._baseWt;
+        
+        if (p.asset_class !== 'cash' && p._projWt > 0.3) {
+            complianceFailed = true;
+            complianceMsgs.push(`高集中度风险: ${p.symbol}`);
+        }
+    });
+    
+    document.getElementById('simu-proj-mv').textContent = projMv.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+    const deltaMv = projMv - baseMv;
+    const deltaSign = deltaMv >= 0 ? '+' : '';
+    document.getElementById('simu-mv-delta').textContent = deltaSign + deltaMv.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+    document.getElementById('simu-mv-delta').style.color = deltaMv >= 0 ? 'var(--success)' : 'var(--danger)';
+    
+    document.getElementById('simu-post-cash').textContent = postTradeCash.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+    const cashCard = document.getElementById('simu-cash-card');
+    if (postTradeCash < 0) {
+        cashCard.style.border = '1px solid rgba(239, 68, 68, 0.4)';
+        cashCard.className = 'glass-card glow-fail';
+        document.getElementById('simu-post-cash').style.color = 'var(--danger)';
+    } else {
+        cashCard.style.border = '1px solid var(--glass-border)';
+        cashCard.className = 'glass-card';
+        document.getElementById('simu-post-cash').style.color = 'var(--text-primary)';
+    }
+    
+    document.getElementById('simu-fric-cost').textContent = `Est. Friction: ¥${totalFriction.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}`;
+    
+    const compEl = document.getElementById('simu-compliance');
+    const turnCard = document.getElementById('simu-turnover-card');
+    if (complianceFailed) {
+        compEl.innerHTML = `[ FAILED ]<br><span style="font-size:0.6em; font-weight:400; color:var(--text-tertiary);">${complianceMsgs[0]}</span>`;
+        compEl.style.color = 'var(--danger)';
+        turnCard.style.border = '1px solid rgba(239, 68, 68, 0.4)';
+        turnCard.className = 'glass-card glow-fail';
+    } else {
+        compEl.textContent = '[ PASS ]';
+        compEl.style.color = 'var(--success)';
+        turnCard.style.border = '1px solid rgba(34, 197, 94, 0.2)';
+        turnCard.className = 'glass-card glow-pass';
+    }
+    
+    let tHtml = '';
+    simuTrades.forEach(t => {
+        const badgeBg = t._isBuy ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)';
+        const badgeColor = t._isBuy ? 'var(--success)' : 'var(--danger)';
+        const badgeBorder = t._isBuy ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)';
+        const actionStr = `<span style="background:${badgeBg}; color:${badgeColor}; border:1px solid ${badgeBorder}; padding:2px 6px; border-radius:3px; font-size:0.65rem; font-weight:800; letter-spacing:1px; box-shadow: inset 0 1px 0 rgba(255,255,255,0.1);">${t.action}</span>`;
+        const valStr = t.mode === 'weight' ? `TGT WT: ${t.val}%` : `QTY: ${t.val}`;
+        tHtml += `
+            <tr>
+                <td>${actionStr}</td>
+                <td style="font-family:var(--font-mono); font-weight:700;">${t.ticker}</td>
+                <td style="text-align:right; font-family:var(--font-mono); font-size:0.7rem;">${valStr}</td>
+                <td style="text-align:right; font-family:var(--font-mono); color:var(--text-tertiary);">¥${t._estCost.toLocaleString(undefined, {maximumFractionDigits:0})}</td>
+                <td><button onclick="window.removeSimuTrade(${t.id})" style="background:transparent; border:none; color:var(--danger); cursor:pointer;">×</button></td>
+            </tr>
+        `;
+    });
+    document.getElementById('simu-trades-body').innerHTML = tHtml;
+    
+    let lHtml = '';
+    proj.sort((a,b) => b.market_value - a.market_value).forEach(p => {
+        const baseQty = simuBasePortfolio.find(bp => bp.symbol === p.symbol)?.quantity || 0;
+        const deltaQty = p.quantity - baseQty;
+        const drift = p._drift * 100;
+        const driftColor = drift > 0.01 ? 'var(--success)' : (drift < -0.01 ? 'var(--danger)' : 'var(--text-tertiary)');
+        const driftSign = drift > 0.01 ? '+' : '';
+        
+        const wtBarWidth = Math.min(100, p._projWt * 100);
+        const driftBarWidth = Math.min(100, Math.abs(drift) * 5); // 1% drift = 5% bar width for visibility
+        const driftBg = drift > 0 ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)';
+        
+        lHtml += `
+            <tr class="clickable-row" style="transition: background-color 0.2s ease;" onclick="openActionModal('${p.symbol}', '${p.name || ''}', ${p.quantity || 0}, ${p.current_price || 0})">
+                <td style="padding-left:16px;">
+                    <div style="display:flex; flex-direction:column; gap:2px;">
+                        <span style="font-family:var(--font-mono); font-weight:700; color:var(--text-primary); font-size:0.85rem;">${p.symbol}</span>
+                        <span style="font-size:0.7rem; color:var(--text-tertiary);">${p.name || '-'}</span>
+                    </div>
+                </td>
+                <td style="text-align:right; font-family:var(--font-mono); color:var(--text-tertiary);">${baseQty.toLocaleString(undefined, {maximumFractionDigits:0})}</td>
+                <td style="text-align:right; font-family:var(--font-mono); color:${deltaQty !== 0 ? 'var(--accent-primary)' : 'var(--text-tertiary)'};">${deltaQty > 0 ? '+' : ''}${deltaQty.toLocaleString(undefined, {maximumFractionDigits:0})}</td>
+                <td style="text-align:right; font-family:var(--font-mono); font-weight:700; color:${deltaQty !== 0 ? '#fff' : 'var(--text-primary)'};">${p.quantity.toLocaleString(undefined, {maximumFractionDigits:0})}</td>
+                <td style="text-align:right; font-family:var(--font-mono);">${p.market_value.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+                <td style="text-align:right; font-family:var(--font-mono); color:var(--text-tertiary);">${(p._baseWt*100).toFixed(2)}%</td>
+                <td style="text-align:right; font-family:var(--font-mono); font-weight:700; position:relative; padding:0 8px;">
+                    <div style="position:absolute; right:8px; top:8px; bottom:8px; width:${wtBarWidth}%; background:rgba(255,255,255,0.05); border-radius:2px; z-index:0;"></div>
+                    <span style="position:relative; z-index:1;">${(p._projWt*100).toFixed(2)}%</span>
+                </td>
+                <td style="text-align:right; padding-right:16px; font-family:var(--font-mono); color:${driftColor}; position:relative;">
+                    <div style="position:absolute; right:16px; top:8px; bottom:8px; width:${driftBarWidth}%; background:${driftBg}; border-radius:2px; z-index:0;"></div>
+                    <span style="position:relative; z-index:1;">${driftSign}${drift.toFixed(2)}%</span>
+                </td>
+            </tr>
+        `;
+    });
+    document.getElementById('simu-ledger-body').innerHTML = lHtml;
+    
+    renderSimuChart(simuBasePortfolio, proj);
+}
+
+function renderSimuChart(baseArr, projArr) {
+    const chartDom = document.getElementById('chart-simu-allocation');
+    if (!chartDom || !window.echarts) return;
+    
+    let chart = echarts.getInstanceByDom(chartDom);
+    if (!chart) chart = echarts.init(chartDom);
+    
+    const baseGroups = {};
+    baseArr.forEach(p => {
+        const ac = p.asset_class || 'unknown';
+        baseGroups[ac] = (baseGroups[ac] || 0) + p.market_value;
+    });
+    const baseData = Object.keys(baseGroups).map(k => ({name: k.toUpperCase(), value: baseGroups[k]}));
+    
+    const projGroups = {};
+    projArr.forEach(p => {
+        const ac = p.asset_class || 'unknown';
+        projGroups[ac] = (projGroups[ac] || 0) + p.market_value;
+    });
+    const projData = Object.keys(projGroups).map(k => ({name: k.toUpperCase(), value: projGroups[k]}));
+    
+    chart.setOption({
+        tooltip: { trigger: 'item', backgroundColor: 'rgba(0,0,0,0.8)', borderColor: 'rgba(255,255,255,0.1)', textStyle: {color: '#fff'}, formatter: '{a} <br/>{b}: ¥{c} ({d}%)' },
+        series: [
+            {
+                name: 'Current Allocation',
+                type: 'pie',
+                radius: ['30%', '50%'],
+                itemStyle: { borderColor: '#0f172a', borderWidth: 1, opacity: 0.5 },
+                label: { position: 'inner', fontSize: 10, color: '#64748b', formatter: '{b}' },
+                data: baseData
+            },
+            {
+                name: 'Projected Allocation',
+                type: 'pie',
+                radius: ['55%', '80%'],
+                itemStyle: { borderColor: '#0f172a', borderWidth: 2 },
+                label: { color: '#94a3b8', formatter: '{b}\\n{d}%' },
+                data: projData
+            }
+        ]
+    });
+}
+
+// --- Interactive Order Routing Modal ---
+let currentActionContext = null;
+
+window.openActionModal = function(ticker, name, qty, price) {
+    currentActionContext = { ticker, name, qty, price };
+    
+    document.getElementById('modal-ticker').textContent = ticker;
+    document.getElementById('modal-name').textContent = name || '-';
+    document.getElementById('modal-curr-qty').textContent = qty.toLocaleString(undefined, {maximumFractionDigits:0});
+    document.getElementById('modal-input-qty').value = '';
+    
+    document.getElementById('quick-action-modal').style.display = 'flex';
+    // Auto focus the input after a tiny delay so the modal animation completes
+    setTimeout(() => {
+        document.getElementById('modal-input-qty').focus();
+    }, 50);
+};
+
+window.closeActionModal = function() {
+    document.getElementById('quick-action-modal').style.display = 'none';
+    currentActionContext = null;
+};
+
+function injectTradeFromModal(action, qty) {
+    if (!currentActionContext || qty <= 0) return;
+    
+    simuTrades.push({
+        id: Date.now(),
+        ticker: currentActionContext.ticker,
+        action: action,
+        val: qty,
+        mode: 'qty'
+    });
+    
+    recomputeSandbox();
+    closeActionModal();
+    
+    // Automatically switch to SIMU tab if not already there, so user sees the result
+    if (!document.getElementById('view-simu').classList.contains('active')) {
+        switchView('simu');
+    }
+}
+
+window.executeActionModalBuy = function() {
+    const val = parseFloat(document.getElementById('modal-input-qty').value);
+    if (!isNaN(val) && val > 0) {
+        injectTradeFromModal('BUY', val);
+    }
+};
+
+window.executeActionModalSell = function() {
+    const val = parseFloat(document.getElementById('modal-input-qty').value);
+    if (!isNaN(val) && val > 0) {
+        injectTradeFromModal('SELL', val);
+    }
+};
+
+window.executeActionModalTP = function() {
+    if (!currentActionContext || currentActionContext.qty <= 0) return;
+    const sellQty = Math.floor(currentActionContext.qty * 0.5); // Sell 50%
+    if (sellQty > 0) {
+        injectTradeFromModal('SELL', sellQty);
+    }
+};
+
+window.executeActionModalSL = function() {
+    if (!currentActionContext || currentActionContext.qty <= 0) return;
+    injectTradeFromModal('SELL', currentActionContext.qty); // Sell 100%
+};
+
+
+// ==========================================
+// MODULE 2: BARRA FACTOR RISK ATTRIBUTION
+// ==========================================
+
+window.factorRiskData = null;
+let factorRadarChart = null;
+let factorStyleChart = null;
+
+window.initFactorRisk = async function() {
+    document.getElementById('factor-ledger-body').innerHTML = `<tr><td colspan="6" style="text-align:center; padding:20px; color:var(--text-tertiary);">Computing multi-factor matrix...</td></tr>`;
+    
+    try {
+        const response = await fetch('/api/institutional/factors');
+        if (!response.ok) throw new Error('API Error');
+        const data = await response.json();
+        window.factorRiskData = data;
+        renderFactorRisk(data);
+    } catch (e) {
+        console.error(e);
+        document.getElementById('factor-ledger-body').innerHTML = `<tr><td colspan="6" style="text-align:center; padding:20px; color:var(--danger);">Error loading factor engine</td></tr>`;
+        document.getElementById('factor-engine-status').textContent = 'ENGINE FAULT';
+        document.getElementById('factor-engine-status').style.color = 'var(--danger)';
+    }
+};
+
+function renderFactorRisk(data) {
+    if (!data || !data.factor_groups) return;
+    
+    // --- L1: KPIs ---
+    // 1. Coverage
+    const coverage = data.coverage.coverage_ratio * 100;
+    const covEl = document.getElementById('factor-coverage');
+    covEl.textContent = coverage.toFixed(1) + '%';
+    covEl.style.color = coverage < 80 ? 'var(--warning)' : 'var(--text-primary)';
+    
+    // 2. Dominant Risk
+    const domEl = document.getElementById('factor-dominant');
+    if (data.top_factor && data.top_factor.factor_name) {
+        domEl.textContent = `${data.top_factor.factor_group.toUpperCase()} : ${data.top_factor.factor_name.toUpperCase()}`;
+    } else {
+        domEl.textContent = "N/A";
+    }
+    
+    // 3. Factor Concentration (HHI)
+    // Flatten all exposures
+    let allExposures = [];
+    Object.values(data.factor_groups).forEach(grp => {
+        Object.values(grp).forEach(val => allExposures.push(Math.abs(val)));
+    });
+    
+    let hhi = 0;
+    if (allExposures.length > 0) {
+        const totalExp = allExposures.reduce((a, b) => a + b, 0);
+        if (totalExp > 0) {
+            hhi = allExposures.reduce((sum, val) => sum + Math.pow((val / totalExp) * 100, 2), 0);
+        }
+    }
+    const hhiEl = document.getElementById('factor-hhi');
+    hhiEl.textContent = hhi.toFixed(0);
+    const hhiCard = document.getElementById('factor-hhi-card');
+    if (hhi > 2500) {
+        hhiEl.style.color = 'var(--danger)';
+        hhiCard.classList.add('glow-fail');
+    } else if (hhi > 1500) {
+        hhiEl.style.color = 'var(--warning)';
+    } else {
+        hhiEl.style.color = 'var(--success)';
+        hhiCard.classList.add('glow-pass');
+    }
+
+    // --- L2: ECharts ---
+    renderFactorRadar(data.factor_groups.macro || {});
+    renderFactorStyleBar(data.factor_groups.strategy || {}, data.factor_groups.theme || {});
+    
+    // --- L3: Asset Ledger ---
+    renderFactorLedger(data.positions);
+}
+
+function renderFactorRadar(macro) {
+    if (!factorRadarChart) {
+        factorRadarChart = echarts.init(document.getElementById('factor-radar-chart'));
+    }
+    
+    const indicators = [
+        { name: 'Equity Beta', max: 1.5, min: -1.5 },
+        { name: 'Liquidity', max: 0.5, min: -0.5 },
+        { name: 'Dollar', max: 0.5, min: -0.5 },
+        { name: 'Rate', max: 0.5, min: -0.5 },
+        { name: 'Inflation', max: 1.0, min: -1.0 }
+    ];
+    
+    const values = [
+        macro['equity_beta'] || 0,
+        macro['liquidity_sensitivity'] || 0,
+        macro['dollar_sensitivity'] || 0,
+        macro['rate_sensitivity'] || 0,
+        macro['inflation_sensitivity'] || 0
+    ];
+
+    const option = {
+        tooltip: {
+            confine: true,
+            backgroundColor: 'rgba(0,0,0,0.8)',
+            borderColor: 'rgba(56,189,248,0.5)',
+            textStyle: { color: '#fff', fontFamily: 'var(--font-mono)', fontSize: 12 },
+            formatter: function(params) {
+                let s = `<div style="font-weight:bold; margin-bottom:5px; color:var(--accent-primary);">MACRO SCENARIO SENSITIVITY</div>`;
+                s += `<div>Equity Beta: ${values[0].toFixed(2)} <span style="color:#aaa;font-size:0.8em;">(Market +10% -> Port +${(values[0]*10).toFixed(1)}%)</span></div>`;
+                s += `<div>Dollar Sens: ${values[2].toFixed(2)} <span style="color:#aaa;font-size:0.8em;">(DXY +5% -> Port ${(values[2]*5 > 0 ? '+' : '')}${(values[2]*5).toFixed(1)}%)</span></div>`;
+                s += `<div>Inflation Sens: ${values[4].toFixed(2)}</div>`;
+                return s;
+            }
+        },
+        radar: {
+            indicator: indicators,
+            shape: 'polygon',
+            splitNumber: 4,
+            axisName: { color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', fontSize: 10 },
+            splitLine: { lineStyle: { color: ['rgba(255,255,255,0.02)', 'rgba(255,255,255,0.05)', 'rgba(255,255,255,0.08)', 'rgba(255,255,255,0.1)'].reverse() } },
+            splitArea: { show: false },
+            axisLine: { lineStyle: { color: 'rgba(255,255,255,0.1)' } }
+        },
+        series: [{
+            type: 'radar',
+            data: [{
+                value: values,
+                name: 'Portfolio Exposure',
+                symbol: 'circle',
+                symbolSize: 8,
+                itemStyle: { color: '#00f0ff', borderColor: '#fff', borderWidth: 1 },
+                areaStyle: { 
+                    color: new echarts.graphic.RadialGradient(0.5, 0.5, 1, [
+                        { offset: 0, color: 'rgba(0, 240, 255, 0.1)' },
+                        { offset: 1, color: 'rgba(0, 240, 255, 0.4)' }
+                    ])
+                },
+                lineStyle: { color: '#00f0ff', width: 2, shadowBlur: 15, shadowColor: '#00f0ff' }
+            }]
+        }]
+    };
+    factorRadarChart.setOption(option);
+}
+
+function renderFactorStyleBar(strategy, theme) {
+    if (!factorStyleChart) {
+        factorStyleChart = echarts.init(document.getElementById('factor-style-chart'));
+    }
+    
+    // Combine and sort
+    let items = [];
+    Object.entries(strategy).forEach(([k, v]) => items.push({name: k, val: v}));
+    Object.entries(theme).forEach(([k, v]) => items.push({name: k, val: v}));
+    items.sort((a, b) => Math.abs(a.val) - Math.abs(b.val)); // Ascending by absolute value for bar chart
+    
+    const names = items.map(i => i.name.toUpperCase());
+    const values = items.map(i => i.val);
+
+    const option = {
+        tooltip: {
+            trigger: 'axis',
+            axisPointer: { type: 'shadow' },
+            backgroundColor: 'rgba(0,0,0,0.8)',
+            textStyle: { color: '#fff', fontFamily: 'var(--font-mono)' },
+            formatter: params => `${params[0].name}: ${params[0].value.toFixed(3)}`
+        },
+        grid: { top: 20, bottom: 20, left: 140, right: 30 },
+        xAxis: {
+            type: 'value',
+            splitLine: { show: true, lineStyle: { color: 'rgba(255,255,255,0.05)', type: 'dashed' } },
+            axisLabel: { color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)', fontSize: 10 },
+            axisLine: { show: true, lineStyle: { color: 'rgba(255,255,255,0.3)', width: 2 } } // Emphasize zero line
+        },
+        yAxis: {
+            type: 'category',
+            data: names,
+            axisLabel: { color: '#e2e8f0', fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 'bold' },
+            axisLine: { show: false },
+            axisTick: { show: false }
+        },
+        series: [{
+            type: 'bar',
+            data: values.map(v => ({
+                value: v,
+                itemStyle: {
+                    color: new echarts.graphic.LinearGradient(1, 0, 0, 0, [
+                        { offset: 0, color: v >= 0 ? 'rgba(16,185,129,0.9)' : 'rgba(244,63,94,0.3)' },
+                        { offset: 1, color: v >= 0 ? 'rgba(16,185,129,0.3)' : 'rgba(244,63,94,0.9)' }
+                    ]),
+                    shadowBlur: 10,
+                    shadowColor: v >= 0 ? 'rgba(16,185,129,0.4)' : 'rgba(244,63,94,0.4)'
+                }
+            })),
+            barWidth: '45%',
+            itemStyle: { borderRadius: 3 }
+        }]
+    };
+    factorStyleChart.setOption(option);
+}
+
+function renderFactorLedger(positions) {
+    const tbody = document.getElementById('factor-ledger-body');
+    if (!positions || positions.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:20px; color:var(--text-tertiary);">No positions mapped</td></tr>`;
+        return;
+    }
+    
+    // Sort positions by weight descending
+    positions.sort((a, b) => b.weight - a.weight);
+    
+    let html = '';
+    
+    const fmtExposure = (val) => {
+        if (val === 0) return `<span style="color:var(--text-tertiary);">-</span>`;
+        const color = val > 0 ? '#10b981' : '#f43f5e';
+        const sign = val > 0 ? '+' : '';
+        // Calculate heat intensity 0-1
+        const intensity = Math.min(Math.abs(val) * 2.5, 1);
+        const bgRgb = val > 0 ? `16,185,129` : `244,63,94`;
+        const bgStr = `rgba(${bgRgb}, ${intensity * 0.35})`;
+        const borderStr = `1px solid rgba(${bgRgb}, ${Math.max(intensity, 0.2)})`;
+        
+        return `<span style="display:inline-block; width:100%; height:100%; background:${bgStr}; color:${color}; font-family:var(--font-mono); font-weight:800; text-align:right; padding:6px 10px; border-radius:4px; border-right:${borderStr}; box-sizing:border-box; text-shadow:0 0 8px rgba(${bgRgb},0.4);">${sign}${val.toFixed(3)}</span>`;
+    };
+
+    positions.forEach(pos => {
+        if (!pos.mapped) return; // Skip unmapped for now to keep matrix clean
+        
+        // Extract macro exposures
+        let expMap = {};
+        pos.exposures.forEach(e => {
+            if (e.factor_group === 'macro') {
+                expMap[e.factor_name] = e.exposure * pos.weight; // Contribution = Exposure * Weight
+            }
+        });
+        
+        // Find quantity and price from actual portfolio
+        // Since factor API doesn't return qty/price, we lookup from window.portfolioData
+        let qty = 0;
+        let price = 0;
+        let name = pos.symbol;
+        if (window.portfolioData && window.portfolioData.positions) {
+            const actualPos = window.portfolioData.positions.find(p => p.symbol === pos.symbol);
+            if (actualPos) {
+                qty = actualPos.quantity || 0;
+                price = actualPos.current_price || 0;
+                name = actualPos.name || pos.symbol;
+            }
+        }
+        
+        html += `
+            <tr class="clickable-row" style="transition: background-color 0.2s ease;" onclick="openActionModal('${pos.symbol}', '${name}', ${qty}, ${price})">
+                <td style="padding-left:16px;">
+                    <div style="display:flex; flex-direction:column; gap:2px;">
+                        <span style="font-family:var(--font-mono); font-weight:700; color:var(--text-primary); font-size:0.85rem;">${pos.symbol}</span>
+                        <span style="font-size:0.7rem; color:var(--text-tertiary);">${name}</span>
+                    </div>
+                </td>
+                <td style="padding:4px;">${fmtExposure(expMap['equity_beta'] || 0)}</td>
+                <td style="padding:4px;">${fmtExposure(expMap['liquidity_sensitivity'] || 0)}</td>
+                <td style="padding:4px;">${fmtExposure(expMap['dollar_sensitivity'] || 0)}</td>
+                <td style="padding:4px;">${fmtExposure(expMap['rate_sensitivity'] || 0)}</td>
+                <td style="padding:4px; padding-right:16px;">${fmtExposure(expMap['inflation_sensitivity'] || 0)}</td>
+            </tr>
+        `;
+    });
+    
+    tbody.innerHTML = html;
+}
+
+
+// --- [STRE] Historical Scenario Stress Testing ---
+
+async function initStressTesting() {
+    try {
+        const statusEl = document.getElementById('stress-engine-status');
+        if(statusEl) {
+            statusEl.innerText = 'CALCULATING VAR...';
+            statusEl.style.background = 'rgba(239,68,68,0.1)';
+        }
+
+        const res = await fetchJsonWithRetry('/api/institutional/scenarios');
+        
+        if(statusEl) {
+            statusEl.innerText = 'STRESS ENGINE ONLINE';
+            statusEl.style.background = 'rgba(239,68,68,0.2)';
+        }
+
+        renderStressTesting(res);
+    } catch (e) {
+        console.error('Failed to init stress testing:', e);
+        const statusEl = document.getElementById('stress-engine-status');
+        if(statusEl) {
+            statusEl.innerText = 'ENGINE FAILED';
+            statusEl.style.color = '#fff';
+            statusEl.style.background = '#ef4444';
+        }
+    }
+}
+
+function renderStressTesting(data) {
+    if (!data || !data.scenarios) return;
+
+    const worst = data.worst_scenario || {};
+    const lossPct = worst.portfolio_loss_pct || 0;
+
+    // --- L1 KPIs ---
+    const worstNameEl = document.getElementById('stress-worst-name');
+    const drawdownEl = document.getElementById('stress-max-drawdown');
+    const resiliencyEl = document.getElementById('stress-resiliency-grade');
+
+    if (worstNameEl) {
+        const zh = worst.name_zh ? `<span style="font-size:0.65em; color:var(--text-tertiary); letter-spacing:1px; margin-left:8px;">${worst.name_zh}</span>` : '';
+        worstNameEl.innerHTML = `${worst.name ? worst.name.toUpperCase() : '--'}${zh}`;
+    }
+    if (drawdownEl) drawdownEl.innerText = lossPct.toFixed(2) + '%';
+
+    if (resiliencyEl) {
+        let grade = 'D';
+        let color = '#ef4444';
+        if (lossPct >= -5.0) { grade = 'A'; color = '#10b981'; }
+        else if (lossPct >= -10.0) { grade = 'B'; color = '#f59e0b'; }
+        else if (lossPct >= -15.0) { grade = 'C'; color = '#f97316'; }
+        
+        resiliencyEl.innerText = grade + ' GRADE';
+        resiliencyEl.style.color = color;
+        resiliencyEl.style.textShadow = `0 0 15px ${color}`;
+    }
+
+    // --- L2 ECharts Impact Distribution ---
+    const impactChartDom = document.getElementById('stress-impact-chart');
+    if (impactChartDom && window.echarts) {
+        let impactChart = echarts.getInstanceByDom(impactChartDom);
+        if (!impactChart) impactChart = echarts.init(impactChartDom);
+
+        // Sort ascending (worst drop at the bottom, so it shows up at the top in Echarts horizontal bar)
+        const sortedScenarios = [...data.scenarios].sort((a,b) => a.portfolio_loss_pct - b.portfolio_loss_pct);
+
+        impactChart.setOption({
+            tooltip: { 
+                className: 'terminal-hud-tooltip', 
+                trigger: 'axis', 
+                axisPointer: {type:'shadow'},
+                formatter: function(params) {
+                    const p = params[0];
+                    // Find the original scenario to get name_zh
+                    const scenario = sortedScenarios.find(s => (s.name + ' | ' + s.name_zh) === p.name || s.name === p.name);
+                    const title = scenario ? (scenario.name.toUpperCase() + ' <span style="font-size:0.8em; color:var(--text-tertiary); margin-left:8px;">' + (scenario.name_zh || '') + '</span>') : p.name;
+                    return `<div class="hud-title">${title}</div><div class="hud-value">${p.value > 0 ? '+' : ''}${p.value}%</div>`;
+                }
+            },
+            grid: { left: '15%', right: '10%', bottom: '10%', top: '5%', containLabel: true },
+            xAxis: { 
+                type: 'value', 
+                splitLine: { show: true, lineStyle: { color: 'rgba(255,255,255,0.05)', type: 'dashed' } }, 
+                axisLabel: { color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)', fontSize: 10, formatter: '{value}%' },
+                axisLine: { show: true, lineStyle: { color: 'rgba(255,255,255,0.3)', width: 2 } }
+            },
+            yAxis: { 
+                type: 'category', 
+                data: sortedScenarios.map(s => s.name_zh ? `${s.name} | ${s.name_zh}` : s.name), 
+                axisLabel: { color: '#e2e8f0', fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 'bold' },
+                axisLine: { show: false },
+                axisTick: { show: false },
+                splitArea: { show: true, areaStyle: { color: ['rgba(255,255,255,0.02)', 'transparent'] } }
+            },
+            series: [{
+                name: 'Drawdown',
+                type: 'bar',
+                barWidth: '50%',
+                label: {
+                    show: true,
+                    position: 'right',
+                    formatter: '{c}%',
+                    fontFamily: 'var(--font-mono)',
+                    color: '#fff'
+                },
+                data: sortedScenarios.map(s => {
+                    const val = s.portfolio_loss_pct;
+                    const isWorst = (s.id === worst.id);
+                    return {
+                        value: val,
+                        itemStyle: { 
+                            borderRadius: 3,
+                            color: new echarts.graphic.LinearGradient(1, 0, 0, 0, [
+                                { offset: 0, color: val >= 0 ? 'rgba(16,185,129,0.9)' : (isWorst ? 'rgba(220,38,38,1)' : 'rgba(244,63,94,0.7)') },
+                                { offset: 1, color: val >= 0 ? 'rgba(16,185,129,0.3)' : 'rgba(244,63,94,0.2)' }
+                            ]),
+                            shadowBlur: isWorst ? 15 : 5,
+                            shadowColor: isWorst ? 'rgba(220,38,38,0.6)' : 'rgba(244,63,94,0.2)',
+                            borderColor: isWorst ? '#ef4444' : 'transparent',
+                            borderWidth: isWorst ? 1 : 0
+                        }
+                    };
+                })
+            }]
+        });
+    }
+
+    // --- L3 Shock Propagation Ledger ---
+    const tbody = document.getElementById('stress-ledger-body');
+    if (!tbody) return;
+
+    const fmtShockBadge = (val, maxShock = 20) => {
+        if (val === 0 || !val) return `<span style="color:var(--text-tertiary);">-</span>`;
+        // Convert to percentage display
+        const valPct = val * 100;
+        const color = val > 0 ? '#10b981' : '#f43f5e';
+        const sign = val > 0 ? '+' : '';
+        const intensity = Math.min(Math.abs(valPct) / maxShock, 1.0); 
+        const bgRgb = val > 0 ? `16,185,129` : `244,63,94`;
+        const bgStr = `rgba(${bgRgb}, ${Math.max(intensity * 0.35, 0.1)})`;
+        const borderStr = `1px solid rgba(${bgRgb}, ${Math.max(intensity, 0.2)})`;
+        
+        return `<span style="display:inline-block; background:${bgStr}; color:${color}; font-family:var(--font-mono); font-weight:800; text-align:right; padding:4px 8px; border-radius:4px; border-right:${borderStr}; box-sizing:border-box; text-shadow:0 0 8px rgba(${bgRgb},0.4);">${sign}${valPct.toFixed(1)}%</span>`;
+    };
+
+    let html = '';
+    const displayScenarios = [...data.scenarios].sort((a,b) => a.portfolio_loss_pct - b.portfolio_loss_pct);
+
+    displayScenarios.forEach(s => {
+        const eqShock = s.shocks?.equity || 0;
+        const bdShock = s.shocks?.bond || 0;
+        const gldShock = s.shocks?.gold || 0;
+        
+        // aggregate region and strategy shocks into a string
+        let extraStr = [];
+        if (s.region_shocks) {
+            Object.keys(s.region_shocks).forEach(k => {
+                if (s.region_shocks[k] !== 0) extraStr.push(`${k}: ${(s.region_shocks[k]*100).toFixed(0)}%`);
+            });
+        }
+        if (s.strategy_shocks) {
+            Object.keys(s.strategy_shocks).forEach(k => {
+                if (s.strategy_shocks[k] !== 0) extraStr.push(`${k}: ${(s.strategy_shocks[k]*100).toFixed(0)}%`);
+            });
+        }
+        let extraBadge = extraStr.length > 0 
+            ? `<span style="font-size:0.7rem; color:var(--text-secondary); background:rgba(255,255,255,0.05); padding:2px 6px; border-radius:4px;">${extraStr.join(' | ')}</span>`
+            : `<span style="color:var(--text-tertiary);">-</span>`;
+
+        const pnlPct = s.portfolio_loss_pct;
+        const pColor = pnlPct > 0 ? '#10b981' : '#f43f5e';
+        const pSign = pnlPct > 0 ? '+' : '';
+
+        const isWorst = (s.id === worst.id);
+        const rowClass = isWorst ? 'clickable-row pulsing-danger-row' : 'clickable-row';
+        
+        html += `
+            <tr class="${rowClass}" style="transition: background-color 0.2s ease;">
+                <td style="padding-left:16px;">
+                    <div style="display:flex; flex-direction:column; gap:2px;">
+                        <span style="font-family:var(--font-mono); font-weight:700; color:var(--text-primary); font-size:0.85rem; text-transform:uppercase;">${s.name}</span>
+                        <span style="font-size:0.75rem; color:var(--text-tertiary); letter-spacing:1px;">${s.name_zh || ''}</span>
+                    </div>
+                </td>
+                <td style="text-align:right; font-family:var(--font-mono); font-weight:800; color:${pColor}; font-size:1.1rem; text-shadow:0 0 10px ${pColor}55;">
+                    ${pSign}${pnlPct.toFixed(2)}%
+                </td>
+                <td style="padding:4px; text-align:right;">${fmtShockBadge(eqShock)}</td>
+                <td style="padding:4px; text-align:right;">${fmtShockBadge(bdShock)}</td>
+                <td style="padding:4px; text-align:right;">${fmtShockBadge(gldShock)}</td>
+                <td style="padding:4px; text-align:right; padding-right:16px;">${extraBadge}</td>
+            </tr>
+        `;
+    });
+    
+    tbody.innerHTML = html;
+}
+
+// --- [STRA] Strategy Lab ---
+async function initStrategyLab() {
+    const view = document.getElementById('view-strategy');
+    if (!view || !view.classList.contains('active')) return;
+
+    // Time
+    const timeEl = document.getElementById('strategy-time');
+    if(timeEl) {
+        timeEl.innerText = new Date().toLocaleTimeString('en-US', {hour12:false}) + '.' + new Date().getMilliseconds().toString().padStart(3,'0');
+    }
+
+    try {
+        const res = await fetch('/api/institutional/strategies');
+        const data = await res.json();
+        
+        // 1. Render Engines
+        const engContainer = document.getElementById('strategy-engines-container');
+        if (engContainer && data.engines) {
+            engContainer.innerHTML = data.engines.map(eng => {
+                const badgeColor = eng.status === 'active' ? '#10b981' : (eng.status === 'standby' ? '#f59e0b' : '#ef4444');
+                const signalColor = eng.color || '#38bdf8';
+                
+                const detailsHtml = eng.details.map(d => 
+                    `<div style="display:flex; justify-content:space-between; font-size:0.75rem; border-bottom:1px solid rgba(255,255,255,0.05); padding-bottom:4px;">
+                        <span style="color:var(--text-tertiary);">${d.label}</span>
+                        <span style="font-family:var(--font-mono); color:${d.color || '#e2e8f0'}">${d.value}</span>
+                    </div>`
+                ).join('');
+                
+                const holdingsHtml = eng.holdings.map(h => {
+                    const actColor = h.action === 'BUY' ? '#10b981' : (h.action === 'LIQUIDATE' ? '#ef4444' : '#64748b');
+                    return `<div style="display:flex; justify-content:space-between; font-size:0.7rem; font-family:var(--font-mono);">
+                        <span><span style="color:var(--text-tertiary);">${h.symbol}</span> ${h.name}</span>
+                        <span><span style="color:${actColor}; margin-right:8px;">[${h.action}]</span> <span style="color:var(--text-secondary);">${h.weight}</span></span>
+                    </div>`;
+                }).join('');
+
+                return `
+                <div class="glass-card" style="position:relative; overflow:hidden; display:flex; flex-direction:column; gap:12px;">
+                    <!-- Accent Line -->
+                    <div style="position:absolute; left:0; top:0; bottom:0; width:4px; background:${signalColor};"></div>
+                    
+                    <div style="padding-left:8px; display:flex; justify-content:space-between; align-items:flex-start;">
+                        <div>
+                            <div style="font-size:1.1rem; font-weight:700; color:var(--text-primary); margin-bottom:2px;">${eng.name_en}</div>
+                            <div style="font-size:0.7rem; color:var(--text-tertiary); letter-spacing:1px;">${eng.name}</div>
+                        </div>
+                        <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px;">
+                            <span style="font-size:0.6rem; font-family:var(--font-mono); padding:2px 6px; border-radius:4px; border:1px solid ${badgeColor}; color:${badgeColor}; background:${badgeColor}22;">STATUS: ${eng.status.toUpperCase()}</span>
+                            <span style="font-size:0.8rem; font-family:var(--font-mono); color:${signalColor}; font-weight:bold;">> ${eng.signal}</span>
+                        </div>
+                    </div>
+                    
+                    <div style="padding-left:8px; font-size:0.8rem; color:var(--text-secondary); line-height:1.4;">
+                        ${eng.description}
+                    </div>
+                    
+                    <div style="padding-left:8px; display:flex; flex-direction:column; gap:8px; margin-top:8px;">
+                        ${detailsHtml}
+                    </div>
+                    
+                    <div style="padding-left:8px; margin-top:8px; background:rgba(0,0,0,0.2); padding:8px; border-radius:4px;">
+                        <div style="font-size:0.65rem; color:var(--text-tertiary); margin-bottom:6px;">TARGET ALLOCATION:</div>
+                        ${holdingsHtml}
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        // 2. Render Metrics Container
+        const metricsContainer = document.getElementById('strategy-metrics-container');
+        if (metricsContainer && data.backtest) {
+            const m = data.backtest.metrics;
+            metricsContainer.innerHTML = `
+                <div class="metric-cell"><span style="display:flex; flex-direction:column; line-height:1.3;">Strategy YTD <small style="font-size:0.85em; color:var(--text-tertiary);">策略本年收益</small></span><strong style="color:#10b981;">${m.strategy_ytd}</strong></div>
+                <div class="metric-cell"><span style="display:flex; flex-direction:column; line-height:1.3;">Benchmark YTD <small style="font-size:0.85em; color:var(--text-tertiary);">基准本年收益</small></span><strong style="color:var(--text-primary);">${m.benchmark_ytd}</strong></div>
+                <div class="metric-cell"><span style="display:flex; flex-direction:column; line-height:1.3;">Max Drawdown <small style="font-size:0.85em; color:var(--text-tertiary);">最大回撤</small></span><strong style="color:#ef4444;">${m.max_drawdown}</strong></div>
+                <div class="metric-cell"><span style="display:flex; flex-direction:column; line-height:1.3;">Sharpe Ratio <small style="font-size:0.85em; color:var(--text-tertiary);">夏普比率</small></span><strong style="color:#38bdf8;">${m.sharpe_ratio}</strong></div>
+            `;
+        }
+
+        // 3. Render Equity Curve
+        const eqChartDom = document.getElementById('chart-strategy-equity');
+        if (eqChartDom && window.echarts && data.backtest) {
+            let eqChart = echarts.getInstanceByDom(eqChartDom);
+            if (!eqChart) eqChart = echarts.init(eqChartDom);
+            
+            eqChart.setOption({
+                tooltip: { 
+                    trigger: 'axis',
+                    className: 'terminal-hud-tooltip',
+                    formatter: function(params) {
+                        let html = `<div class="hud-title" style="border-bottom-color:var(--text-tertiary);">${params[0].axisValue}</div>`;
+                        params.forEach(p => {
+                            html += `<div class="hud-value" style="color:${p.color}; font-size:1rem;">${p.seriesName}: ${p.value > 0 ? '+' : ''}${p.value.toFixed(2)}%</div>`;
+                        });
+                        return html;
+                    }
+                },
+                legend: { data: ['STRATEGY (策略)', 'BENCHMARK (基准)'], textStyle: { color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)' }, top: 0, right: 0 },
+                grid: { left: '3%', right: '4%', bottom: '5%', top: '15%', containLabel: true },
+                xAxis: { 
+                    type: 'category', 
+                    boundaryGap: false, 
+                    data: data.backtest.dates,
+                    axisLine: { lineStyle: { color: 'rgba(255,255,255,0.2)' } },
+                    axisLabel: { color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)', fontSize: 10 }
+                },
+                yAxis: { 
+                    type: 'value',
+                    axisLabel: { color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', formatter: '{value}%' },
+                    splitLine: { lineStyle: { color: 'rgba(255,255,255,0.05)' } }
+                },
+                series: [
+                    {
+                        name: 'STRATEGY (策略)',
+                        type: 'line',
+                        data: data.backtest.strategy_returns,
+                        itemStyle: { color: '#38bdf8' },
+                        lineStyle: { width: 3, shadowColor: 'rgba(56,189,248,0.5)', shadowBlur: 10 },
+                        showSymbol: false,
+                        areaStyle: {
+                            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                                { offset: 0, color: 'rgba(56,189,248,0.3)' },
+                                { offset: 1, color: 'rgba(56,189,248,0.0)' }
+                            ])
+                        }
+                    },
+                    {
+                        name: 'BENCHMARK (基准)',
+                        type: 'line',
+                        data: data.backtest.benchmark_returns,
+                        itemStyle: { color: '#64748b' },
+                        lineStyle: { width: 2, type: 'dashed' },
+                        showSymbol: false
+                    }
+                ]
+            });
+        }
+
+        // 4. Render Universe
+        const univContainer = document.getElementById('strategy-universe-container');
+        if (univContainer && data.universe) {
+            let uHtml = '';
+            for (const [category, assets] of Object.entries(data.universe)) {
+                let catColor = '#38bdf8';
+                if(category.includes('A_SHARE')) catColor = '#ef4444';
+                if(category.includes('OVERSEAS')) catColor = '#10b981';
+                if(category.includes('THEME')) catColor = '#a855f7';
+                
+                uHtml += `<div style="flex: 1 1 200px; background:rgba(0,0,0,0.2); padding:12px; border-radius:4px; border-top:2px solid ${catColor};">
+                    <div style="font-size:0.7rem; color:var(--text-tertiary); margin-bottom:8px; font-weight:bold;">${category.replace('_',' ')}</div>
+                    <div style="display:flex; flex-direction:column; gap:6px;">`;
+                
+                assets.forEach(a => {
+                    uHtml += `<div style="display:flex; justify-content:space-between; font-size:0.75rem; font-family:var(--font-mono);">
+                        <span style="color:var(--text-secondary);">${a.name}</span>
+                        <span style="color:var(--text-tertiary);">${a.symbol}</span>
+                    </div>`;
+                });
+                
+                uHtml += `</div></div>`;
+            }
+            univContainer.innerHTML = uHtml;
+        }
+
+    } catch (e) {
+        console.error('Failed to init Strategy Lab:', e);
+    }
+}
+
+
+// ==========================================
+// [HUB] DECISION HUB LOGIC
+// ==========================================
+async function initDecisionHub() {
+    const hubTime = document.getElementById('hub-time');
+    if (hubTime) hubTime.textContent = new Date().toLocaleTimeString('en-US', {hour12: false});
+    
+    try {
+        const response = await fetch('/api/institutional/decision_hub');
+        const data = await response.json();
+        
+        // Render L1 Macro
+        const l1 = document.getElementById('hub-l1-content');
+        if (l1) {
+            const macro = data.l1_macro;
+            const isStress = macro.vix_level > 25;
+            l1.innerHTML = `
+                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                    <span>Market Regime:</span>
+                    <strong style="color:${isStress ? '#ef4444' : '#22c55e'}">${macro.regime}</strong>
+                </div>
+                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                    <span>VIX Level:</span>
+                    <strong>${macro.vix_level}</strong>
+                </div>
+                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                    <span>Max Equity Ceiling:</span>
+                    <strong>${(macro.max_equity_exposure * 100).toFixed(0)}%</strong>
+                </div>
+                <div style="margin-top:12px; padding:8px; background:rgba(239, 68, 68, 0.1); border:1px solid #ef4444; border-radius:4px;">
+                    <span style="color:#ef4444; font-weight:bold;">ACTION:</span> ${macro.recommended_action}
+                </div>
+            `;
+        }
+        
+        // Render L2 Quant Signals
+        const l2 = document.getElementById('hub-l2-content');
+        if (l2) {
+            let html = '<ul style="list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:8px;">';
+            data.l2_signals.forEach(sig => {
+                html += `
+                    <li style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.03); padding:8px; border-radius:4px;">
+                        <span style="font-weight:bold; color:var(--text-primary);">${sig.source}</span>
+                        <span style="color:var(--text-tertiary); font-family:var(--font-mono);">${sig.signal}</span>
+                    </li>
+                `;
+            });
+            html += '</ul>';
+            l2.innerHTML = html;
+        }
+        
+        // Render L3 Routing
+        const l3 = document.getElementById('hub-l3-content');
+        if (l3) {
+            const weights = data.l3_routing.target_weights;
+            let html = `<div style="margin-bottom:12px; color:var(--text-primary); font-style:italic;">"${data.l3_routing.rationale}"</div>`;
+            html += '<div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">';
+            for (const [sym, weight] of Object.entries(weights)) {
+                if (weight > 0) {
+                    html += `
+                        <div style="background:rgba(59, 130, 246, 0.1); border:1px solid rgba(59, 130, 246, 0.3); padding:8px; border-radius:4px; display:flex; justify-content:space-between;">
+                            <span>${sym}</span>
+                            <strong style="color:#60a5fa;">${(weight*100).toFixed(1)}%</strong>
+                        </div>
+                    `;
+                }
+            }
+            html += '</div>';
+            l3.innerHTML = html;
+        }
+        
+        // Render L4 Compliance
+        const l4 = document.getElementById('hub-l4-content');
+        const l4Card = document.getElementById('hub-l4-card');
+        if (l4) {
+            const comp = data.l4_compliance;
+            const isBlock = comp.gate_status === 'HARD_BLOCK';
+            l4Card.style.borderLeft = isBlock ? '4px solid #ef4444' : '4px solid #22c55e';
+            
+            let html = `
+                <div style="font-size:1.2rem; font-weight:bold; margin-bottom:12px; color:${isBlock ? '#ef4444' : '#22c55e'};">
+                    STATUS: ${comp.gate_status}
+                </div>
+            `;
+            if (isBlock) {
+                html += '<div style="color:#ef4444; margin-bottom:8px;"><strong>VIOLATIONS:</strong></div><ul style="color:#ef4444; margin-bottom:12px; padding-left:20px;">';
+                comp.violations.forEach(v => html += `<li>${v}</li>`);
+                html += '</ul>';
+                
+                html += '<div style="color:#f59e0b; margin-bottom:8px;"><strong>REPAIR SUGGESTIONS:</strong></div><ul style="color:#f59e0b; padding-left:20px;">';
+                comp.repair_suggestions.forEach(v => html += `<li>${v}</li>`);
+                html += '</ul>';
+            } else {
+                html += '<div style="color:#22c55e;">No critical violations. Trade flow permitted.</div>';
+            }
+            l4.innerHTML = html;
+        }
+        
+        // Render L5 AI Memo
+        const l5 = document.getElementById('hub-l5-content');
+        if (l5) {
+            const memo = data.l5_ai_memo;
+            l5.innerHTML = `
+                <h2 style="color:${memo.headline.includes('BLOCKED') ? '#ef4444' : '#22c55e'}; margin-top:0;">${memo.headline}</h2>
+                <p style="margin-bottom:0;">${memo.memo}</p>
+            `;
+        }
+        
+    } catch (e) {
+        console.error("Decision Hub Error", e);
     }
 }

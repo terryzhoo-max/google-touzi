@@ -88,3 +88,56 @@ def generate_llm_insight():
             local_insight = f"🟢 状态平稳：本地探针监测到当前宏观环境平稳 (VIX={vix:.2f}, 10Y={tnx:.2f}%)。云端推演暂缓，请参考下方量化沙盘维持既定投资节奏。"
             
         return {"insight": local_insight}
+
+def generate_portfolio_compliance_insight(compliance_status, tracking_error, var_95, top_factor, concentration):
+    try:
+        prompt = f"""你是一个极其严格的华尔街量化基金风控总监（Chief Risk Officer）。
+请根据以下最新的实盘组合风控数据，生成一段 150 字以内的【高管风控批示】。
+直接给出硬核的裁决指令（如熔断、放行、对冲、调仓等）。语气冰冷、极度专业、不留情面。绝对不要有任何多余的话。
+
+当前组合审计快照：
+- 综合合规状态: {compliance_status.upper()}
+- 跟踪误差 (Tracking Error): {tracking_error}%
+- 95% 在险价值 (VaR): {var_95}%
+- 最大风险归因因子: {top_factor}
+- 集中度水平: {concentration}
+"""
+        url = "https://api.deepseek.com/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {settings.DEEPSEEK_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "model": "deepseek-chat",
+            "messages": [
+                {"role": "system", "content": "You are a ruthless Chief Risk Officer at a top quantitative hedge fund."},
+                {"role": "user", "content": prompt}
+            ],
+            "temperature": 0.2,
+            "max_tokens": 300
+        }
+        
+        req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
+        with urllib.request.urlopen(req, timeout=10) as response:
+            result = json.loads(response.read().decode("utf-8"))
+            content = result["choices"][0]["message"]["content"]
+            return {"insight": content}
+    except Exception as e:
+        import traceback
+        print(f"LLM API Error in Compliance Insight: {e}")
+        
+        # Local Fallback
+        try:
+            te_val = float(str(tracking_error).replace('%', ''))
+        except:
+            te_val = 0.0
+            
+        if compliance_status.lower() in ['block', 'fail'] or te_val > 8.0:
+            local = f"🔴 风控熔断：终端监控到跟踪误差达 {tracking_error}% 且合规状态 {compliance_status}。系统已强制阻断新增买入指令，建议立刻开启 {top_factor} 因子的反向对冲。"
+        elif compliance_status.lower() == 'warn' or te_val > 4.0:
+            local = f"🟡 风控警告：{top_factor} 因子暴露偏高 (TE: {tracking_error}%)，集中度 {concentration}。合规绿灯已降级，限制大规模调仓，建议以不超过 5% 的换手率进行微调。"
+        else:
+            local = f"🟢 合规放行：组合在险价值 (VaR: {var_95}%) 处于安全阈值内，未触发刚性风控红线。允许交易台按照既定模型执行目标权重。"
+            
+        return {"insight": local}

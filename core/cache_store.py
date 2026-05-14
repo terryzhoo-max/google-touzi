@@ -109,6 +109,17 @@ def _get_fresh(key: str, now: float) -> Any | None:
     if entry and _is_fresh(entry, now):
         _stats["hits"] += 1
         return _with_cache_meta(entry["value"], key, entry)
+        
+    # Fallback to L2 SQLite DB
+    from core.db_layer import get_api_cache
+    payload, updated_at = get_api_cache(key)
+    if payload:
+        ttl = ROUTE_TTL.get(key, 300)
+        if now - updated_at < ttl:
+            _stats["hits"] += 1
+            # Rehydrate L1
+            _store[key] = {"ts": updated_at, "ttl": ttl, "value": _safe_copy(payload)}
+            return _with_cache_meta(payload, key, _store[key])
     return None
 
 
@@ -123,7 +134,18 @@ def _store_value(key: str, ttl: int, value: Any, ts: float | None = None) -> Any
 def _serve_stale(key: str) -> Any | None:
     entry = _store.get(key)
     if not entry:
+        # Fallback to L2 SQLite DB
+        from core.db_layer import get_api_cache
+        payload, updated_at = get_api_cache(key)
+        if payload:
+            ttl = ROUTE_TTL.get(key, 300)
+            # Rehydrate L1
+            entry = {"ts": updated_at, "ttl": ttl, "value": _safe_copy(payload)}
+            _store[key] = entry
+
+    if not entry:
         return None
+        
     _stats["stale_served"] += 1
     print(f"[cache_store] Serving stale cache for {key}.")
     return _with_cache_meta(entry["value"], key, entry, stale=True)
@@ -140,43 +162,37 @@ from core.db_layer import save_api_cache, get_api_cache
 
 def cached(ttl: int, key: str):
     """Decorator for synchronous functions.
-    Uses SQLite as a L2 Data Lake to separate API reads from data fetching.
+    Uses unified L1 (memory) and L2 (SQLite) separation.
     """
     def decorator(fn):
         @functools.wraps(fn)
         def wrapper(*args, **kwargs):
             now = time.time()
             
-            # Check SQLite L2 cache
-            payload, updated_at = get_api_cache(key)
-            if payload and (now - updated_at < ttl):
-                _stats["hits"] += 1
-                return payload
+            fresh = _get_fresh(key, now)
+            if fresh is not None:
+                return fresh
             
             _stats["misses"] += 1
             
-            # If stale or missing, we want to return STALE data immediately
-            # and trigger a background thread to update the cache
             def background_refresh():
                 with _sync_locks[key]:
-                    # Double check if someone else updated it
-                    _, last_update = get_api_cache(key)
-                    if time.time() - last_update < ttl: return
+                    if _get_fresh(key, time.time()) is not None:
+                        return
                     try:
                         result = fn(*args, **kwargs)
                         if not _is_logic_error(result):
                             _stats["refreshes"] += 1
-                            save_api_cache(key, result)
+                            _store_value(key, ttl, result)
                     except Exception as exc:
                         _stats["errors"] += 1
                         print(f"[cache_store] Async Sync Exception {key}: {exc}")
                         
-            # Spin up a thread to fetch it without blocking the API request!
             threading.Thread(target=background_refresh, daemon=True).start()
             
-            if payload:
-                _stats["stale_served"] += 1
-                return payload
+            stale = _serve_stale(key)
+            if stale is not None:
+                return stale
                 
             return {"status": "syncing", "message": "Initial data sync in progress. Please refresh."}
         return wrapper

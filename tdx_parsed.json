@@ -1,0 +1,181 @@
+{
+  "cash": 401.96,
+  "positions": [
+    {
+      "symbol": "000988",
+      "name": "华工科技",
+      "quantity": 100.0,
+      "cost": 681.0,
+      "price": 142.1,
+      "market_value": 0.0
+    },
+    {
+      "symbol": "002851",
+      "name": "麦格米特",
+      "quantity": 100.0,
+      "cost": 9159.96,
+      "price": 137.86,
+      "market_value": 13786.0
+    },
+    {
+      "symbol": "159218",
+      "name": "卫星ETF招商",
+      "quantity": 32200.0,
+      "cost": 65729.3,
+      "price": 1.996,
+      "market_value": 64271.2
+    },
+    {
+      "symbol": "159326",
+      "name": "电网设备ETF华夏",
+      "quantity": 15300.0,
+      "cost": 28312.3,
+      "price": 2.189,
+      "market_value": 33491.7
+    },
+    {
+      "symbol": "159516",
+      "name": "半导体设备ETF国泰",
+      "quantity": 15900.0,
+      "cost": 4902.8,
+      "price": 1.169,
+      "market_value": 14028.0
+    },
+    {
+      "symbol": "159869",
+      "name": "游戏ETF华夏",
+      "quantity": 23900.0,
+      "cost": 31457.6,
+      "price": 1.324,
+      "market_value": 31643.6
+    },
+    {
+      "symbol": "159995",
+      "name": "芯片ETF华夏",
+      "quantity": 25500.0,
+      "cost": -36405.3,
+      "price": 2.384,
+      "market_value": 60792.0
+    },
+    {
+      "symbol": "510500",
+      "name": "中证500ETF南方",
+      "quantity": 3500.0,
+      "cost": 24593.3,
+      "price": 9.009,
+      "market_value": 31531.5
+    },
+    {
+      "symbol": "512890",
+      "name": "红利低波ETF华泰柏瑞",
+      "quantity": 84700.0,
+      "cost": 78153.77,
+      "price": 1.177,
+      "market_value": 99691.9
+    },
+    {
+      "symbol": "513130",
+      "name": "恒生科技ETF华泰柏瑞",
+      "quantity": 494300.0,
+      "cost": 362943.3,
+      "price": 0.636,
+      "market_value": 314374.8
+    },
+    {
+      "symbol": "518880",
+      "name": "黄金ETF华安",
+      "quantity": 4900.0,
+      "cost": 31668.0,
+      "price": 9.804,
+      "market_value": 48039.6
+    },
+    {
+      "symbol": "562500",
+      "name": "机器人ETF华夏",
+      "quantity": 18500.0,
+      "cost": 4769.0,
+      "price": 1.156,
+      "market_value": 17918.0
+    },
+    {
+      "symbol": "588000",
+      "name": "科创50ETF华夏",
+      "quantity": 48400.0,
+      "cost": -942.8,
+      "price": 1.865,
+      "market_value": 62850.5
+    },
+    {
+      "symbol": "600406",
+      "name": "国电南瑞",
+      "quantity": 0.0,
+      "cost": 8072.08,
+      "price": 28.02,
+      "market_value": 8406.0
+    },
+    {
+      "symbol": "601179",
+      "name": "中国西电",
+      "quantity": 700.0,
+      "cost": 11740.79,
+      "price": 19.02,
+      "market_value": 13314.0
+    },
+    {
+      "symbol": "601899",
+      "name": "紫金矿业",
+      "quantity": 2000.0,
+      "cost": 70707.7,
+      "price": 34.66,
+      "market_value": 69320.0
+    },
+    {
+      "symbol": "603163",
+      "name": "圣晖系统集成集团",
+      "quantity": 100.0,
+      "cost": 10423.1,
+      "price": 104.41,
+      "market_value": 10441.0
+    },
+    {
+      "symbol": "605358",
+      "name": "立昂微",
+      "quantity": 600.0,
+      "cost": 25015.05,
+      "price": 52.66,
+      "market_value": 26330.0
+    },
+    {
+      "symbol": "688783",
+      "name": "西安奕材",
+      "quantity": 530.0,
+      "cost": 18735.39,
+      "price": 35.39,
+      "market_value": 18756.7
+    },
+    {
+      "symbol": "688981",
+      "name": "中芯国际",
+      "quantity": 1447.0,
+      "cost": 150142.94,
+      "price": 121.86,
+      "market_value": 176331.42
+    },
+    {
+      "symbol": "02331",
+      "name": "李宁",
+      "quantity": 500.0,
+      "cost": 6528.52,
+      "price": 16.976,
+      "market_value": 8488.06
+    },
+    {
+      "symbol": "09988",
+      "name": "阿里巴巴－Ｗ",
+      "quantity": 0.0,
+      "cost": 11778.91,
+      "price": 115.257,
+      "market_value": 11525.71
+    }
+  ]
+}

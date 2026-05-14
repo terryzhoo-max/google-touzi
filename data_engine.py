@@ -1,8 +1,9 @@
 import time
 import asyncio
 import os
+import json
 from contextlib import asynccontextmanager, suppress
-from fastapi import FastAPI, Query, Request
+from fastapi import FastAPI, Query, Request, UploadFile, File
 from pydantic import BaseModel, Field
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -53,6 +54,8 @@ from core.surprise_index import get_surprise_index
 from core.portfolio_manager import get_portfolio_summary
 from core.margin_monitor import get_margin_data
 from core.dividend_yield import get_dividend_leaders
+from core.strategy_lab import get_strategy_dashboard
+from core.global_decision_hub import compute_decision_matrix
 
 
 async def _warm_cache():
@@ -337,7 +340,7 @@ def api_margin():
     return get_margin_data(days=60)
 
 @app.get("/api/macro/dividend")
-@cached(ttl=43200, key="dividend_v6")
+@cached(ttl=43200, key="dividend_v7")
 def api_dividend():
     return get_dividend_leaders(limit=10)
 
@@ -650,6 +653,93 @@ def api_institutional_compliance_check(request: WhatIfRequest):
 def api_institutional_decision():
     return _build_institutional_payload()
 
+
+@app.post("/api/institutional/import_tdx")
+async def api_import_tdx(file: UploadFile = File(...)):
+    try:
+        from core.tdx_parser import import_tdx_to_portfolio
+        import shutil
+        import tempfile
+        
+        # Save uploaded file to a temporary file
+        fd, temp_path = tempfile.mkstemp(suffix=".txt")
+        with os.fdopen(fd, 'wb') as f:
+            shutil.copyfileobj(file.file, f)
+            
+        import_tdx_to_portfolio(temp_path, settings.PORTFOLIO_BOOK_PATH)
+        
+        # Clean up temp file
+        os.remove(temp_path)
+        
+        # Invalidate decision cache
+        invalidate("institutional_decision")
+        return {"status": "success", "message": "TDX portfolio imported"}
+    except Exception as exc:
+        return JSONResponse(content={"error": str(exc)}, status_code=400)
+
+
+@app.get("/api/institutional/import_tdx")
+def api_import_tdx_get():
+    # just an alias if GET is used by mistake
+    return JSONResponse(content={"error": "Use POST"}, status_code=405)
+
+
+@app.get("/api/institutional/ai_compliance_review")
+def api_institutional_ai_compliance_review():
+    try:
+        from core.llm_agent import generate_portfolio_compliance_insight
+        # Grab the latest decision payload to get risk numbers
+        payload = _build_institutional_payload()
+        comp_status = payload.get("compliance", {}).get("status", "unknown")
+        active_risk = payload.get("active_risk", {})
+        tracking_error = active_risk.get("tracking_error_proxy_pct", 0.0)
+        
+        factor_risk = payload.get("factor_risk", {})
+        top_factor_name = "N/A"
+        if "top_factor" in factor_risk and factor_risk["top_factor"]:
+            top_factor_name = factor_risk["top_factor"].get("factor_name", "N/A")
+            
+        portfolio = payload.get("portfolio", {})
+        concentration = portfolio.get("concentration_level", "low")
+        var_95 = payload.get("risk", {}).get("var_95_pct", 0.0)
+        
+        result = generate_portfolio_compliance_insight(comp_status, tracking_error, var_95, top_factor_name, concentration)
+        return result
+    except Exception as exc:
+        import traceback
+        traceback.print_exc()
+        return JSONResponse(content={"error": str(exc)}, status_code=500)
+
+
+@app.get("/api/institutional/portfolio_raw")
+def api_institutional_portfolio_raw():
+    try:
+        if os.path.exists(settings.PORTFOLIO_BOOK_PATH):
+            with open(settings.PORTFOLIO_BOOK_PATH, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                return data
+        return {"positions": []}
+    except Exception as exc:
+        return JSONResponse(content={"error": str(exc)}, status_code=500)
+
+
+@app.get("/api/institutional/simulation/scenarios")
+async def api_simulation_scenarios():
+    try:
+        from core.scenario_engine import SCENARIO_SHOCKS
+        return {"scenarios": SCENARIO_SHOCKS}
+    except Exception as exc:
+        return JSONResponse(status_code=500, content={"error": str(exc)})
+
+
+@app.get("/api/institutional/strategies")
+def api_institutional_strategies():
+    return get_strategy_dashboard()
+
+@app.get("/api/institutional/decision_hub")
+def api_institutional_decision_hub():
+    """L1 to L5 Global Decision Matrix Funnel"""
+    return compute_decision_matrix()
 
 @app.get("/api/institutional/policy")
 @cached(ttl=ROUTE_TTL["institutional_policy"], key="institutional_policy")

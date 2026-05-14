@@ -448,6 +448,25 @@ def get_us_etf_history_long(symbol: str, years: int = 5) -> pd.Series:
 
 # ── convenience helpers ─────────────────────────────────────────
 
+def get_china_etf_history_long(symbol: str, years: int = 5) -> pd.Series:
+    """Fetch history for A-Share ETFs via Tushare fund_daily."""
+    start_date = (datetime.datetime.now() - datetime.timedelta(days=365 * years)).strftime("%Y%m%d")
+    end_date = datetime.datetime.now().strftime("%Y%m%d")
+    try:
+        items = _tushare_items(
+            "fund_daily",
+            {"ts_code": symbol, "start_date": start_date, "end_date": end_date},
+            "trade_date,close"
+        )
+        if items:
+            s = _ts_items_to_series(items, 0, 1, symbol)
+            print(f"[data_providers] {symbol} (China ETF) → Tushare ({len(s)} rows)")
+            return s
+    except Exception as e:
+        print(f"[data_providers] Tushare fund_daily failed for {symbol}: {e}")
+    return pd.Series(dtype=float)
+
+
 def get_vix_current() -> float:
     try:
         s = get_vix_history(5)

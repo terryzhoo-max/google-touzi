@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 from core.db_layer import init_db, get_cached_timeseries, save_timeseries
-from core.data_providers import get_us_etf_history_long, get_vix_history, get_tnx_history
+from core.data_providers import get_us_etf_history_long, get_china_etf_history_long, get_vix_history, get_tnx_history
 
 def get_symbol_data(symbol, years=5):
     end_date = datetime.now()
@@ -19,6 +19,8 @@ def get_symbol_data(symbol, years=5):
             s = get_vix_history(days=365 * years)
         elif symbol == "^TNX":
             s = get_tnx_history(days=365 * years)
+        elif symbol.endswith(".SH") or symbol.endswith(".SZ"):
+            s = get_china_etf_history_long(symbol, years=years)
         else:
             s = get_us_etf_history_long(symbol, years=years)
 
