@@ -135,6 +135,32 @@ def compute_decision_matrix(portfolio=None, data_quality=None):
     
     # Calculate before weights for frontend comparison
     before_weights = {row["symbol"]: float(row["weight"]) for row in portfolio.get("positions", [])}
+    symbol_names = {row["symbol"]: row.get("name", row["symbol"]) for row in portfolio.get("positions", [])}
+    
+    # Add common fallbacks for testing if they are not in the portfolio
+    common_names = {
+        "518880": "黄金ETF",
+        "513130": "纳指ETF",
+        "512890": "红利低波ETF",
+        "688981": "中芯国际",
+        "510500": "中证500ETF",
+        "159995": "创业板ETF",
+        "511260": "十年国债ETF",
+        "513500": "标普500ETF",
+        "CASH": "现金"
+    }
+    for k, v in common_names.items():
+        if k not in symbol_names:
+            symbol_names[k] = v
+            
+    # Run backtest to get confidence metrics
+    try:
+        from core.backtest import run_backtest
+        bt_results = run_backtest()
+        bt_metrics = bt_results.get("metrics", {}) if isinstance(bt_results, dict) else {}
+    except Exception as e:
+        print(f"[Decision Hub] Failed to run backtest for metrics: {e}")
+        bt_metrics = {}
     
     return {
         "timestamp": int(time.time()),
@@ -143,7 +169,9 @@ def compute_decision_matrix(portfolio=None, data_quality=None):
         "l3_routing": {
             "before_weights": before_weights,
             "target_weights": l3_weights,
-            "rationale": l3_rationale
+            "rationale": l3_rationale,
+            "backtest_metrics": bt_metrics,
+            "symbol_names": symbol_names
         },
         "l4_compliance": l4,
         "l5_ai_memo": l5

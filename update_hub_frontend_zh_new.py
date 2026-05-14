@@ -1,4 +1,4 @@
-import re
+﻿import re
 
 def main():
     path = "static/main.js"
@@ -43,23 +43,23 @@ def main():
             l1.style.gap = '12px';
             l1.innerHTML = `
                 <div style="background:${regimeGlow}; border:1px solid ${regimeBorder}50; border-radius:6px; padding:12px; display:flex; flex-direction:column; justify-content:center; align-items:center; box-shadow:inset 0 0 20px ${regimeGlow};">
-                    <span style="font-size:0.75rem; color:var(--text-tertiary); margin-bottom:4px; letter-spacing:1px;">宏观周期</span>
+                    <span style="font-size:0.75rem; color:var(--text-tertiary); margin-bottom:4px; letter-spacing:1px;">瀹忚鍛ㄦ湡</span>
                     <strong style="color:${regimeBorder}; font-size:1.2rem; text-shadow:0 0 10px ${regimeBorder}80;">${macro.regime}</strong>
                 </div>
                 <div style="background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.05); border-radius:6px; padding:12px; display:flex; flex-direction:column; justify-content:center; align-items:center;">
-                    <span style="font-size:0.75rem; color:var(--text-tertiary); margin-bottom:4px; letter-spacing:1px;">恐慌指数</span>
+                    <span style="font-size:0.75rem; color:var(--text-tertiary); margin-bottom:4px; letter-spacing:1px;">鎭愭厡鎸囨暟</span>
                     <strong style="font-family:var(--font-mono); font-size:1.2rem; color:var(--text-primary);">${macro.vix_level.toFixed(2)}</strong>
                 </div>
                 <div style="background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.05); border-radius:6px; padding:12px; display:flex; flex-direction:column; justify-content:center; align-items:center;">
-                    <span style="font-size:0.75rem; color:var(--text-tertiary); margin-bottom:4px; letter-spacing:1px;">宏观得分</span>
+                    <span style="font-size:0.75rem; color:var(--text-tertiary); margin-bottom:4px; letter-spacing:1px;">瀹忚寰楀垎</span>
                     <strong style="font-family:var(--font-mono); font-size:1.2rem; color:${scoreColor};">${macro.score}</strong>
                 </div>
                 <div style="background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.05); border-radius:6px; padding:12px; display:flex; flex-direction:column; justify-content:center; align-items:center;">
-                    <span style="font-size:0.75rem; color:var(--text-tertiary); margin-bottom:4px; letter-spacing:1px;">权益上限</span>
+                    <span style="font-size:0.75rem; color:var(--text-tertiary); margin-bottom:4px; letter-spacing:1px;">鏉冪泭涓婇檺</span>
                     <strong style="font-family:var(--font-mono); font-size:1.2rem; color:var(--text-primary);">${(macro.max_equity_exposure * 100).toFixed(0)}%</strong>
                 </div>
                 <div style="grid-column: span 2; margin-top:4px; padding:12px; background:rgba(0,0,0,0.3); border-radius:6px; border-left:4px solid ${isStress?'#ef4444':'#3b82f6'}; display:flex; justify-content:space-between; align-items:center;">
-                    <span style="color:var(--text-secondary); font-size:0.85rem; letter-spacing:1px;">宏观指引:</span>
+                    <span style="color:var(--text-secondary); font-size:0.85rem; letter-spacing:1px;">瀹忚鎸囧紩:</span>
                     <strong style="font-family:var(--font-mono); font-size:1rem; color:${isStress?'#ef4444':'#60a5fa'}; text-shadow:0 0 10px ${isStress?'#ef4444':'#60a5fa'}40;">${macro.recommended_action}</strong>
                 </div>
             `;
@@ -89,7 +89,7 @@ def main():
                         
                         <div style="display:flex; justify-content:space-between; align-items:flex-end; z-index:1;">
                             <div style="display:flex; flex-direction:column;">
-                                <span style="font-size:0.65rem; color:var(--text-tertiary); letter-spacing:1px; margin-bottom:2px;">核心持仓</span>
+                                <span style="font-size:0.65rem; color:var(--text-tertiary); letter-spacing:1px; margin-bottom:2px;">鏍稿績鎸佷粨</span>
                                 <span style="font-size:0.85rem; color:var(--text-secondary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:120px;">${topStr}</span>
                             </div>
                             <span style="color:${sColor}; font-family:var(--font-mono); font-weight:900; font-size:1.3rem; text-shadow:0 0 15px ${sColor}A0;">${sig.signal > 0 ? '+' : ''}${sig.signal}</span>
@@ -106,7 +106,7 @@ def main():
         // ----------------------------------------------------------------
         const rationaleEl = document.getElementById('hub-l3-rationale');
         if (rationaleEl) {
-            rationaleEl.innerHTML = `<div style="display:inline-flex; align-items:center; background:rgba(56,189,248,0.1); padding:6px 12px; border-radius:4px; border:1px solid rgba(56,189,248,0.2);"><span style="color:#38bdf8; margin-right:8px; font-size:1.2em;">⬢</span> <span style="color:var(--text-secondary);">${data.l3_routing.rationale}</span></div>`;
+            rationaleEl.innerHTML = `<div style="display:inline-flex; align-items:center; background:rgba(56,189,248,0.1); padding:6px 12px; border-radius:4px; border:1px solid rgba(56,189,248,0.2);"><span style="color:#38bdf8; margin-right:8px; font-size:1.2em;">猬?/span> <span style="color:var(--text-secondary);">${data.l3_routing.rationale}</span></div>`;
         }
         
         const chartDom = document.getElementById('chart-hub-l3-alloc');
@@ -140,7 +140,7 @@ def main():
                     }
                 },
                 legend: {
-                    data: ['当前仓位', '目标仓位'],
+                    data: ['褰撳墠浠撲綅', '鐩爣浠撲綅'],
                     textStyle: { color: 'var(--text-secondary)', fontSize: 11 },
                     top: 0,
                     right: 0,
@@ -161,7 +161,7 @@ def main():
                 },
                 series: [
                     {
-                        name: '当前仓位',
+                        name: '褰撳墠浠撲綅',
                         type: 'bar',
                         data: curData,
                         itemStyle: { color: 'rgba(100, 116, 139, 0.3)', borderRadius: [2, 2, 0, 0], borderColor: 'rgba(100, 116, 139, 0.8)', borderWidth: 1 },
@@ -169,7 +169,7 @@ def main():
                         barGap: '15%'
                     },
                     {
-                        name: '目标仓位',
+                        name: '鐩爣浠撲綅',
                         type: 'bar',
                         data: tgtData,
                         itemStyle: { 
@@ -184,10 +184,61 @@ def main():
                         barWidth: '30%'
                     }
                 ]
-            allocChart.setOption({
-                // ... (omitted changing ECharts part, it's mostly the same but I'll write the full block)
-                // wait, if I am replacing I should write the exact replacement content. Let me fetch lines 162 to 169 first to be sure
 
+            });
+            window.addEventListener('resize', () => allocChart.resize());
+            
+            // --- INJECT TRADE DIRECTIVES ---
+            let tradesContainer = document.getElementById('hub-l3-trades');
+            if (!tradesContainer) {
+                tradesContainer = document.createElement('div');
+                tradesContainer.id = 'hub-l3-trades';
+                tradesContainer.style.marginTop = '12px';
+                tradesContainer.style.padding = '12px';
+                tradesContainer.style.background = 'rgba(0,0,0,0.2)';
+                tradesContainer.style.borderRadius = '6px';
+                tradesContainer.style.border = '1px solid rgba(255,255,255,0.05)';
+                chartDom.parentNode.appendChild(tradesContainer);
+            }
+            
+            let tradesHtml = `<div style="font-size:0.75rem; color:var(--text-tertiary); margin-bottom:8px; letter-spacing:1px; display:flex; justify-content:space-between; align-items:center;">
+                <span>执行建议 (TRADE DIRECTIVES)</span>`;
+            
+            if (data.l3_routing.backtest_metrics && data.l3_routing.backtest_metrics.strat_sharpe !== undefined) {
+                const sharpe = data.l3_routing.backtest_metrics.strat_sharpe;
+                if (sharpe > 1.0) {
+                    tradesHtml += `<span style="color:#22c55e; border:1px solid #22c55e50; padding:2px 6px; border-radius:4px; font-weight:bold;">高确信度 | 夏普: ${sharpe}</span>`;
+                } else {
+                    tradesHtml += `<span style="color:#f59e0b; border:1px solid #f59e0b50; padding:2px 6px; border-radius:4px;">中等确信度 | 夏普: ${sharpe}</span>`;
+                }
+            }
+            tradesHtml += `</div><div style="display:flex; flex-wrap:wrap; gap:8px;">`;
+            
+            let hasTrades = false;
+            symbols.forEach(s => {
+                const diff = (tgt[s] || 0) - (cur[s] || 0);
+                const diffPct = diff * 100;
+                if (Math.abs(diffPct) > 0.5) {
+                    hasTrades = true;
+                    if (diffPct > 0) {
+                        tradesHtml += `<span style="color:#22c55e; border:1px solid #22c55e; background:rgba(34,197,94,0.1); padding:4px 8px; border-radius:4px; font-family:var(--font-mono); font-size:0.9rem; box-shadow:0 0 8px rgba(34,197,94,0.2);">买入 ${s} +${diffPct.toFixed(1)}%</span>`;
+                    } else {
+                        tradesHtml += `<span style="color:#ef4444; border:1px solid #ef4444; background:rgba(239,68,68,0.1); padding:4px 8px; border-radius:4px; font-family:var(--font-mono); font-size:0.9rem; box-shadow:0 0 8px rgba(239,68,68,0.2);">卖出 ${s} ${diffPct.toFixed(1)}%</span>`;
+                    }
+                }
+            });
+            
+            if (!hasTrades) {
+                tradesHtml += `<span style="color:var(--text-tertiary); font-style:italic; font-size:0.9rem;">无需调仓 (HOLD) - 仓位偏离极小</span>`;
+            }
+            tradesHtml += `</div>`;
+            tradesContainer.innerHTML = tradesHtml;
+        }
+
+        
+        // ----------------------------------------------------------------
+        // Render L4 Compliance Gate
+        // ----------------------------------------------------------------
         const l4 = document.getElementById('hub-l4-content');
         const l4Card = document.getElementById('hub-l4-card');
         if (l4) {
@@ -218,7 +269,7 @@ def main():
                         </div>
                     </div>
                     <div style="text-align:right;">
-                        <div style="font-size:0.65rem; color:var(--text-tertiary); letter-spacing:1px;">风控合规评分</div>
+                        <div style="font-size:0.65rem; color:var(--text-tertiary); letter-spacing:1px;">椋庢帶鍚堣璇勫垎</div>
                         <div style="font-size:1.8rem; font-weight:900; color:var(--text-primary); font-family:var(--font-mono); line-height:1;">${comp.score}</div>
                     </div>
                 </div>
@@ -231,7 +282,7 @@ def main():
                 html += `
                     <div style="margin-top:auto; background:rgba(0,0,0,0.4); border:1px solid rgba(239,68,68,0.2); border-radius:4px; padding:12px; font-family:var(--font-mono); font-size:0.8rem;">
                         <div style="color:#ef4444; margin-bottom:8px; font-weight:bold; letter-spacing:1px; display:flex; align-items:center; gap:6px;">
-                            <i class="fas fa-exclamation-triangle"></i> 触发硬性风控拦截:
+                            <i class="fas fa-exclamation-triangle"></i> 瑙﹀彂纭€ч鎺ф嫤鎴?
                         </div>
                         <ul style="margin:0; padding-left:20px; color:#fca5a5; line-height:1.6;">
                             ${comp.violations.map(v => `<li>> ${v}</li>`).join('')}
@@ -241,7 +292,7 @@ def main():
             } else if (comp.warnings && comp.warnings.length > 0) {
                 html += `
                     <div style="margin-top:auto; background:rgba(0,0,0,0.4); border:1px solid rgba(245,158,11,0.2); border-radius:4px; padding:12px; font-family:var(--font-mono); font-size:0.8rem;">
-                        <div style="color:#f59e0b; margin-bottom:8px; font-weight:bold; letter-spacing:1px;">! 触发软性风控预警:</div>
+                        <div style="color:#f59e0b; margin-bottom:8px; font-weight:bold; letter-spacing:1px;">! 瑙﹀彂杞€ч鎺ч璀?</div>
                         <ul style="margin:0; padding-left:20px; color:#fcd34d; line-height:1.6;">
                             ${comp.warnings.map(v => `<li>> ${v}</li>`).join('')}
                         </ul>
@@ -250,14 +301,14 @@ def main():
             } else {
                 html += `
                     <div style="margin-top:auto; background:rgba(0,0,0,0.4); border:1px solid rgba(34,197,94,0.2); border-radius:4px; padding:12px; font-family:var(--font-mono); font-size:0.8rem; color:#86efac; display:flex; align-items:center; gap:8px;">
-                        <i class="fas fa-check-circle" style="color:#22c55e;"></i> 全量风控规则检验通过
+                        <i class="fas fa-check-circle" style="color:#22c55e;"></i> 鍏ㄩ噺椋庢帶瑙勫垯妫€楠岄€氳繃
                     </div>
                 `;
             }
             
             html += `
                 <div style="display:flex; justify-content:space-between; color:var(--text-tertiary); font-family:var(--font-mono); font-size:0.75rem; margin-top:8px;">
-                    <span>预估换仓换手率:</span>
+                    <span>棰勪及鎹粨鎹㈡墜鐜?</span>
                     <strong style="color:var(--text-secondary);">${(comp.turnover * 100).toFixed(1)}%</strong>
                 </div>
             `;
@@ -290,7 +341,7 @@ def main():
                         <i class="fas fa-robot"></i>
                     </div>
                     <div>
-                        <div style="font-size:0.7rem; color:var(--text-tertiary); letter-spacing:2px; font-family:var(--font-mono); margin-bottom:4px;">AI-CIO 决策归因协议</div>
+                        <div style="font-size:0.7rem; color:var(--text-tertiary); letter-spacing:2px; font-family:var(--font-mono); margin-bottom:4px;">AI-CIO 鍐崇瓥褰掑洜鍗忚</div>
                         <h2 style="color:${memoColor}; margin:0; font-size:1.3rem; letter-spacing:1px; text-shadow:0 0 15px ${memoColor}80;">${memo.headline}</h2>
                     </div>
                 </div>
