@@ -19,8 +19,8 @@
     --row-border: rgba(255, 255, 255, 0.04);
     --row-hover: rgba(255, 255, 255, 0.02);
 
-    --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-    --font-display: 'Inter', sans-serif;
+    --font-sans: -apple-system, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Inter', sans-serif;
+    --font-display: -apple-system, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Inter', sans-serif;
     --font-mono: 'JetBrains Mono', 'Roboto Mono', monospace;
     --font-tabular: 'JetBrains Mono', 'Roboto Mono', monospace;
     --font-size-xs: 0.65rem;
@@ -95,7 +95,7 @@ a {
 }
 
 .terminal-sidebar {
-    width: 240px;
+    width: 260px;
     background: #030406;
     border-right: 1px solid var(--glass-border);
     display: flex;
@@ -217,7 +217,7 @@ a {
 
 /* Terminal Specific Typography & Layouts */
 .terminal-sidebar {
-    width: 220px;
+    width: 260px;
     background: #030406;
     border-right: 1px solid var(--glass-border);
     display: flex;
@@ -258,6 +258,7 @@ a {
     border-left: 3px solid transparent;
     letter-spacing: 0.5px;
     transition: all 0.2s ease;
+    white-space: nowrap;
 }
 
 .terminal-nav a:hover, .terminal-nav a.active {
@@ -1641,4 +1642,18 @@ details.panel-group .institutional-panel:first-of-type {
     font-weight: 800;
     color: #ef4444;
     text-shadow: 0 0 10px rgba(239, 68, 68, 0.5);
+}
+
+.zh-primary {
+    font-family: var(--font-display);
+    font-weight: 600;
+    letter-spacing: 0.5px;
+}
+.en-sub {
+    font-family: var(--font-mono);
+    font-size: 0.65em;
+    color: var(--text-tertiary);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-left: 8px;
 }
