@@ -789,7 +789,7 @@
         <!-- ==============================================
              [HUB] 全局决策中枢 (Global Decision Hub)
         =============================================== -->
-        <div id="view-hub" class="view-panel">
+        <div id="view-hub" class="view-panel" style="overflow-y:auto; padding-right:12px;">
             <div class="terminal-header" style="margin-bottom:24px;">
                 <h2>[HUB] 全局决策中枢 <span style="font-size:0.5em; color:var(--text-tertiary); font-weight:400; letter-spacing:2px; margin-left:12px;">GLOBAL DECISION MATRIX</span></h2>
                 <div class="terminal-time" id="hub-time">00:00:00</div>
@@ -798,40 +798,39 @@
             <div style="display:flex; flex-direction:column; gap:20px;">
                 <!-- Funnel Layer 1 & 2 -->
                 <div style="display:flex; gap:20px;">
-                    <div class="glass-card" style="flex:1;">
+                    <div class="glass-card" style="flex:1; display:flex; flex-direction:column;">
                         <div class="card-header">
-                            <h3>L1: MACRO REGIME <span style="font-size:0.7em; color:var(--text-tertiary); margin-left:8px;">宏观基准锚定</span></h3>
+                            <h3>L1: 宏观基准锚定 <span style="font-size:0.7em; color:var(--text-tertiary); margin-left:8px;">MACRO REGIME</span></h3>
                         </div>
-                        <div id="hub-l1-content" style="font-size:0.9rem; line-height:1.6; color:var(--text-secondary);">
-                            LOADING L1 DATA...
+                        <div id="hub-l1-content" style="flex:1; display:flex; flex-direction:column; gap:12px; font-size:0.9rem; line-height:1.6; color:var(--text-secondary);">
+                            <div class="skeleton" style="height:100px;"></div>
                         </div>
                     </div>
-                    <div class="glass-card" style="flex:1;">
+                    <div class="glass-card" style="flex:1.5; display:flex; flex-direction:column;">
                         <div class="card-header">
-                            <h3>L2: QUANT ENGINES <span style="font-size:0.7em; color:var(--text-tertiary); margin-left:8px;">量化信号阵列</span></h3>
+                            <h3>L2: 量化信号阵列 <span style="font-size:0.7em; color:var(--text-tertiary); margin-left:8px;">QUANT ENGINES</span></h3>
                         </div>
-                        <div id="hub-l2-content" style="font-size:0.9rem; line-height:1.6; color:var(--text-secondary);">
-                            LOADING L2 DATA...
+                        <div id="hub-l2-content" style="flex:1; font-size:0.9rem; line-height:1.6; color:var(--text-secondary);">
+                            <div class="skeleton" style="height:100px;"></div>
                         </div>
                     </div>
                 </div>
                 
                 <!-- Funnel Layer 3 & 4 -->
                 <div style="display:flex; gap:20px;">
-                    <div class="glass-card" style="flex:1; border-left:4px solid #3b82f6;">
+                    <div class="glass-card" style="flex:1.5; border-left:4px solid #3b82f6; display:flex; flex-direction:column;">
                         <div class="card-header">
-                            <h3>L3: ROUTER & ALLOCATOR <span style="font-size:0.7em; color:var(--text-tertiary); margin-left:8px;">资金路由分配</span></h3>
+                            <h3>L3: 资金路由分配 <span style="font-size:0.7em; color:var(--text-tertiary); margin-left:8px;">ROUTER & ALLOCATOR</span></h3>
                         </div>
-                        <div id="hub-l3-content" style="font-size:0.9rem; line-height:1.6; color:var(--text-secondary);">
-                            LOADING L3 DATA...
-                        </div>
+                        <div id="hub-l3-rationale" style="margin-bottom:12px; font-size:0.85rem; color:var(--text-tertiary);"></div>
+                        <div id="chart-hub-l3-alloc" class="chart-container" style="flex:1; min-height:280px; width:100%;"><div class="skeleton"></div></div>
                     </div>
-                    <div class="glass-card" id="hub-l4-card" style="flex:1;">
+                    <div class="glass-card" id="hub-l4-card" style="flex:1; display:flex; flex-direction:column;">
                         <div class="card-header">
-                            <h3>L4: COMPLIANCE GATE <span style="font-size:0.7em; color:var(--text-tertiary); margin-left:8px;">风控合规门禁</span></h3>
+                            <h3>L4: 风控合规门禁 <span style="font-size:0.7em; color:var(--text-tertiary); margin-left:8px;">COMPLIANCE GATE</span></h3>
                         </div>
-                        <div id="hub-l4-content" style="font-size:0.9rem; line-height:1.6; color:var(--text-secondary);">
-                            LOADING L4 DATA...
+                        <div id="hub-l4-content" style="flex:1; font-size:0.9rem; line-height:1.6; color:var(--text-secondary); display:flex; flex-direction:column; gap:12px;">
+                            <div class="skeleton" style="height:150px;"></div>
                         </div>
                     </div>
                 </div>
@@ -839,17 +838,17 @@
                 <!-- Funnel Layer 5 -->
                 <div class="glass-card" id="hub-l5-card" style="border-top:4px solid #8b5cf6;">
                     <div class="card-header">
-                        <h3>L5: AI-CIO SYNTHESIS <span style="font-size:0.7em; color:var(--text-tertiary); margin-left:8px;">大模型投委会归因</span></h3>
+                        <h3>L5: AI-CIO SYNTHESIS <span style="font-size:0.7em; color:var(--text-tertiary); margin-left:8px;">投委会最终裁决</span></h3>
                     </div>
-                    <div id="hub-l5-content" style="font-size:1rem; line-height:1.6; color:var(--text-primary); padding:16px; background:rgba(0,0,0,0.3); border-radius:8px;">
-                        LOADING L5 MEMO...
+                    <div id="hub-l5-content" style="font-size:1rem; line-height:1.6; color:var(--text-primary); padding:20px; background:rgba(0,0,0,0.3); border-radius:8px; border:1px solid rgba(255,255,255,0.05);">
+                        <div class="skeleton" style="height:80px;"></div>
                     </div>
                 </div>
             </div>
         </div>
         </main>
     </div>
-    <script src="main.js?v=21"></script>
+    <script src="main.js?v=22"></script>
     <input type="file" id="tdx-file-input" style="display:none;" accept=".txt" onchange="handleTDXUpload(event)">
 
     <!-- Quick Action Modal (Hidden by Default) -->

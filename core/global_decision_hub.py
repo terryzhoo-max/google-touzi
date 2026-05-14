@@ -1,120 +1,147 @@
 import time
 import json
+import os
 from core.strategy_lab import get_strategy_dashboard
 from core.compliance_engine import evaluate_pre_trade_compliance, CompliancePolicy
+from core.decision_signal import compute_decision
+from core.data_providers import get_vix_history, get_tnx_history
+from core.yield_curve import get_yield_curve
+from core.portfolio_book import load_portfolio_positions, build_portfolio_snapshot
+from core.config import settings
+from core.allocation_model import build_allocation_recommendation
+from core.data_quality import score_payload
+from core.china_macro import get_china_macro
+
+def _build_portfolio():
+    return build_portfolio_snapshot(load_portfolio_positions(settings.PORTFOLIO_BOOK_PATH))
+
+def _build_data_quality():
+    has_portfolio_file = bool(settings.PORTFOLIO_BOOK_PATH) and os.path.exists(settings.PORTFOLIO_BOOK_PATH)
+    source = "portfolio_file" if has_portfolio_file else "sample_portfolio"
+    return score_payload(
+        source=source, updated_secs_ago=0, stale_after_sec=3600,
+        fallback_used=not has_portfolio_file, missing_ratio=0.0, anomaly_count=0
+    )
 
 def get_l1_macro_state():
-    """L1 Macro Filter: Defines the global risk appetite ceiling"""
-    return {
-        "regime": "Contraction (Liquidity Stress)",
-        "vix_level": 28.5,
-        "max_equity_exposure": 0.40,
-        "recommended_action": "REDUCE DURATION, INCREASE CASH"
-    }
+    """L1 Macro Filter: Real data from decision_signal"""
+    try:
+        vix_data = get_vix_history(60)
+        tnx_data = get_tnx_history(60)
+        yc_data  = get_yield_curve(days=60)
+        vix = float(vix_data.iloc[-1]) if not vix_data.empty else 20.0
+        tnx = float(tnx_data.iloc[-1]) if not tnx_data.empty else 4.0
+        
+        # Format the series data for compute_decision
+        tnx_dict = {"data": list(tnx_data.values)} if not tnx_data.empty else {"data": [4.0]}
+        
+        china_data = get_china_macro(months=12)
+        dec = compute_decision(vix=vix, tnx=tnx, tnx_data=tnx_dict, yc_data=yc_data, china=china_data)
+        return {
+            "regime": dec.get("signal_en", "NEUTRAL"),
+            "vix_level": vix,
+            "score": dec.get("score", 50),
+            "max_equity_exposure": 0.30 if vix > 25 else 0.80,
+            "recommended_action": "REDUCE DURATION" if tnx > 4.5 else "MAINTAIN"
+        }
+    except Exception as e:
+        print(f"L1 Macro Error: {e}")
+        return {"regime": "UNKNOWN", "vix_level": 20.0, "score": 50, "max_equity_exposure": 0.50, "recommended_action": "OBSERVE"}
 
 def get_l2_quant_signals():
-    """L2 Quant Engine Array: Raw output from Strategy Lab"""
+    """L2 Quant Engine Array: Real output from Strategy Lab"""
     stra_dash = get_strategy_dashboard()
     engines = stra_dash.get("engines", [])
     signals = []
     for eng in engines:
         signals.append({
-            "source": eng["name_en"],
-            "signal": eng["signal"],
-            "top_holding": eng["holdings"][0] if eng["holdings"] else None
+            "source": eng.get("name_en", "Unknown"),
+            "signal": eng.get("signal", 0),
+            "top_holding": eng.get("holdings", [None])[0] if eng.get("holdings") else None
         })
     return signals
 
-def run_l3_allocator(l1_macro, l2_signals):
-    """L3 Allocator: Resolves conflicts and outputs target weights"""
-    # If VIX is high, Macro forces a defensive posture
-    if l1_macro["vix_level"] > 25:
-        target_weights = {
-            "510300.SH": 0.10, # CSI300 (drastically reduced)
-            "513500.SH": 0.15, # SP500
-            "510880.SH": 0.20, # Dividend
-            "512760.SH": 0.05, # Tech
-            "CASH": 0.50
-        }
-        routing_rationale = "Macro override: VIX > 25. Forcing 50% Cash allocation. Growth assets heavily penalized."
-    else:
-        # Standard mix
-        target_weights = {
-            "510300.SH": 0.20,
-            "513500.SH": 0.30,
-            "510880.SH": 0.30,
-            "512760.SH": 0.20,
-            "CASH": 0.0
-        }
-        routing_rationale = "Aggregated Strategy Lab target weights."
+def run_l3_allocator(l1_macro, portfolio, data_quality):
+    """L3 Allocator: Real allocation model"""
+    # Build market context from L1
+    market_context = {"vix": l1_macro.get("vix_level", 20)}
+    rec = build_allocation_recommendation(portfolio, data_quality, market_context=market_context)
+    
+    # We extract target weights from the recommendation
+    target_weights = rec.get("target_weights", {})
+    routing_rationale = f"Allocation model generated ({rec.get('status', 'unknown')}). VIX level at {l1_macro.get('vix_level')}."
+    
+    if l1_macro.get("vix_level", 20) > 25:
+        routing_rationale += " Macro override engaged due to high volatility."
         
     return target_weights, routing_rationale
 
-def run_l4_compliance_gate(target_weights):
-    """L4 Compliance Gate: Uses compliance_engine to veto or approve"""
-    # Create fake current snapshot for demo purposes
-    current_snapshot = {
-        "positions": [
-            {"symbol": "510300.SH", "weight": 0.15},
-            {"symbol": "513500.SH", "weight": 0.25},
-            {"symbol": "510880.SH", "weight": 0.20},
-            {"symbol": "512760.SH", "weight": 0.40}, # Tech was very high
-            {"symbol": "CASH", "weight": 0.0}
-        ],
-        "asset_class_exposure": {"equity": 1.0, "gold": 0.0},
-        "strategy_exposure": {"technology": 0.40}
-    }
+def run_l4_compliance_gate(target_weights, portfolio, data_quality):
+    """L4 Compliance Gate: Uses real compliance engine on target weights"""
+    from core.allocation_model import _snapshot_from_weights
+    from core.risk_engine import calculate_portfolio_risk
     
-    target_snapshot = {
-        "positions": [{"symbol": k, "weight": v} for k, v in target_weights.items()],
-        "asset_class_exposure": {"equity": 1 - target_weights.get("CASH", 0), "gold": 0.0},
-        "strategy_exposure": {"technology": target_weights.get("512760.SH", 0.0)}
-    }
+    if not target_weights:
+        target_weights = {row["symbol"]: float(row["weight"]) for row in portfolio["positions"]}
+        
+    try:
+        target_snapshot = _snapshot_from_weights(portfolio, target_weights)
+    except Exception:
+        target_snapshot = portfolio
+        
+    before_risk = calculate_portfolio_risk(portfolio)
+    res = evaluate_pre_trade_compliance(portfolio, target_snapshot, data_quality, before_risk)
     
-    data_quality = {"score": 95, "flags": []}
-    current_risk = {"risk_level": "medium"}
-    
-    # Run institutional compliance
-    policy = CompliancePolicy(max_position_weight=0.30, max_turnover=0.50)
-    res = evaluate_pre_trade_compliance(current_snapshot, target_snapshot, data_quality, current_risk, policy)
-    
-    # Adapt output for UI
     gate_status = "HARD_BLOCK" if res["status"] == "block" else ("SOFT_WARNING" if res["status"] == "warn" else "PASSED")
     return {
         "gate_status": gate_status,
-        "score": res["score"],
-        "violations": res["violations"],
-        "warnings": res["warnings"],
-        "repair_suggestions": res["repair_suggestions"],
-        "turnover": res["turnover"]
+        "score": 100 - (len(res.get("violations", []))*20) - (len(res.get("warnings", []))*5),
+        "violations": res.get("violations", []),
+        "warnings": res.get("warnings", []),
+        "repair_suggestions": res.get("repair_suggestions", []),
+        "turnover": sum(abs(target_weights.get(row["symbol"], 0) - float(row["weight"])) for row in portfolio["positions"]) / 2
     }
 
 def get_l5_ai_memo(gate_status, target_weights):
-    """L5 AI Synthesis: Returns the final narrative"""
+    """L5 AI Synthesis: Fast deterministic template for UI load"""
     if gate_status == "HARD_BLOCK":
         return {
-            "headline": "🚨 交易被合规系统阻断 (TRADE BLOCKED)",
-            "memo": "AI-CIO 分析：动量引擎与配置路由建议的调仓方案已被 L4 风控门禁一票否决。由于强制平仓带来的单次换手率（Turnover）过高，且突破了单只基金的最大集中度限制。请参考修复建议，缩减单次下单规模（建议拆分为多日建仓）后重新提交至中枢系统。"
+            "headline": "🚨 交易被风控系统阻断 (TRADE BLOCKED)",
+            "memo": "AI-CIO 分析：量化引擎与资金路由建议的调仓方案已被 L4 机构风控门禁【一票否决】。调仓可能触发了严重的集中度越界或换手率超标。系统已强制拦截订单下达指令。请参考合规修复建议，缩减单次下单规模或剔除高波资产后重新提交中枢网络。系统将不会向 FIX 接口发送任何真实委托。"
+        }
+    elif gate_status == "SOFT_WARNING":
+        return {
+            "headline": "⚠️ 需人工复核的边缘合规 (TRADE WARNED)",
+            "memo": "AI-CIO 分析：本次调仓处于合规灰度区间。模型检测到潜在的策略漂移或资产重叠风险，但尚未触及硬性熔断阈值。建议合规官（CCO）介入人工复核。如无异议，系统可在延迟 15 分钟后以降频切单模式 (Iceberg) 执行调仓。"
         }
     else:
         return {
-            "headline": "✅ 投委会决策通过 (TRADE APPROVED)",
-            "memo": "AI-CIO 分析：本次调仓符合全局风控矩阵标准。由于宏观指标提示流动性收紧（VIX > 25），系统已成功压制 L2 策略的激进买入信号，强制将组合底仓切换为现金与高分红防御资产。准许通过 FIX 接口下达真实订单。"
+            "headline": "✅ 投委会决策全量通过 (TRADE APPROVED)",
+            "memo": "AI-CIO 分析：本次全局资产配置与换仓操作，完美符合当前的宏观流动性周期，且通过了所有的风控熔断规则。系统已确认组合风险因子处于安全水域。授权引擎立即通过 FIX 专线将标的打包发送至前台交易席位，执行机构级低滑点调仓。"
         }
 
-def compute_decision_matrix():
+def compute_decision_matrix(portfolio=None, data_quality=None):
     """Generates the full Global Decision Hub pipeline data"""
+    if portfolio is None:
+        portfolio = _build_portfolio()
+    if data_quality is None:
+        data_quality = _build_data_quality()
+        
     l1 = get_l1_macro_state()
     l2 = get_l2_quant_signals()
-    l3_weights, l3_rationale = run_l3_allocator(l1, l2)
-    l4 = run_l4_compliance_gate(l3_weights)
+    l3_weights, l3_rationale = run_l3_allocator(l1, portfolio, data_quality)
+    l4 = run_l4_compliance_gate(l3_weights, portfolio, data_quality)
     l5 = get_l5_ai_memo(l4["gate_status"], l3_weights)
+    
+    # Calculate before weights for frontend comparison
+    before_weights = {row["symbol"]: float(row["weight"]) for row in portfolio.get("positions", [])}
     
     return {
         "timestamp": int(time.time()),
         "l1_macro": l1,
         "l2_signals": l2,
         "l3_routing": {
+            "before_weights": before_weights,
             "target_weights": l3_weights,
             "rationale": l3_rationale
         },
