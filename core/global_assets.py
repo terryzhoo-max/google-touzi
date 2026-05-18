@@ -37,16 +37,16 @@ def _compute_composite_signal(rows: list[dict]) -> dict:
         for k in ("daily","weekly","monthly","quarterly","ytd"):
             all_vals.append(r.get(k, 0))
     if not all_vals:
-        return {"zone": "● 数据不足", "color": "#94a3b8", "pct_up": 0, "avg_ret": 0}
+        return {"zone": "● 数据不足 NO DATA", "color": "#94a3b8", "pct_up": 0, "avg_ret": 0}
     pct_up = sum(1 for v in all_vals if v > 0) / len(all_vals)
     avg_ret = sum(all_vals) / len(all_vals)
     if pct_up > 0.65 and avg_ret > 1:
-        return {"zone": "● 整体偏多", "color": "#22c55e", "pct_up": round(pct_up*100), "avg_ret": round(avg_ret,2)}
+        return {"zone": "● 整体偏多 BULLISH", "color": "#22c55e", "pct_up": round(pct_up*100), "avg_ret": round(avg_ret,2)}
     elif pct_up > 0.45:
-        return {"zone": "● 中性偏多", "color": "#fbbf24", "pct_up": round(pct_up*100), "avg_ret": round(avg_ret,2)}
+        return {"zone": "● 中性偏多 MILD BULL", "color": "#fbbf24", "pct_up": round(pct_up*100), "avg_ret": round(avg_ret,2)}
     elif pct_up > 0.30:
-        return {"zone": "● 中性偏空", "color": "#f97316", "pct_up": round(pct_up*100), "avg_ret": round(avg_ret,2)}
-    return {"zone": "● 整体偏空", "color": "#ef4444", "pct_up": round(pct_up*100), "avg_ret": round(avg_ret,2)}
+        return {"zone": "● 中性偏空 MILD BEAR", "color": "#f97316", "pct_up": round(pct_up*100), "avg_ret": round(avg_ret,2)}
+    return {"zone": "● 整体偏空 BEARISH", "color": "#ef4444", "pct_up": round(pct_up*100), "avg_ret": round(avg_ret,2)}
 
 
 def get_global_assets() -> dict:

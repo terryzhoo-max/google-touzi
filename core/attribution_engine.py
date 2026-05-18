@@ -1,31 +1,10 @@
 from core.benchmark_book import BenchmarkBook, build_default_benchmark, benchmark_to_dict
 
-
-DEFAULT_ASSET_RETURNS = {
-    "CSI300_ETF": 0.004,
-    "CSI500_ETF": 0.003,
-    "STAR50_ETF": 0.005,
-    "HSTECH_ETF": 0.006,
-    "SP500_ETF": 0.0035,
-    "NASDAQ_ETF": 0.0045,
-    "NIKKEI225_ETF": 0.0025,
-    "CHIP_ETF": 0.0055,
-    "GOLD_ETF": 0.0015,
-}
-
-
-DEFAULT_BENCHMARK_RETURNS = {
-    symbol: value * 0.9
-    for symbol, value in DEFAULT_ASSET_RETURNS.items()
-}
-
-
 def _portfolio_weights(snapshot: dict) -> dict[str, float]:
     return {
         position["symbol"]: float(position["weight"])
         for position in snapshot["positions"]
     }
-
 
 def _currency_weights(snapshot: dict) -> dict[str, float]:
     weights: dict[str, float] = {}
@@ -33,7 +12,6 @@ def _currency_weights(snapshot: dict) -> dict[str, float]:
         currency = position.get("currency", "USD")
         weights[currency] = weights.get(currency, 0.0) + float(position["weight"])
     return weights
-
 
 def build_attribution_snapshot(
     portfolio_snapshot: dict,
@@ -43,10 +21,22 @@ def build_attribution_snapshot(
     benchmark_returns: dict[str, float] | None = None,
     currency_returns: dict[str, float] | None = None,
 ) -> dict:
+    
+    # 机构级容错：允许部分数据缺失，默认补 0.0，但必须是由外部注入的真实数据字典
+    if asset_returns is None or benchmark_returns is None:
+        return {
+            "period": period,
+            "error": "Missing real market data for attribution calculations. Hard degradation triggered.",
+            "availability": {
+                "status": "error",
+                "source": "missing_data"
+            }
+        }
+
     book = benchmark or build_default_benchmark()
     portfolio_weights = _portfolio_weights(portfolio_snapshot)
-    asset_ret = asset_returns or DEFAULT_ASSET_RETURNS
-    bench_ret = benchmark_returns or DEFAULT_BENCHMARK_RETURNS
+    asset_ret = asset_returns or {}
+    bench_ret = benchmark_returns or {}
     currency_ret = currency_returns or {}
     symbols = sorted(set(portfolio_weights) | set(book.positions))
 
@@ -94,7 +84,7 @@ def build_attribution_snapshot(
         "by_symbol": by_symbol,
         "benchmark": benchmark_to_dict(book),
         "availability": {
-            "status": "proxy" if asset_returns is None or benchmark_returns is None else "provided",
-            "source": "deterministic_proxy" if asset_returns is None else "provided_returns",
+            "status": "provided",
+            "source": "provided_returns",
         },
     }

@@ -17,11 +17,11 @@ Factors:
 from core.alert_state import get_active_alerts
 
 SIGNAL_BANDS = [
-    (0,   20,  "强烈卖出", "STRONG_SELL", "#ef4444"),
-    (20,  40,  "卖出",      "SELL",       "#f97316"),
-    (40,  60,  "中性",      "NEUTRAL",    "#fbbf24"),
-    (60,  80,  "买入",      "BUY",        "#4ade80"),
-    (80,  101, "强烈买入",  "STRONG_BUY", "#22c55e"),
+    (0,   20,  "强烈卖出 STRONG SELL", "STRONG_SELL", "#ef4444"),
+    (20,  40,  "卖出 SELL",      "SELL",       "#f97316"),
+    (40,  60,  "中性 NEUTRAL",      "NEUTRAL",    "#fbbf24"),
+    (60,  80,  "买入 BUY",      "BUY",        "#4ade80"),
+    (80,  101, "强烈买入 STRONG BUY",  "STRONG_BUY", "#22c55e"),
 ]
 
 

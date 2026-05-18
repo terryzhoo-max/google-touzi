@@ -10,7 +10,7 @@ from core.compliance_engine import evaluate_pre_trade_compliance
 from core.etf_signal_model import build_etf_signals
 from core.factor_risk import build_factor_risk_snapshot
 from core.portfolio_book import Position, build_portfolio_snapshot
-from core.risk_engine import calculate_portfolio_risk
+from core.risk_engine import calculate_portfolio_risk, get_asset_volatility
 from core.scenario_engine import run_portfolio_scenarios
 
 
@@ -36,7 +36,7 @@ def _normalize(weights: dict[str, float]) -> dict[str, float]:
     return normalized
 
 
-def _score_to_delta(score: float, policy: AllocationPolicy) -> float:
+def _score_to_risk_delta(score: float, policy: AllocationPolicy) -> float:
     if score >= 68:
         return policy.max_step_weight
     if score >= 58:
@@ -93,10 +93,24 @@ def _target_weights(portfolio: dict, signals: list[dict], policy: AllocationPoli
     if int(data_quality.get("score", 0) or 0) < policy.data_quality_min_score or "fallback" in data_quality.get("flags", []):
         return current
 
+    by_symbol = {row["symbol"]: row for row in portfolio["positions"]}
+    base_vol = get_asset_volatility("equity")
+
     adjusted = current.copy()
     for signal in signals:
         symbol = signal["symbol"]
-        adjusted[symbol] = adjusted.get(symbol, 0.0) + _score_to_delta(float(signal["composite_score"]), policy)
+        raw_risk_delta = _score_to_risk_delta(float(signal["composite_score"]), policy)
+        
+        if raw_risk_delta != 0.0:
+            asset_class = by_symbol.get(symbol, {}).get("asset_class", "equity")
+            asset_vol = get_asset_volatility(asset_class)
+            
+            # Inverse volatility scaling to achieve Volatility-scaled Delta
+            vol_scaler = base_vol / max(asset_vol, 0.0001)
+            capital_delta = raw_risk_delta * vol_scaler
+            
+            adjusted[symbol] = adjusted.get(symbol, 0.0) + capital_delta
+
     adjusted = _apply_basic_caps(_normalize(adjusted), portfolio, policy)
     return _limit_turnover(current, adjusted, policy)
 
@@ -136,6 +150,11 @@ def _evidence(signals: list[dict], data_quality: dict, compliance: dict, before_
         "message": f"{row['symbol']} composite score {row['composite_score']}",
         "severity": "info",
     } for row in leaders)
+    rows.append({
+        "code": "volatility_targeting",
+        "message": "Capital allocation dynamically scaled via Inverse Volatility Parity.",
+        "severity": "info",
+    })
     rows.append({
         "code": "risk_delta",
         "message": f"VaR moves from {before_risk['var_95_pct']}% to {after_risk['var_95_pct']}%",

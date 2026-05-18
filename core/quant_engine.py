@@ -8,53 +8,21 @@ from core.config import settings
 from core.alert_state import set_alert, clear_alert
 
 def calculate_asset_allocation():
-    vix_data = fetch_yfinance_data("^VIX", "vix")
-    tnx_data = fetch_yfinance_data("^TNX", "tnx")
-    dxy_data = fetch_yfinance_data("DX-Y.NYB", "dxy")
-    
     try:
-        current_vix = vix_data["data"][-1]
-        current_tnx = tnx_data["data"][-1]
-        current_dxy = dxy_data["data"][-1]
-    except Exception:
-        current_vix = 20
-        current_tnx = 4.0
-        current_dxy = 100.0
-        
-    try:
-        from core.backtest import run_backtest
-        bt_results = run_backtest()
-        state = bt_results.get("current_state", {})
-        strategies = state.get("asset_strategies", [])
-        
-        alloc = []
-        for s in strategies:
-            if s["weight"] > 0:
-                alloc.append({
-                    "value": s["weight"],
-                    "name": s["asset"],
-                    "icon": s["icon"],
-                    "strategy": s["strategy"]
-                })
-        
-        regime = state.get("regime", "中性震荡 (全天候配资期)")
+        from core.aiae_production import get_current_aiae_allocation
+        return get_current_aiae_allocation()
     except Exception as e:
-        print(f"Error syncing allocation with backtest: {e}")
-        alloc = [
-            {"value": 40, "name": "均衡大盘权益"},
-            {"value": 40, "name": "中期国债"},
-            {"value": 10, "name": "黄金等另类资产"},
-            {"value": 10, "name": "战略现金"}
-        ]
-        regime = "中性震荡 (全天候配资期)"
-        
-    return {
-        "regime": regime,
-        "vix_ref": round(current_vix, 2),
-        "tnx_ref": round(current_tnx, 2),
-        "dxy_ref": round(current_dxy, 2),
-        "allocation": alloc
-    }
+        print(f"[AIAE_PROD] Fallback error syncing allocation: {e}")
+        # 紧急后备硬编码，确保系统绝对稳定
+        return {
+            "regime": "引擎加载异常 (Fallback Mode)",
+            "vix_ref": 20.0,
+            "tnx_ref": 4.0,
+            "dxy_ref": 100.0,
+            "allocation": [
+                {"value": 100, "name": "战略现金 (货币基金)", "icon": "💵", "strategy": "系统异常，强制避险"}
+            ]
+        }
 
 def calculate_correlation_matrix():
     now = time.time()
@@ -149,17 +117,17 @@ def calculate_correlation_matrix():
         gld_vix = get_corr(gld_ticker, vix_ticker) if gld_ticker in corr.index and vix_ticker in corr.index else 0.0
         
         insight_lines = []
-        state = "中性震荡"
+        state = "中性震荡 NEUTRAL CHOP"
         color = "#fbbf24"
         
         # 因子 A: 股债对冲
         if spy_tlt > settings.CORR_DUAL_KILL_THRESH:
             insight_lines.append(f"🔴 <b>股债双杀</b>：SPY与TLT正相关({spy_tlt:.2f})，传统60/40对冲失效。")
-            state = "尾部重仓预警"
+            state = "尾部重仓预警 TAIL RISK WARNING"
             color = "#ef4444"
         elif spy_tlt < -0.2:
             insight_lines.append(f"🟢 <b>对冲健康</b>：股债呈现负相关({spy_tlt:.2f})，投资组合具备极强韧性。")
-            state = "对冲健康"
+            state = "对冲健康 HEALTHY HEDGE"
             color = "#4ade80"
         else:
             insight_lines.append(f"🟡 <b>震荡监测</b>：股债相关性中性({spy_tlt:.2f})，资产独立性尚可。")
@@ -176,24 +144,24 @@ def calculate_correlation_matrix():
             insight_lines.append(f"⚠️ <b>流动性危机</b>：恐慌爆发但黄金遭抛售({gld_vix:.2f})，极致避险失效。")
             if spy_tlt > settings.CORR_DUAL_KILL_THRESH:
                 # Smart Trigger: 只有股债双杀且黄金避险失效，才触发最高级别警报
-                state = "全球流动性枯竭"
+                state = "全球流动性枯竭 GLOBAL LIQUIDITY CRISIS"
                 color = "#ef4444"
                 alert_text = " | ".join([line.replace('<b>', '').replace('</b>', '') for line in insight_lines])
-                trigger_emergency_alert("【全球流动性枯竭】最高级别风控警报", alert_text)
+                trigger_emergency_alert("【全球流动性枯竭 GLOBAL LIQUIDITY CRISIS】最高级别风控警报", alert_text)
         else:
             insight_lines.append(f"🛡️ <b>黄金防御</b>：GLD与VIX正相关({gld_vix:.2f})，贵金属抗风险属性完好。")
 
         insight = "<br/>".join(insight_lines)
 
         extreme_action = None
-        if state == "全球流动性枯竭" or state == "尾部重仓预警":
+        if state == "全球流动性枯竭 GLOBAL LIQUIDITY CRISIS" or state == "尾部重仓预警 TAIL RISK WARNING":
             extreme_action = "放弃所有风险敞口与传统避险资产，即刻将 80% 以上仓位转为无风险现金（如 1-3 个月期美国国债 SHV）等待流动性恢复。"
 
         # ── alert state ──────────────────────────────────────
-        if state == "全球流动性枯竭":
-            set_alert("correlation", "danger", f"全球流动性枯竭 — 股债双杀 + 黄金避险失效")
-        elif state == "尾部重仓预警":
-            set_alert("correlation", "warning", f"尾部重仓预警 — SPY-TLT 相关性 {spy_tlt:.2f}")
+        if state == "全球流动性枯竭 GLOBAL LIQUIDITY CRISIS":
+            set_alert("correlation", "danger", f"全球流动性枯竭 GLOBAL LIQUIDITY CRISIS — 股债双杀 + 黄金避险失效")
+        elif state == "尾部重仓预警 TAIL RISK WARNING":
+            set_alert("correlation", "warning", f"尾部重仓预警 TAIL RISK WARNING — SPY-TLT 相关性 {spy_tlt:.2f}")
         else:
             clear_alert("correlation")
 

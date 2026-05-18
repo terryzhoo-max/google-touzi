@@ -101,13 +101,13 @@ def _build_surprise(months: int) -> dict:
     current = values[-1] if values else 0
 
     if current > 1.5:
-        signal, color = "数据持续超预期 ↑", "#22c55e"
+        signal, color = "数据持续超预期 UPSIDE SURPRISE ↑", "#22c55e"
     elif current > 0:
-        signal, color = "温和超预期 ↗", "#4ade80"
+        signal, color = "温和超预期 MILD UPSIDE ↗", "#4ade80"
     elif current > -1.5:
-        signal, color = "温和不及预期 ↘", "#fbbf24"
+        signal, color = "温和不及预期 MILD DOWNSIDE ↘", "#fbbf24"
     else:
-        signal, color = "数据持续不及预期 ↓", "#ef4444"
+        signal, color = "数据持续不及预期 DOWNSIDE SURPRISE ↓", "#ef4444"
 
     return {
         "dates": dates[-months:],

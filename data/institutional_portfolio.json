@@ -7,10 +7,10 @@
       "currency": "CNY",
       "region": "China",
       "strategy": "core",
-      "market_value": 401.96,
-      "quantity": 401.96,
+      "market_value": 597.71,
+      "quantity": 597.71,
       "current_price": 1.0,
-      "cost_basis": 401.96,
+      "cost_basis": 597.71,
       "float_pnl": 0.0,
       "pnl_pct": 0.0
     },
@@ -21,12 +21,12 @@
       "currency": "CNY",
       "region": "China",
       "strategy": "core",
-      "market_value": 13786.0,
+      "market_value": 12492.0,
       "quantity": 100.0,
       "current_price": 105.36,
       "cost_basis": 9159.96,
-      "float_pnl": 4626.04,
-      "pnl_pct": 50.5
+      "float_pnl": 3332.04,
+      "pnl_pct": 36.38
     },
     {
       "symbol": "159218",
@@ -35,12 +35,12 @@
       "currency": "CNY",
       "region": "China",
       "strategy": "core",
-      "market_value": 64271.2,
+      "market_value": 59763.2,
       "quantity": 32200.0,
       "current_price": 1.906,
       "cost_basis": 65729.3,
-      "float_pnl": -1458.1,
-      "pnl_pct": -2.2
+      "float_pnl": -5966.1,
+      "pnl_pct": -9.06
     },
     {
       "symbol": "159326",
@@ -49,12 +49,12 @@
       "currency": "CNY",
       "region": "China",
       "strategy": "core",
-      "market_value": 33491.7,
+      "market_value": 31915.8,
       "quantity": 15300.0,
       "current_price": 1.85,
       "cost_basis": 28312.3,
-      "float_pnl": 5179.4,
-      "pnl_pct": 18.32
+      "float_pnl": 3603.5,
+      "pnl_pct": 12.76
     },
     {
       "symbol": "159516",
@@ -63,26 +63,12 @@
       "currency": "CNY",
       "region": "China",
       "strategy": "core",
-      "market_value": 14028.0,
-      "quantity": 15900.0,
+      "market_value": 12080.0,
+      "quantity": 10000.0,
       "current_price": 0.805,
-      "cost_basis": 4902.8,
-      "float_pnl": 9125.2,
-      "pnl_pct": 185.82
-    },
-    {
-      "symbol": "159869",
-      "name": "游戏ETF华夏",
-      "asset_class": "equity",
-      "currency": "CNY",
-      "region": "China",
-      "strategy": "core",
-      "market_value": 31643.6,
-      "quantity": 23900.0,
-      "current_price": 1.316,
-      "cost_basis": 31457.6,
-      "float_pnl": 186.0,
-      "pnl_pct": 0.61
+      "cost_basis": 2452.8,
+      "float_pnl": 9627.2,
+      "pnl_pct": 393.06
     },
     {
       "symbol": "159995",
@@ -91,11 +77,11 @@
       "currency": "CNY",
       "region": "China",
       "strategy": "core",
-      "market_value": 60792.0,
-      "quantity": 25500.0,
+      "market_value": 41723.2,
+      "quantity": 17800.0,
       "current_price": 1.626,
-      "cost_basis": -36405.3,
-      "float_pnl": 97197.3,
+      "cost_basis": -54826.3,
+      "float_pnl": 96549.5,
       "pnl_pct": 0.0
     },
     {
@@ -105,12 +91,12 @@
       "currency": "CNY",
       "region": "China",
       "strategy": "core",
-      "market_value": 31531.5,
+      "market_value": 30208.5,
       "quantity": 3500.0,
       "current_price": 7.66,
       "cost_basis": 24593.3,
-      "float_pnl": 6938.2,
-      "pnl_pct": 28.21
+      "float_pnl": 5615.2,
+      "pnl_pct": 22.83
     },
     {
       "symbol": "512890",
@@ -119,12 +105,12 @@
       "currency": "CNY",
       "region": "China",
       "strategy": "core",
-      "market_value": 99691.9,
+      "market_value": 98252.0,
       "quantity": 84700.0,
       "current_price": 1.151,
       "cost_basis": 78153.77,
-      "float_pnl": 21538.13,
-      "pnl_pct": 27.52
+      "float_pnl": 20098.23,
+      "pnl_pct": 25.68
     },
     {
       "symbol": "513130",
@@ -133,12 +119,12 @@
       "currency": "CNY",
       "region": "HongKong",
       "strategy": "core",
-      "market_value": 314374.8,
-      "quantity": 494300.0,
-      "current_price": 0.711,
-      "cost_basis": 362943.3,
-      "float_pnl": -48568.5,
-      "pnl_pct": -13.35
+      "market_value": 318713.6,
+      "quantity": 524200.0,
+      "current_price": 0.707,
+      "cost_basis": 381755.4,
+      "float_pnl": -63041.8,
+      "pnl_pct": -16.48
     },
     {
       "symbol": "518880",
@@ -147,12 +133,12 @@
       "currency": "CNY",
       "region": "China",
       "strategy": "core",
-      "market_value": 48039.6,
+      "market_value": 46613.7,
       "quantity": 4900.0,
       "current_price": 8.894,
       "cost_basis": 31668.0,
-      "float_pnl": 16371.6,
-      "pnl_pct": 51.69
+      "float_pnl": 14945.7,
+      "pnl_pct": 47.19
     },
     {
       "symbol": "562500",
@@ -161,12 +147,12 @@
       "currency": "CNY",
       "region": "China",
       "strategy": "core",
-      "market_value": 17918.0,
-      "quantity": 18500.0,
+      "market_value": 15379.0,
+      "quantity": 13000.0,
       "current_price": 0.955,
-      "cost_basis": 4769.0,
-      "float_pnl": 13149.0,
-      "pnl_pct": 275.32
+      "cost_basis": 1841.5,
+      "float_pnl": 13537.5,
+      "pnl_pct": 733.1
     },
     {
       "symbol": "588000",
@@ -175,26 +161,12 @@
       "currency": "CNY",
       "region": "China",
       "strategy": "core",
-      "market_value": 62850.5,
-      "quantity": 48400.0,
+      "market_value": 50664.3,
+      "quantity": 28100.0,
       "current_price": 1.376,
-      "cost_basis": -942.8,
-      "float_pnl": 63793.3,
+      "cost_basis": -11250.3,
+      "float_pnl": 61914.6,
       "pnl_pct": 0.0
-    },
-    {
-      "symbol": "601179",
-      "name": "中国西电",
-      "asset_class": "equity",
-      "currency": "CNY",
-      "region": "China",
-      "strategy": "core",
-      "market_value": 13314.0,
-      "quantity": 700.0,
-      "current_price": 17.405,
-      "cost_basis": 11740.79,
-      "float_pnl": 1573.21,
-      "pnl_pct": 13.4
     },
     {
       "symbol": "601899",
@@ -203,12 +175,12 @@
       "currency": "CNY",
       "region": "China",
       "strategy": "core",
-      "market_value": 69320.0,
+      "market_value": 62600.0,
       "quantity": 2000.0,
       "current_price": 35.354,
       "cost_basis": 70707.7,
-      "float_pnl": -1387.7,
-      "pnl_pct": -1.96
+      "float_pnl": -8107.7,
+      "pnl_pct": -11.47
     },
     {
       "symbol": "603163",
@@ -217,12 +189,12 @@
       "currency": "CNY",
       "region": "China",
       "strategy": "core",
-      "market_value": 10441.0,
+      "market_value": 11098.0,
       "quantity": 100.0,
       "current_price": 104.231,
       "cost_basis": 10423.1,
-      "float_pnl": 17.9,
-      "pnl_pct": 0.17
+      "float_pnl": 674.9,
+      "pnl_pct": 6.48
     },
     {
       "symbol": "605358",
@@ -231,12 +203,12 @@
       "currency": "CNY",
       "region": "China",
       "strategy": "core",
-      "market_value": 26330.0,
-      "quantity": 600.0,
+      "market_value": 25075.0,
+      "quantity": 500.0,
       "current_price": 50.691,
       "cost_basis": 25015.05,
-      "float_pnl": 1314.95,
-      "pnl_pct": 5.26
+      "float_pnl": 59.95,
+      "pnl_pct": 0.24
     },
     {
       "symbol": "688783",
@@ -245,12 +217,12 @@
       "currency": "CNY",
       "region": "China",
       "strategy": "core",
-      "market_value": 18756.7,
+      "market_value": 17765.6,
       "quantity": 530.0,
       "current_price": 35.35,
       "cost_basis": 18735.39,
-      "float_pnl": 21.31,
-      "pnl_pct": 0.11
+      "float_pnl": -969.79,
+      "pnl_pct": -5.18
     },
     {
       "symbol": "688981",
@@ -259,12 +231,12 @@
       "currency": "CNY",
       "region": "China",
       "strategy": "core",
-      "market_value": 176331.42,
+      "market_value": 170196.14,
       "quantity": 1447.0,
       "current_price": 111.743,
       "cost_basis": 150142.94,
-      "float_pnl": 26188.48,
-      "pnl_pct": 17.44
+      "float_pnl": 20053.2,
+      "pnl_pct": 13.36
     },
     {
       "symbol": "02331",
@@ -273,12 +245,26 @@
       "currency": "CNY",
       "region": "HongKong",
       "strategy": "core",
-      "market_value": 8488.06,
+      "market_value": 8037.6,
       "quantity": 500.0,
       "current_price": 13.057,
       "cost_basis": 6528.52,
-      "float_pnl": 1959.54,
-      "pnl_pct": 30.01
+      "float_pnl": 1509.08,
+      "pnl_pct": 23.11
+    },
+    {
+      "symbol": "09988",
+      "name": "阿里巴巴－Ｗ",
+      "asset_class": "equity",
+      "currency": "CNY",
+      "region": "HongKong",
+      "strategy": "core",
+      "market_value": 22900.0,
+      "quantity": 100.0,
+      "current_price": 115.326,
+      "cost_basis": 23065.22,
+      "float_pnl": -165.22,
+      "pnl_pct": -0.72
     }
   ]
 }

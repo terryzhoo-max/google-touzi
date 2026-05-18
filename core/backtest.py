@@ -169,7 +169,7 @@ def run_backtest():
     
     # Determine string representation of the regime
     if last_row['W_CASH'] > 0:
-        regime_str = "通胀型恐慌 (极致防守)"
+        regime_str = "通胀型恐慌 INFLATION SHOCK (CASH DEFENSE)"
         regime_color = "#ef4444"
         asset_strategies = [
             {"asset": "SPY (标普500)", "weight": int(last_row['W_SPY'] * 100), "icon": "📈", "strategy": "波动率与利率双杀，右侧动能丧失，强制切断所有权益类风险敞口。"},
@@ -178,7 +178,7 @@ def run_backtest():
             {"asset": "CASH (美元现金)", "weight": int(last_row['W_CASH'] * 100), "icon": "💵", "strategy": "宏观范式剧变期，现金为王。持有极短久期票据等待流动性恢复。"}
         ]
     elif last_row['W_TLT'] >= 0.7:
-        regime_str = "通缩型恐慌 (美债避险)"
+        regime_str = "通缩型恐慌 DEFLATION SHOCK (BOND HAVEN)"
         regime_color = "#fbbf24"
         asset_strategies = [
             {"asset": "SPY (标普500)", "weight": int(last_row['W_SPY'] * 100), "icon": "📈", "strategy": "经济预期极速衰退，企业盈利下滑，规避所有高风险资产。"},
@@ -187,7 +187,7 @@ def run_backtest():
             {"asset": "CASH (美元现金)", "weight": int(last_row['W_CASH'] * 100), "icon": "💵", "strategy": "系统流动性尚可，长债已提供足够保护，无需持有绝对现金。"}
         ]
     else:
-        regime_str = "常态扩张期 (均衡多头)"
+        regime_str = "常态扩张期 NORMAL EXPANSION (BULL MARKET)"
         regime_color = "#4ade80"
         asset_strategies = [
             {"asset": "SPY (标普500)", "weight": int(last_row['W_SPY'] * 100), "icon": "📈", "strategy": "宏观波动率处于健康区间，重仓权益资产享受核心复利增长。"},

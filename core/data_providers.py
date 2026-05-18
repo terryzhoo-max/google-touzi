@@ -93,13 +93,45 @@ def get_provider_stats() -> dict:
     return result
 
 
+import random
+
 def _rate_limit(source: str, min_interval: float = 1.0) -> None:
-    """Prevent triggering remote WAF by spacing requests."""
+    """Prevent triggering remote WAF by spacing requests, with Jitter."""
     now = time.time()
     prev = _last_request_time.get(source)
-    if prev is not None and (elapsed := now - prev) < min_interval:
-        time.sleep(min_interval - elapsed)
+    # Add random jitter to prevent concurrent spike lockouts
+    jitter = random.uniform(0.1, 0.5)
+    actual_interval = min_interval + jitter
+    if prev is not None and (elapsed := now - prev) < actual_interval:
+        time.sleep(actual_interval - elapsed)
     _last_request_time[source] = time.time()
+
+
+def _retry_akshare(func, *args, **kwargs):
+    """Wrapper to retry AKShare functions with exponential backoff to handle RemoteDisconnected."""
+    import requests
+    import urllib3
+    from urllib3.exceptions import ProtocolError
+    from requests.exceptions import ConnectionError, ReadTimeout
+
+    max_retries = 3
+    base_wait = 1.5
+
+    for attempt in range(max_retries):
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            err_str = str(e)
+            # Catch common network disconnect errors from AKShare
+            if "Connection aborted" in err_str or "RemoteDisconnected" in err_str or "timeout" in err_str.lower() or "Connection reset" in err_str:
+                if attempt < max_retries - 1:
+                    wait_time = base_wait * (2 ** attempt) + random.uniform(0.1, 0.5)
+                    time.sleep(wait_time)
+                else:
+                    print(f"[data_providers] AKShare failed completely after {max_retries} retries: {e}")
+                    raise
+            else:
+                raise
 
 
 # ── low-level fetchers ──────────────────────────────────────────
@@ -150,7 +182,11 @@ def _fred_series(series_id: str, limit: int = 60) -> pd.Series:
             return val
 
     if not _circuit_allow("fred"):
-        raise Exception("FRED circuit breaker open — serving from cache")
+        if cache_key in _provider_cache:
+            print(f"[circuit] FRED open — serving stale cache")
+            return _provider_cache[cache_key][1]
+        print(f"[circuit] FRED open — no cache available, returning empty series")
+        return pd.Series(dtype=float, name=series_id)
     _rate_limit("fred", 1.0)
     _provider_stats["fred"]["calls"] += 1
     t0 = time.time()
@@ -186,7 +222,11 @@ def _fred_series(series_id: str, limit: int = 60) -> pd.Series:
         _provider_stats["fred"]["errors"] += 1
         _provider_stats["fred"]["last_err"] = str(e)[:120]
         _circuit_record("fred", False)
-        raise
+        if cache_key in _provider_cache:
+            print(f"[data_providers] FRED error — serving stale cache")
+            return _provider_cache[cache_key][1]
+        print(f"[data_providers] FRED error — no cache available, returning empty series")
+        return pd.Series(dtype=float, name=series_id)
 
 
 def _tushare_items(api_name: str, params: dict, fields: str) -> list:
@@ -207,7 +247,11 @@ def _tushare_items(api_name: str, params: dict, fields: str) -> list:
 
     src = "tushare_fund" if "fund" in api_name else ("tushare_fx" if "fx" in api_name else "tushare_index")
     if not _circuit_allow(src):
-        raise Exception(f"Tushare {src} circuit breaker open — serving from cache")
+        if cache_key in _provider_cache:
+            print(f"[circuit] Tushare {src} open — serving stale cache")
+            return _provider_cache[cache_key][1]
+        print(f"[circuit] Tushare {src} open — no cache available, returning empty list")
+        return []
     _rate_limit("tushare", 1.0)
     _provider_stats[src]["calls"] += 1
     t0 = time.time()
@@ -231,7 +275,11 @@ def _tushare_items(api_name: str, params: dict, fields: str) -> list:
         _provider_stats[src]["errors"] += 1
         _provider_stats[src]["last_err"] = str(e)[:120]
         _circuit_record(src, False)
-        raise
+        if cache_key in _provider_cache:
+            print(f"[data_providers] Tushare {src} error — serving stale cache")
+            return _provider_cache[cache_key][1]
+        print(f"[data_providers] Tushare {src} error — no cache available, returning empty list")
+        return []
 
 
 def _ts_items_to_series(
@@ -258,11 +306,11 @@ def _akshare_us_etf(symbol: str, days_back: int) -> pd.Series:
     import akshare as ak
     end = datetime.date.today()
     start = end - datetime.timedelta(days=days_back + 5)
-    df = ak.stock_us_hist(
+    df = _retry_akshare(ak.stock_us_hist,
         symbol=symbol, period="daily",
         start_date=start.strftime("%Y%m%d"),
         end_date=end.strftime("%Y%m%d"),
-        adjust="",
+        adjust="qfq",
     )
     if df is None or df.empty:
         return pd.Series(dtype=float)
@@ -298,10 +346,10 @@ def get_vix_history(days: int = 30) -> pd.Series:
                 if fn is None:
                     continue
                 if fn_name == "index_vix":
-                    df = fn(start_date=start.strftime("%Y-%m-%d"),
+                    df = _retry_akshare(fn, start_date=start.strftime("%Y-%m-%d"),
                             end_date=end.strftime("%Y-%m-%d"))
                 else:
-                    df = fn(country="美国", index_name="VIX恐慌指数",
+                    df = _retry_akshare(fn, country="美国", index_name="VIX恐慌指数",
                             period="每日",
                             start_date=start.strftime("%Y-%m-%d"),
                             end_date=end.strftime("%Y-%m-%d"))
@@ -448,22 +496,116 @@ def get_us_etf_history_long(symbol: str, years: int = 5) -> pd.Series:
 
 # ── convenience helpers ─────────────────────────────────────────
 
-def get_china_etf_history_long(symbol: str, years: int = 5) -> pd.Series:
-    """Fetch history for A-Share ETFs via Tushare fund_daily."""
-    start_date = (datetime.datetime.now() - datetime.timedelta(days=365 * years)).strftime("%Y%m%d")
-    end_date = datetime.datetime.now().strftime("%Y%m%d")
+def get_global_index_history_long(symbol: str, years: int = 10) -> pd.Series:
+    """Fetch native global indices to avoid exchange rate noise in scientific backtest.
+    Supported: SPX (S&P 500), IXIC (Nasdaq), N225 (Nikkei), 
+               000300.SH (CSI 300), 000905.SH (CSI 500).
+    """
+    days = years * 366 + 10
+    end = datetime.date.today()
+    start = end - datetime.timedelta(days=days)
+    
+    if symbol.endswith(".SH") or symbol.endswith(".SZ"):
+        api_name = "index_daily"
+    else:
+        api_name = "index_global"
+        
     try:
         items = _tushare_items(
-            "fund_daily",
-            {"ts_code": symbol, "start_date": start_date, "end_date": end_date},
+            api_name,
+            params={
+                "ts_code": symbol,
+                "start_date": start.strftime("%Y%m%d"),
+                "end_date": end.strftime("%Y%m%d"),
+            },
+            fields="trade_date,close",
+        )
+        s = _ts_items_to_series(items, date_col=0, val_col=1, name=symbol)
+        if len(s) > 0:
+            print(f"[data_providers] {symbol} long native → Tushare {api_name} ({len(s)} rows)")
+            return s
+    except Exception as e:
+        print(f"[data_providers] Tushare {api_name} failed for {symbol}: {e}")
+
+    # Fallback to AKShare
+    if api_name == "index_global":
+        try:
+            import akshare as ak
+            df = _retry_akshare(ak.index_investing_global, country="美国" if symbol in ["SPX", "IXIC"] else "日本", 
+                                           index_name="标普500" if symbol == "SPX" else ("纳斯达克综合指数" if symbol == "IXIC" else "日经225"), 
+                                           period="每日", 
+                                           start_date=start.strftime("%Y-%m-%d"), 
+                                           end_date=end.strftime("%Y-%m-%d"))
+            if df is not None and not df.empty:
+                date_col = next((c for c in df.columns if "日" in c or "date" in c.lower()), df.columns[0])
+                close_col = next((c for c in df.columns if "收" in c or "close" in c.lower()), df.columns[-1])
+                df[date_col] = pd.to_datetime(df[date_col])
+                df = df.sort_values(date_col)
+                s = pd.Series(df[close_col].values, index=df[date_col], name=symbol)
+                print(f"[data_providers] {symbol} long native → AKShare ({len(s)} rows)")
+                return s
+        except Exception as e:
+            print(f"[data_providers] AKShare native failed for {symbol}: {e}")
+
+    return pd.Series(dtype=float)
+
+
+def get_china_etf_history_long(symbol: str, years: int = 5) -> pd.Series:
+    """Fetch history for A-Share ETFs. Primary: Tushare, Fallback: AKShare (qfq)."""
+    start_date = (datetime.datetime.now() - datetime.timedelta(days=365 * years)).strftime("%Y%m%d")
+    end_date = datetime.datetime.now().strftime("%Y%m%d")
+    
+    # Format symbol for Tushare
+    ts_code = symbol
+    if not ts_code.endswith(".SH") and not ts_code.endswith(".SZ"):
+        if ts_code.startswith("6") or ts_code.startswith("5"):
+            ts_code += ".SH"
+        else:
+            ts_code += ".SZ"
+            
+    is_fund = ts_code.startswith("5") or ts_code.startswith("15")
+    ts_api = "fund_daily" if is_fund else "daily"
+    
+    # Primary: Tushare (Stable, Institutional grade)
+    try:
+        items = _tushare_items(
+            ts_api,
+            {"ts_code": ts_code, "start_date": start_date, "end_date": end_date},
             "trade_date,close"
         )
         if items:
             s = _ts_items_to_series(items, 0, 1, symbol)
-            print(f"[data_providers] {symbol} (China ETF) → Tushare ({len(s)} rows)")
+            print(f"[data_providers] {symbol} (China) → Tushare {ts_api} ({len(s)} rows)")
             return s
     except Exception as e:
-        print(f"[data_providers] Tushare fund_daily failed for {symbol}: {e}")
+        print(f"[data_providers] Tushare {ts_api} failed for {symbol}: {e}")
+
+    # Fallback: AKShare with qfq (Forward-Adjusted)
+    try:
+        import akshare as ak
+        ak_sym = symbol.split(".")[0]
+        if ak_sym.startswith("5") or ak_sym.startswith("15"):
+            df = _retry_akshare(ak.fund_etf_hist_em,
+                symbol=ak_sym, period="daily",
+                start_date=start_date, end_date=end_date,
+                adjust="qfq"
+            )
+        else:
+            df = _retry_akshare(ak.stock_zh_a_hist,
+                symbol=ak_sym, period="daily",
+                start_date=start_date, end_date=end_date,
+                adjust="qfq"
+            )
+        if df is not None and not df.empty:
+            df["日期"] = pd.to_datetime(df["日期"])
+            df = df.set_index("日期").sort_index()
+            s = pd.to_numeric(df["收盘"], errors='coerce').dropna()
+            s.name = symbol
+            print(f"[data_providers] {symbol} (China) → AKShare qfq ({len(s)} rows)")
+            return s
+    except Exception as e:
+        print(f"[data_providers] AKShare failed for {symbol}: {e}")
+        
     return pd.Series(dtype=float)
 
 
@@ -534,3 +676,75 @@ def get_multi_asset_snapshot(api_name: str, codes_dict: dict,
         rows.append({"code": code, "name": name, "ret_5d": r5, "ret_20d": r20,
                       "ret_60d": r60, "last_close": round(last, 2)})
     return rows
+
+
+_attr_cache = {}
+
+def get_attribution_returns(symbols: list[str], period: str = "T-1") -> dict[str, float]:
+    """
+    Fetch absolute returns for attribution concurrently.
+    Uses forward-adjusted data where possible to match production logic.
+    period mapping: 'T-1' -> 1 day, 'T-5' -> 5 days, etc.
+    """
+    import concurrent.futures
+    import pandas as pd
+    import time
+    
+    days_back = 5 if period == "T-5" else (30 if period == "T-30" else 1)
+    now = time.time()
+    
+    def _fetch_single_return(symbol: str) -> tuple[str, float]:
+        try:
+            # Check cache first
+            cache_key = f"{symbol}:{period}"
+            if cache_key in _attr_cache:
+                ts, val = _attr_cache[cache_key]
+                if now - ts < 3600 * 4:  # 4 hour cache
+                    return symbol, val
+                    
+            # We fetch a bit more history to ensure we get N trading days
+            fetch_days = days_back + 10
+            
+            # Skip dummy text symbols
+            if symbol.endswith("_ETF") or symbol in ["CASH"]:
+                return symbol, 0.0
+                
+            # If purely numeric or explicitly A-share, use China ETF logic
+            is_china = symbol.endswith(".SH") or symbol.endswith(".SZ") or symbol.split(".")[0].isdigit()
+            if is_china:
+                s = get_china_etf_history_long(symbol, years=1)
+            else:
+                s = get_us_etf_history(symbol.replace(".US", ""), months=max(1, fetch_days // 20 + 1))
+                
+            if s.empty or len(s) < days_back + 1:
+                return symbol, 0.0
+                
+            latest = s.iloc[-1]
+            past = s.iloc[-(days_back + 1)]
+            
+            if past == 0:
+                return symbol, 0.0
+                
+            ret = round(float((latest / past) - 1.0), 6)
+            _attr_cache[cache_key] = (now, ret)
+            return symbol, ret
+        except Exception as e:
+            print(f"[data_providers] Attribution fetch failed for {symbol}: {e}")
+            return symbol, 0.0
+
+    results = {}
+    uncached_symbols = [s for s in symbols if f"{s}:{period}" not in _attr_cache or now - _attr_cache[f"{s}:{period}"][0] >= 3600 * 4]
+    
+    # Fill cached ones immediately
+    for s in symbols:
+        if s not in uncached_symbols:
+            results[s] = _attr_cache[f"{s}:{period}"][1]
+            
+    if uncached_symbols:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor: # Set to 1 to serialize requests and avoid WAF ban
+            future_to_sym = {executor.submit(_fetch_single_return, sym): sym for sym in uncached_symbols}
+            for future in concurrent.futures.as_completed(future_to_sym):
+                sym, ret = future.result()
+                results[sym] = ret
+            
+    return results

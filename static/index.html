@@ -59,9 +59,9 @@
             <div id="view-macro" class="view-panel active">
                 <div class="panel-header" style="display:flex; justify-content:space-between; align-items:flex-end; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 12px; margin-bottom: 20px;">
                     <div>
-                        <h2 style="font-size: 1.5rem; letter-spacing: 1px; color: #fff;">MACRO DASHBOARD</h2>
+                        <h2 style="font-size: 1.5rem; letter-spacing: 1px; color: #fff; display:flex; align-items:baseline;">MACRO DASHBOARD <span style="font-size:0.55em; color:var(--text-tertiary); margin-left:12px; font-weight:400; letter-spacing:2px;">宏观洞察大盘</span></h2>
                         <div style="color:var(--text-tertiary); font-size:0.8rem; margin-top:6px; font-family:var(--font-mono); text-transform: uppercase;">
-                            Global Regime · Liquidity · Rates · Valuations
+                            Global Regime · Liquidity · Rates · Valuations | 全球周期 · 流动性 · 利率曲线 · 估值
                         </div>
                     </div>
                     <div style="display:flex; gap:10px;">
@@ -73,7 +73,7 @@
                 <!-- 1. CORE SIGNALS -->
                 <div class="terminal-grid-3">
                     <div class="glass-card" id="dash-signal">
-                        <div class="dash-label">COMPOSITE SIGNAL</div>
+                        <div class="dash-label">综合合成信号 <span style="font-size:0.7em; color:var(--text-tertiary); margin-left:6px; font-weight:400;">COMPOSITE SIGNAL</span></div>
                         <div class="signal-ring" id="signal-ring">
                             <svg viewBox="0 0 120 120"><circle cx="60" cy="60" r="52" fill="none" stroke="#1e1e24" stroke-width="8"/><circle id="signal-arc" cx="60" cy="60" r="52" fill="none" stroke="#f59e0b" stroke-width="8" stroke-linecap="round" stroke-dasharray="327" stroke-dashoffset="327" transform="rotate(-90 60 60)"/></svg>
                             <div class="signal-text" id="signal-text">--</div>
@@ -81,12 +81,12 @@
                         <div class="signal-label" id="signal-label">CALCULATING...</div>
                     </div>
                     <div class="glass-card" id="dash-regime">
-                        <div class="dash-label">MACRO REGIME</div>
+                        <div class="dash-label">宏观周期阶段 <span style="font-size:0.7em; color:var(--text-tertiary); margin-left:6px; font-weight:400;">MACRO REGIME</span></div>
                         <div class="regime-badge" id="regime-badge">--</div>
                         <div class="regime-detail" id="regime-detail"></div>
                     </div>
                     <div class="glass-card" id="dash-alloc">
-                        <div class="dash-label">TARGET ALLOCATION</div>
+                        <div class="dash-label">目标仓位分布 <span style="font-size:0.7em; color:var(--text-tertiary); margin-left:6px; font-weight:400;">TARGET ALLOCATION</span></div>
                         <div class="alloc-bars" id="alloc-bars"></div>
                         <div class="alloc-detail" id="alloc-detail"></div>
                     </div>
@@ -94,22 +94,22 @@
 
                 <div class="terminal-grid-3 inst-guard" style="margin-top:16px; font-size:0.75rem;">
                     <div class="glass-card" style="text-align:center; padding: 12px;">
-                        <span style="color:var(--text-tertiary);">COMPLIANCE GATE</span>
+                        <span style="color:var(--text-tertiary);">合规门禁 <span style="font-size:0.8em; opacity:0.7; margin-left:4px;">COMPLIANCE GATE</span></span>
                         <strong id="guard-compliance" style="display:block;font-family:var(--font-mono);color:var(--text-primary);font-size:1.1rem;margin-top:4px;">--</strong>
                     </div>
                     <div class="glass-card" style="text-align:center; padding: 12px;">
-                        <span style="color:var(--text-tertiary);">PRIMARY RISK FACTOR</span>
+                        <span style="color:var(--text-tertiary);">首要风险因子 <span style="font-size:0.8em; opacity:0.7; margin-left:4px;">PRIMARY RISK FACTOR</span></span>
                         <strong id="guard-factor" style="display:block;font-family:var(--font-mono);color:var(--text-primary);font-size:1.1rem;margin-top:4px;">--</strong>
                     </div>
                     <div class="glass-card" style="text-align:center; padding: 12px;">
-                        <span style="color:var(--text-tertiary);">TRACKING ERROR</span>
+                        <span style="color:var(--text-tertiary);">跟踪误差 <span style="font-size:0.8em; opacity:0.7; margin-left:4px;">TRACKING ERROR</span></span>
                         <strong id="guard-tracking" style="display:block;font-family:var(--font-mono);color:var(--text-primary);font-size:1.1rem;margin-top:4px;">--</strong>
                     </div>
                 </div>
 
                 <!-- Alert Banner -->
                 <div class="alert-banner" id="alert-banner" style="display:none; margin-top: 16px;">
-                    <div class="alert-banner-header"><span class="alert-dot"></span><span id="alert-count">0</span> ACTIVE ALERTS</div>
+                    <div class="alert-banner-header"><span class="alert-dot"></span><span id="alert-count">0</span> 活跃风险预警 <span style="font-size:0.75em; opacity:0.8; margin-left:6px;">ACTIVE ALERTS</span></div>
                     <div id="alert-list"></div>
                 </div>
 
@@ -117,7 +117,7 @@
                 <div class="terminal-grid-3" style="margin-top: 16px;">
                     <div class="glass-card" style="display:flex; flex-direction:column;">
                         <div class="card-header">
-                            <h3>EQUITY RISK PREMIUM (ERP)</h3>
+                            <h3>股权风险溢价 <span style="font-size:0.7em; color:var(--text-tertiary); font-weight:400; margin-left:8px; letter-spacing:1px;">EQUITY RISK PREMIUM (ERP)</span></h3>
                             <span id="tnx-indicator" class="status-indicator"></span>
                         </div>
                         <p id="tnx-insight" class="card-desc" style="min-height: 40px;">--</p>
@@ -125,7 +125,7 @@
                     </div>
                     <div class="glass-card" style="display:flex; flex-direction:column;">
                         <div class="card-header">
-                            <h3>CREDIT SPREAD / VIX</h3>
+                            <h3>信用利差与恐慌指数 <span style="font-size:0.7em; color:var(--text-tertiary); font-weight:400; margin-left:8px; letter-spacing:1px;">CREDIT SPREAD / VIX</span></h3>
                             <span id="vix-indicator" class="status-indicator"></span>
                         </div>
                         <p id="vix-insight" class="card-desc" style="min-height: 40px;">--</p>
@@ -133,7 +133,7 @@
                     </div>
                     <div class="glass-card" style="display:flex; flex-direction:column;">
                         <div class="card-header">
-                            <h3>YIELD CURVE (2s10s)</h3>
+                            <h3>收益率曲线 <span style="font-size:0.7em; color:var(--text-tertiary); font-weight:400; margin-left:8px; letter-spacing:1px;">YIELD CURVE (2s10s)</span></h3>
                             <span id="yc-indicator" class="status-indicator"></span>
                         </div>
                         <p id="yc-insight" class="card-desc" style="min-height: 40px;">--</p>
@@ -145,7 +145,7 @@
                 <div class="terminal-grid-3" style="margin-top: 16px;">
                     <div class="glass-card">
                         <div class="card-header">
-                            <h3>CHINA MACRO CORE</h3>
+                            <h3>中国宏观核心指标 <span style="font-size:0.7em; color:var(--text-tertiary); font-weight:400; margin-left:8px; letter-spacing:1px;">CHINA MACRO CORE</span></h3>
                             <span id="cm-indicator" class="status-indicator"></span>
                         </div>
                         <p id="cm-insight" class="card-desc" style="margin-bottom:12px;">--</p>
@@ -153,20 +153,20 @@
                     </div>
                     <div class="glass-card" style="display:flex; flex-direction:column;">
                         <div class="card-header">
-                            <h3>A-SHARE MARKET BREADTH</h3>
+                            <h3>A股市场宽度与资金流 <span style="font-size:0.7em; color:var(--text-tertiary); font-weight:400; margin-left:8px; letter-spacing:1px;">A-SHARE MARKET BREADTH</span></h3>
                             <span id="mb-indicator" class="status-indicator"></span>
                         </div>
                         <p id="mb-insight" class="card-desc" style="min-height: 40px;">--</p>
                         <div style="display:flex; gap:12px; margin-bottom:12px;">
-                            <div class="metric-cell" style="flex:1;"><span>Today Flow</span><strong id="mb-current-flow" style="color:var(--text-primary);">--</strong></div>
-                            <div class="metric-cell" style="flex:1;"><span>5D Flow</span><strong id="mb-flow-5d" style="color:var(--text-primary);">--</strong></div>
-                            <div class="metric-cell" style="flex:1;"><span>20D Flow</span><strong id="mb-flow-20d" style="color:var(--text-primary);">--</strong></div>
+                            <div class="metric-cell" style="flex:1;"><span style="display:flex; flex-direction:column; line-height:1.2;">今日流向 <small style="font-size:0.8em; color:var(--text-tertiary); margin-top:2px;">TODAY FLOW</small></span><strong id="mb-current-flow" style="color:var(--text-primary);">--</strong></div>
+                            <div class="metric-cell" style="flex:1;"><span style="display:flex; flex-direction:column; line-height:1.2;">5日均流向 <small style="font-size:0.8em; color:var(--text-tertiary); margin-top:2px;">5D FLOW</small></span><strong id="mb-flow-5d" style="color:var(--text-primary);">--</strong></div>
+                            <div class="metric-cell" style="flex:1;"><span style="display:flex; flex-direction:column; line-height:1.2;">20日均流向 <small style="font-size:0.8em; color:var(--text-tertiary); margin-top:2px;">20D FLOW</small></span><strong id="mb-flow-20d" style="color:var(--text-primary);">--</strong></div>
                         </div>
                         <div id="breadth-chart" class="chart-container" style="flex:1; min-height:180px;"><div class="skeleton"></div></div>
                     </div>
                     <div class="glass-card" style="display:flex; flex-direction:column;">
                         <div class="card-header">
-                            <h3>MARGIN TRADING</h3>
+                            <h3>融资融券余额 <span style="font-size:0.7em; color:var(--text-tertiary); font-weight:400; margin-left:8px; letter-spacing:1px;">MARGIN TRADING</span></h3>
                             <span id="mg-indicator" class="status-indicator"></span>
                         </div>
                         <p id="mg-insight" class="card-desc" style="min-height: 40px;">--</p>
@@ -179,7 +179,7 @@
                     <div style="display:flex; flex-direction:column; gap:16px;">
                         <div class="glass-card" style="flex:1;">
                             <div class="card-header">
-                                <h3>FED PROBABILITY & FOMC</h3>
+                                <h3>美联储加息概率 <span style="font-size:0.7em; color:var(--text-tertiary); font-weight:400; margin-left:8px; letter-spacing:1px;">FED PROBABILITY & FOMC</span></h3>
                                 <span id="fed-indicator" class="status-indicator"></span>
                             </div>
                             <p id="fed-insight" class="card-desc" style="margin-bottom:8px;">--</p>
@@ -187,7 +187,7 @@
                         </div>
                         <div class="glass-card" style="flex:1;">
                             <div class="card-header">
-                                <h3>MACRO SURPRISE INDEX</h3>
+                                <h3>宏观意外指数 <span style="font-size:0.7em; color:var(--text-tertiary); font-weight:400; margin-left:8px; letter-spacing:1px;">MACRO SURPRISE INDEX</span></h3>
                                 <span id="si-indicator" class="status-indicator"></span>
                             </div>
                             <p id="si-insight" class="card-desc" style="margin-bottom:8px;">--</p>
@@ -197,7 +197,7 @@
                     
                     <div class="glass-card">
                         <div class="card-header">
-                            <h3>GLOBAL ASSETS MOMENTUM</h3>
+                            <h3>全球资产动量 <span style="font-size:0.7em; color:var(--text-tertiary); font-weight:400; margin-left:8px; letter-spacing:1px;">GLOBAL ASSETS MOMENTUM</span></h3>
                             <span id="ga-indicator" class="status-indicator"></span>
                         </div>
                         <div id="global-assets-table" style="margin-top:16px; overflow-x:auto;">
@@ -210,7 +210,7 @@
                 <div class="terminal-grid-2" style="margin-top: 16px;">
                     <div class="glass-card">
                         <div class="card-header">
-                            <h3>INDEX VALUATION HEATMAP</h3>
+                            <h3>宽基估值热力图 <span style="font-size:0.7em; color:var(--text-tertiary); font-weight:400; margin-left:8px; letter-spacing:1px;">INDEX VALUATION HEATMAP</span></h3>
                             <span id="val-indicator" class="status-indicator"></span>
                         </div>
                         <p id="val-insight" class="card-desc" style="margin-bottom:12px;">--</p>
@@ -218,7 +218,7 @@
                     </div>
                     <div class="glass-card" style="display:flex; flex-direction:column;">
                         <div class="card-header">
-                            <h3>HIGH DIVIDEND YIELD LEADERS</h3>
+                            <h3>高股息红利标的 <span style="font-size:0.7em; color:var(--text-tertiary); font-weight:400; margin-left:8px; letter-spacing:1px;">HIGH DIVIDEND YIELD LEADERS</span></h3>
                             <span id="dv-indicator" class="status-indicator"></span>
                         </div>
                         <p id="dv-insight" class="card-desc" style="margin-bottom:12px;">--</p>
@@ -247,7 +247,7 @@
                 <div class="terminal-grid-2">
                     <div class="glass-card" data-rotation-panel="sector-chart" style="display:flex; flex-direction:column;">
                         <div class="card-header">
-                            <h3>A-SHARE SECTOR ROTATION</h3>
+                            <h3>A股行业轮动 <span style="font-size:0.7em; color:var(--text-tertiary); font-weight:400; margin-left:8px; letter-spacing:1px;">A-SHARE SECTOR ROTATION</span></h3>
                             <span id="sr-indicator" class="status-indicator"></span>
                         </div>
                         <p id="sr-insight" class="card-desc" style="min-height: 40px; margin-bottom:12px;">--</p>
@@ -255,7 +255,7 @@
                     </div>
                     <div class="glass-card" data-rotation-panel="theme-chart" style="display:flex; flex-direction:column;">
                         <div class="card-header">
-                            <h3>POLICY THEME MOMENTUM</h3>
+                            <h3>政策主题动量 <span style="font-size:0.7em; color:var(--text-tertiary); font-weight:400; margin-left:8px; letter-spacing:1px;">POLICY THEME MOMENTUM</span></h3>
                             <span id="tr-indicator" class="status-indicator"></span>
                         </div>
                         <p id="tr-insight" class="card-desc" style="min-height: 40px; margin-bottom:12px;">--</p>
@@ -263,7 +263,7 @@
                     </div>
                     <div class="glass-card" data-rotation-panel="domestic-etf-chart" style="display:flex; flex-direction:column;">
                         <div class="card-header">
-                            <h3>DOMESTIC ETF FLOWS</h3>
+                            <h3>境内ETF资金流向 <span style="font-size:0.7em; color:var(--text-tertiary); font-weight:400; margin-left:8px; letter-spacing:1px;">DOMESTIC ETF FLOWS</span></h3>
                             <span id="de-indicator" class="status-indicator"></span>
                         </div>
                         <p id="de-insight" class="card-desc" style="min-height: 40px; margin-bottom:12px;">--</p>
@@ -271,7 +271,7 @@
                     </div>
                     <div class="glass-card" data-rotation-panel="global-etf-chart" style="display:flex; flex-direction:column;">
                         <div class="card-header">
-                            <h3>GLOBAL ETF ROTATION</h3>
+                            <h3>全球ETF轮动 <span style="font-size:0.7em; color:var(--text-tertiary); font-weight:400; margin-left:8px; letter-spacing:1px;">GLOBAL ETF ROTATION</span></h3>
                             <span id="ge-indicator" class="status-indicator"></span>
                         </div>
                         <p id="ge-insight" class="card-desc" style="min-height: 40px; margin-bottom:12px;">--</p>
@@ -315,13 +315,13 @@
                 <div class="terminal-grid-2" style="margin-bottom:16px;">
                     <div class="glass-card" style="display:flex; flex-direction:column; min-height:400px;">
                         <div class="card-header">
-                            <h3>MACRO REGIME RADAR <span style="font-size:0.7em; color:var(--text-tertiary); font-weight:400; margin-left:8px; letter-spacing:1px;">宏观系统性风控</span></h3>
+                            <h3>宏观系统性风控 <span style="font-size:0.7em; color:var(--text-tertiary); font-weight:400; margin-left:8px; letter-spacing:1px;">MACRO REGIME RADAR</span></h3>
                         </div>
                         <div id="factor-radar-chart" class="chart-container" style="flex:1; width:100%;"><div class="skeleton"></div></div>
                     </div>
                     <div class="glass-card" style="display:flex; flex-direction:column; min-height:400px;">
                         <div class="card-header">
-                            <h3>STYLE & THEME X-RAY <span style="font-size:0.7em; color:var(--text-tertiary); font-weight:400; margin-left:8px; letter-spacing:1px;">风格偏科穿透</span></h3>
+                            <h3>风格偏科穿透 <span style="font-size:0.7em; color:var(--text-tertiary); font-weight:400; margin-left:8px; letter-spacing:1px;">STYLE & THEME X-RAY</span></h3>
                         </div>
                         <div id="factor-style-chart" class="chart-container" style="flex:1; width:100%;"><div class="skeleton"></div></div>
                     </div>
@@ -330,19 +330,19 @@
                 <!-- L3: Asset Contribution Heatmap -->
                 <div class="glass-card" style="margin-bottom:16px;">
                     <div class="card-header" style="justify-content:space-between;">
-                        <h3>ASSET CONTRIBUTION HEATMAP <span style="font-size:0.7em; color:var(--text-tertiary); font-weight:400; margin-left:8px; letter-spacing:1px;">底层溯源与斩杀表</span></h3>
+                        <h3>底层溯源与斩杀表 <span style="font-size:0.7em; color:var(--text-tertiary); font-weight:400; margin-left:8px; letter-spacing:1px;">ASSET CONTRIBUTION HEATMAP</span></h3>
                         <span style="font-size:0.7rem; color:var(--text-secondary); background:rgba(255,255,255,0.05); padding:2px 8px; border-radius:4px; font-family:var(--font-mono);">CLICK ROW TO EXECUTE</span>
                     </div>
                     <div style="overflow-x:auto;">
                         <table class="institutional-table" style="margin:0; width:100%; white-space:nowrap; border-collapse:separate; border-spacing:0 4px;">
                             <thead style="position:sticky; top:0; z-index:1; background:rgba(15,23,42,0.85); backdrop-filter:blur(12px); box-shadow:0 4px 10px rgba(0,0,0,0.3);">
                                 <tr>
-                                    <th style="padding-left:16px;">ASSET <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">资产代码</span></th>
-                                    <th style="text-align:right;">EQUITY BETA <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">大盘弹性</span></th>
-                                    <th style="text-align:right;">LIQUIDITY <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">流动性敏感</span></th>
-                                    <th style="text-align:right;">DOLLAR <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">美元汇率暴露</span></th>
-                                    <th style="text-align:right;">RATE <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">利率敏感</span></th>
-                                    <th style="text-align:right; padding-right:16px;">INFLATION <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">通胀抗性</span></th>
+                                    <th style="padding-left:16px;">资产代码 <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">ASSET</span></th>
+                                    <th style="text-align:right;">大盘弹性 <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">EQUITY BETA</span></th>
+                                    <th style="text-align:right;">流动性敏感 <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">LIQUIDITY</span></th>
+                                    <th style="text-align:right;">美元汇率暴露 <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">DOLLAR</span></th>
+                                    <th style="text-align:right;">利率敏感 <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">RATE</span></th>
+                                    <th style="text-align:right; padding-right:16px;">通胀抗性 <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">INFLATION</span></th>
                                 </tr>
                             </thead>
                             <tbody id="factor-ledger-body">
@@ -390,7 +390,7 @@
                 <!-- L2: Global Shock ECharts -->
                 <div class="glass-card" style="margin-bottom:16px; min-height:350px; display:flex; flex-direction:column;">
                     <div class="card-header">
-                        <h3>SCENARIO IMPACT DISTRIBUTION <span style="font-size:0.7em; color:var(--text-tertiary); font-weight:400; margin-left:8px; letter-spacing:1px;">宏观冲击波谱</span></h3>
+                        <h3>宏观冲击波谱 <span style="font-size:0.7em; color:var(--text-tertiary); font-weight:400; margin-left:8px; letter-spacing:1px;">SCENARIO IMPACT DISTRIBUTION</span></h3>
                     </div>
                     <div id="stress-impact-chart" class="chart-container" style="flex:1; width:100%;"><div class="skeleton"></div></div>
                 </div>
@@ -398,16 +398,16 @@
                 <!-- L3: Shock Propagation Matrix -->
                 <div class="glass-card" style="margin-bottom:16px;">
                     <div class="card-header" style="justify-content:space-between;">
-                        <h3>SHOCK PROPAGATION MATRIX <span style="font-size:0.7em; color:var(--text-tertiary); font-weight:400; margin-left:8px; letter-spacing:1px;">因子崩塌传导矩阵</span></h3>
+                        <h3>因子崩塌传导矩阵 <span style="font-size:0.7em; color:var(--text-tertiary); font-weight:400; margin-left:8px; letter-spacing:1px;">SHOCK PROPAGATION MATRIX</span></h3>
                     </div>
                     <div style="overflow-x:auto;">
                         <table class="institutional-table" style="margin:0; width:100%; white-space:nowrap; border-collapse:separate; border-spacing:0 4px;">
                             <thead style="position:sticky; top:0; z-index:1; background:rgba(15,23,42,0.85); backdrop-filter:blur(12px); box-shadow:0 4px 10px rgba(0,0,0,0.3);">
                                 <tr>
-                                    <th style="padding-left:16px;">SCENARIO EVENT <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">黑天鹅情景</span></th>
-                                    <th style="text-align:right;">PORTFOLIO IMPACT <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">总净值冲击</span></th>
-                                    <th style="text-align:right;">EQUITY SHOCK <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">权益震荡</span></th>
-                                    <th style="text-align:right;">BOND SHOCK <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">利率冲击</span></th>
+                                    <th style="padding-left:16px;">黑天鹅情景 <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">SCENARIO EVENT</span></th>
+                                    <th style="text-align:right;">总净值冲击 <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">PORTFOLIO IMPACT</span></th>
+                                    <th style="text-align:right;">权益震荡 <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">EQUITY SHOCK</span></th>
+                                    <th style="text-align:right;">利率冲击 <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">BOND SHOCK</span></th>
                                     <th style="text-align:right;">GOLD/COMMODITY <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">避险对冲</span></th>
                                     <th style="text-align:right; padding-right:16px;">REGION/STYLE <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">区域/风格敞口</span></th>
                                 </tr>
@@ -435,7 +435,7 @@
                 </div>
                 <div class="glass-card" style="min-height: 60vh; display:flex; flex-direction:column;">
                     <div class="card-header">
-                        <h3>REAL-TIME SYNTHESIS & MARKET NARRATIVE</h3>
+                        <h3>实时合成与市场叙事 <span style="font-size:0.7em; color:var(--text-tertiary); font-weight:400; margin-left:8px; letter-spacing:1px;">REAL-TIME SYNTHESIS & MARKET NARRATIVE</span></h3>
                         <span id="ai-indicator" class="status-indicator"></span>
                     </div>
                     <div id="ai-typewriter" class="card-desc" style="flex:1; font-family:var(--font-mono);color:var(--text-primary);font-size:0.95rem;line-height:1.8;margin-top:15px; padding: 24px; background:rgba(0,0,0,0.25); border:1px solid rgba(255,255,255,0.04); border-radius:6px; overflow-y:auto; box-shadow: inset 0 2px 10px rgba(0,0,0,0.5);">
@@ -454,7 +454,7 @@
                         </div>
                     </div>
                     <div style="display:flex; gap:10px;">
-                        <button id="tdx-import-btn" onclick="importTDX()" style="padding:4px 10px; background:var(--accent-primary); color:#000; border:none; border-radius:4px; font-weight:700; font-family:var(--font-mono); font-size:0.8rem; cursor:pointer; letter-spacing:0.5px; transition:all 0.2s;">[SYNC TDX PORTFOLIO]</button>
+                        <button id="tdx-import-btn" onclick="importTDX()" style="padding:4px 10px; background:var(--accent-primary); color:#000; border:none; border-radius:4px; font-weight:700; font-family:var(--font-mono); font-size:0.8rem; cursor:pointer; letter-spacing:0.5px; transition:all 0.2s;">[同步持仓 SYNC TDX]</button>
                         <span id="audit-status-badge" style="color:#22c55e; font-size:0.8rem; font-family:var(--font-mono); padding:4px 8px; background:rgba(34,197,94,0.1); border-radius:4px; display:flex; align-items:center; gap:6px; border:1px solid rgba(34,197,94,0.2);">
                             <span style="width:6px; height:6px; background-color:#22c55e; border-radius:50%; box-shadow:0 0 6px #22c55e; animation:pulse 2s infinite;"></span>
                             ACTIVE AUDIT LOGGING
@@ -464,7 +464,7 @@
 
                 <div class="glass-card" style="margin-bottom: 16px; border:1px solid rgba(139,92,246,0.3); background:linear-gradient(to right, rgba(139,92,246,0.05), transparent);">
                     <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; padding-bottom:12px; border-bottom:1px solid rgba(139,92,246,0.15);">
-                        <h3 style="color:#a78bfa; display:flex; align-items:baseline;">AI CRO COMPLIANCE SYNTHESIS <span style="font-size:0.7em; font-weight:400; color:rgba(167,139,250,0.6); margin-left:8px; letter-spacing:1px;">AI 首席风控官批示</span></h3>
+                        <h3 style="color:#a78bfa; display:flex; align-items:baseline;">AI 首席风控官批示 <span style="font-size:0.7em; font-weight:400; color:rgba(167,139,250,0.6); margin-left:8px; letter-spacing:1px;">AI CRO COMPLIANCE SYNTHESIS</span></h3>
                         <span id="ai-cro-status" style="font-size:0.7rem; color:#a78bfa; font-family:var(--font-mono); padding:2px 8px; background:rgba(139,92,246,0.1); border-radius:4px; border:1px solid rgba(139,92,246,0.2); display:flex; align-items:center; gap:6px;">
                             <span style="width:5px; height:5px; background-color:#a78bfa; border-radius:50%; box-shadow:0 0 4px #a78bfa; animation:pulse 1.5s infinite;"></span>
                             AWAITING SYNC
@@ -480,7 +480,7 @@
 
                 <div class="glass-card" style="margin-bottom: 16px;">
                     <div class="card-header">
-                        <h3 style="display:flex; align-items:baseline;">PORTFOLIO DECISION GATE <span style="font-size:0.7em; color:var(--text-tertiary); font-weight:400; margin-left:8px; letter-spacing:1px;">组合决策门禁</span></h3>
+                        <h3 style="display:flex; align-items:baseline;">组合决策门禁 <span style="font-size:0.7em; color:var(--text-tertiary); font-weight:400; margin-left:8px; letter-spacing:1px;">PORTFOLIO DECISION GATE</span></h3>
                     </div>
                     <div style="display:grid;grid-template-columns:140px 1fr;gap:24px;align-items:center;padding-bottom:16px;border-bottom:1px solid rgba(255,255,255,0.05);">
                         <div style="text-align:center;">
@@ -515,7 +515,7 @@
                 <div class="terminal-grid-2">
                     <div class="glass-card">
                         <div class="card-header">
-                            <h3 style="display:flex; align-items:baseline;">FACTOR EXPOSURE & ACTIVE RISK <span style="font-size:0.7em; color:var(--text-tertiary); font-weight:400; margin-left:8px; letter-spacing:1px;">因子暴露与主动风险</span></h3>
+                            <h3 style="display:flex; align-items:baseline;">因子暴露与主动风险 <span style="font-size:0.7em; color:var(--text-tertiary); font-weight:400; margin-left:8px; letter-spacing:1px;">FACTOR EXPOSURE & ACTIVE RISK</span></h3>
                         </div>
                         <div style="display:grid;grid-template-columns:1fr;gap:12px;margin-top:12px;">
                             <div class="metric-cell"><span style="display:flex; flex-direction:column; line-height:1.3;">Top Factor Exposure <small style="font-size:0.85em; color:var(--text-tertiary);">最大风险因子</small></span><strong id="workbench-top-factor">--</strong></div>
@@ -526,17 +526,17 @@
 
                     <div class="glass-card" style="display:flex; flex-direction:column;">
                         <div class="card-header" style="margin-bottom:0; border-bottom:none;">
-                            <h3 style="display:flex; align-items:baseline;">COMPLIANCE & AUDIT LOGS <span style="font-size:0.7em; color:var(--text-tertiary); font-weight:400; margin-left:8px; letter-spacing:1px;">合规审计流水</span></h3>
+                            <h3 style="display:flex; align-items:baseline;">合规审计流水 <span style="font-size:0.7em; color:var(--text-tertiary); font-weight:400; margin-left:8px; letter-spacing:1px;">COMPLIANCE & AUDIT LOGS</span></h3>
                         </div>
                         <div style="flex:1; overflow-y:auto; border:1px solid rgba(255,255,255,0.05); border-radius:4px; margin-top:12px;">
                             <table class="institutional-table" style="margin:0; width:100%;">
                                 <thead style="position:sticky; top:0; z-index:1; background:var(--bg-surface);">
                                     <tr>
-                                        <th style="padding-left:16px;">TIME <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">时间</span></th>
-                                        <th>TICKET <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">追踪码</span></th>
-                                        <th>SCORE <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">合规分</span></th>
-                                        <th>COMPLIANCE <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">审计状态</span></th>
-                                        <th>ACTION <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">裁决</span></th>
+                                        <th style="padding-left:16px;">时间 <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">TIME</span></th>
+                                        <th>追踪码 <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">TICKET</span></th>
+                                        <th>合规分 <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">SCORE</span></th>
+                                        <th>审计状态 <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">COMPLIANCE</span></th>
+                                        <th>裁决 <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">ACTION</span></th>
                                     </tr>
                                 </thead>
                                 <tbody id="audit-log-table-body">
@@ -560,7 +560,7 @@
                     </div>
                     <div style="display:flex; gap:10px; align-items:center;">
                         <div style="width:8px; height:8px; border-radius:50%; background-color:var(--accent-primary); box-shadow:0 0 10px var(--accent-primary); animation: pulse 2s infinite;"></div>
-                        <button onclick="importTDX()" style="padding:6px 12px; background:rgba(0,240,255,0.1); color:var(--accent-primary); border:1px solid rgba(0,240,255,0.3); border-radius:4px; font-weight:700; font-family:var(--font-mono); font-size:0.8rem; cursor:pointer; letter-spacing:0.5px; transition:all 0.2s; box-shadow: 0 0 8px rgba(0,240,255,0.1);">[SYNC TDX PORTFOLIO]</button>
+                        <button onclick="importTDX()" style="padding:6px 12px; background:rgba(0,240,255,0.1); color:var(--accent-primary); border:1px solid rgba(0,240,255,0.3); border-radius:4px; font-weight:700; font-family:var(--font-mono); font-size:0.8rem; cursor:pointer; letter-spacing:0.5px; transition:all 0.2s; box-shadow: 0 0 8px rgba(0,240,255,0.1);">[同步持仓 SYNC TDX]</button>
                     </div>
                 </div>
 
@@ -582,13 +582,13 @@
                 <div class="terminal-grid-2" style="margin-bottom:16px;">
                     <div class="glass-card">
                         <div class="card-header">
-                            <h3>ASSET ALLOCATION <span style="font-size:0.7em; color:var(--text-tertiary); font-weight:400; margin-left:8px; letter-spacing:1px;">大类资产分布</span></h3>
+                            <h3>大类资产分布 <span style="font-size:0.7em; color:var(--text-tertiary); font-weight:400; margin-left:8px; letter-spacing:1px;">ASSET ALLOCATION</span></h3>
                         </div>
                         <div id="chart-port-allocation" class="chart-container" style="height: 250px;"></div>
                     </div>
                     <div class="glass-card">
                         <div class="card-header">
-                            <h3>TOP P&L CONTRIBUTORS <span style="font-size:0.7em; color:var(--text-tertiary); font-weight:400; margin-left:8px; letter-spacing:1px;">头部盈亏归因</span></h3>
+                            <h3>头部盈亏归因 <span style="font-size:0.7em; color:var(--text-tertiary); font-weight:400; margin-left:8px; letter-spacing:1px;">TOP P&L CONTRIBUTORS</span></h3>
                         </div>
                         <div id="chart-port-attribution" class="chart-container" style="height: 250px;"></div>
                     </div>
@@ -596,19 +596,19 @@
 
                 <div class="glass-card" style="display:flex; flex-direction:column; height:600px;">
                     <div class="card-header" style="margin-bottom:0; border-bottom:none;">
-                        <h3 style="display:flex; align-items:baseline;">HIGH-DENSITY LEDGER <span style="font-size:0.7em; color:var(--text-tertiary); font-weight:400; margin-left:8px; letter-spacing:1px;">底层资产明细表</span></h3>
+                        <h3 style="display:flex; align-items:baseline;">底层资产明细表 <span style="font-size:0.7em; color:var(--text-tertiary); font-weight:400; margin-left:8px; letter-spacing:1px;">HIGH-DENSITY LEDGER</span></h3>
                     </div>
                     <div style="flex:1; overflow-y:auto; border:1px solid rgba(255,255,255,0.05); border-radius:4px; margin-top:12px;">
                         <table class="institutional-table" style="margin:0; width:100%; white-space:nowrap; border-collapse:separate; border-spacing:0 4px;">
                             <thead style="position:sticky; top:0; z-index:1; background:rgba(15,23,42,0.85); backdrop-filter:blur(12px); box-shadow:0 4px 10px rgba(0,0,0,0.3);">
                                 <tr>
-                                    <th style="padding-left:16px;">ASSET <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">资产/代码</span></th>
-                                    <th>CLASS <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">分类</span></th>
-                                    <th style="text-align:right;">QUANTITY <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">持有数量</span></th>
-                                    <th style="text-align:right;">COST BASIS <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">成本价</span></th>
-                                    <th style="text-align:right;">MKT PRICE <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">最新价</span></th>
-                                    <th style="text-align:right;">MKT VALUE <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">最新市值</span></th>
-                                    <th style="text-align:right; padding-right:16px;">UNREALIZED P&L <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">浮动盈亏</span></th>
+                                    <th style="padding-left:16px;">资产/代码 <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">ASSET</span></th>
+                                    <th>分类 <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">CLASS</span></th>
+                                    <th style="text-align:right;">持有数量 <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">QUANTITY</span></th>
+                                    <th style="text-align:right;">成本价 <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">COST BASIS</span></th>
+                                    <th style="text-align:right;">最新价 <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">MKT PRICE</span></th>
+                                    <th style="text-align:right;">最新市值 <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">MKT VALUE</span></th>
+                                    <th style="text-align:right; padding-right:16px;">浮动盈亏 <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">UNREALIZED P&L</span></th>
                                 </tr>
                             </thead>
                             <tbody id="port-ledger-body">
@@ -625,35 +625,35 @@
                     <div>
                         <h2 style="font-size: 1.5rem; letter-spacing: 1px; color: #fff; margin:0; display:flex; align-items:baseline;">PRE-TRADE SANDBOX <span style="font-size:0.55em; color:var(--text-tertiary); margin-left:12px; font-weight:400; letter-spacing:2px;">交易前试算沙盘</span></h2>
                         <div style="color:var(--text-tertiary); font-size:0.75rem; margin-top:6px; font-family:var(--font-mono); text-transform: uppercase; letter-spacing:0.5px;">
-                            Zero-Latency Projection · Friction Model · Compliance Checks
+                            零延迟投影 · 摩擦模型 · 合规风控 | Zero-Latency Projection · Friction Model · Compliance Checks
                         </div>
                     </div>
                     <div style="display:flex; gap:10px;">
-                        <button onclick="exportSimuCSV()" style="padding:4px 10px; background:var(--accent-primary); color:#000; border:none; border-radius:4px; font-weight:700; font-family:var(--font-mono); font-size:0.8rem; cursor:pointer; letter-spacing:0.5px; transition:all 0.2s;">[EXPORT CSV]</button>
-                        <button onclick="resetSimuSandbox()" style="padding:4px 10px; background:transparent; color:var(--text-secondary); border:1px solid rgba(255,255,255,0.1); border-radius:4px; font-weight:700; font-family:var(--font-mono); font-size:0.8rem; cursor:pointer; letter-spacing:0.5px; transition:all 0.2s;">[RESET]</button>
+                        <button onclick="exportSimuCSV()" style="padding:4px 10px; background:var(--accent-primary); color:#000; border:none; border-radius:4px; font-weight:700; font-family:var(--font-mono); font-size:0.8rem; cursor:pointer; letter-spacing:0.5px; transition:all 0.2s;">[导出表格 EXPORT]</button>
+                        <button onclick="resetSimuSandbox()" style="padding:4px 10px; background:transparent; color:var(--text-secondary); border:1px solid rgba(255,255,255,0.1); border-radius:4px; font-weight:700; font-family:var(--font-mono); font-size:0.8rem; cursor:pointer; letter-spacing:0.5px; transition:all 0.2s;">[重置 RESET]</button>
                     </div>
                 </div>
 
                 <!-- L1: Impact KPIs -->
                 <div class="terminal-grid-3" style="margin-bottom:16px;">
                     <div class="glass-card" style="text-align:center; padding:16px; position:relative;">
-                        <div style="font-size:0.7rem; color:var(--text-tertiary); letter-spacing:1px; margin-bottom:8px;">PROJECTED MKT VALUE</div>
+                        <div style="font-size:0.7rem; color:var(--text-tertiary); letter-spacing:1px; margin-bottom:8px;">试算后总市值 <span style="font-size:0.85em; opacity:0.8; margin-left:4px;">PROJECTED MKT VALUE</span></div>
                         <div id="simu-proj-mv" style="font-size:1.6rem; font-weight:700; font-family:var(--font-mono); color:var(--text-primary);">--</div>
                         <div id="simu-mv-delta" style="font-size:0.75rem; font-family:var(--font-mono); color:var(--text-secondary); margin-top:4px;">--</div>
                     </div>
                     <div class="glass-card" style="text-align:center; padding:16px;" id="simu-cash-card">
                         <div style="font-size:0.7rem; color:var(--text-tertiary); letter-spacing:1px; margin-bottom:8px; display:flex; justify-content:center; align-items:center; gap:8px;">
-                            POST-TRADE NET CASH
-                            <button onclick="injectSimuCashPrompt()" style="background:transparent; border:1px solid var(--accent-primary); color:var(--accent-primary); font-size:0.6rem; border-radius:2px; cursor:pointer;">INJECT</button>
+                            交易后净现金 <span style="font-size:0.85em; opacity:0.8; margin-left:4px;">POST-TRADE NET CASH</span>
+                            <button onclick="injectSimuCashPrompt()" style="background:transparent; border:1px solid var(--accent-primary); color:var(--accent-primary); font-size:0.6rem; border-radius:2px; cursor:pointer;">注入 INJECT</button>
                         </div>
                         <div id="simu-post-cash" style="font-size:1.6rem; font-weight:700; font-family:var(--font-mono); color:var(--text-primary);">--</div>
                         <div style="font-size:0.75rem; font-family:var(--font-mono); color:var(--text-secondary); margin-top:4px; display:flex; justify-content:center; align-items:center; gap:6px;">
-                            <span id="simu-fric-cost">Est. Friction: --</span>
+                            <span id="simu-fric-cost">预估摩擦成本 Est. Friction: --</span>
                             <span style="color:var(--text-tertiary); cursor:pointer;" onclick="setSimuFrictionPrompt()">⚙️</span>
                         </div>
                     </div>
                     <div class="glass-card" style="text-align:center; padding:16px;" id="simu-turnover-card">
-                        <div style="font-size:0.7rem; color:var(--text-tertiary); letter-spacing:1px; margin-bottom:8px;">COMPLIANCE STATUS</div>
+                        <div style="font-size:0.7rem; color:var(--text-tertiary); letter-spacing:1px; margin-bottom:8px;">合规风控状态 <span style="font-size:0.85em; opacity:0.8; margin-left:4px;">COMPLIANCE STATUS</span></div>
                         <div id="simu-compliance" style="font-size:1.2rem; font-weight:700; font-family:var(--font-mono); color:var(--success); margin-top:4px;">[ PASS ]</div>
                     </div>
                 </div>
@@ -663,21 +663,21 @@
                     <!-- Left: Trade Blotter -->
                     <div class="glass-card" style="display:flex; flex-direction:column;">
                         <div class="card-header" style="justify-content:flex-start; gap:12px;">
-                            <h3>SMART CLI <span style="font-size:0.7em; color:var(--text-tertiary); font-weight:400; margin-left:8px; letter-spacing:1px;">智能终端指令</span></h3>
+                            <h3>智能终端指令 <span style="font-size:0.7em; color:var(--text-tertiary); font-weight:400; margin-left:8px; letter-spacing:1px;">SMART CLI</span></h3>
                         </div>
                         <div style="padding: 16px; background: #000; border-bottom: 1px solid rgba(255,255,255,0.05); display:flex; align-items:center; gap:12px; box-shadow: inset 0 2px 10px rgba(0,0,0,0.5);">
                             <span class="cli-prompt-cursor" style="color:var(--accent-primary); font-family:var(--font-mono); font-weight:900; text-shadow: 0 0 5px var(--accent-primary);">>_</span>
                             <input type="text" id="simu-cli-input" placeholder="e.g. BUY 600519 1000  or  TGT 000858 5%" style="flex:1; background:transparent; border:none; color:var(--accent-primary); font-family:var(--font-mono); font-weight:700; font-size:1rem; outline:none; text-transform:uppercase;" onkeydown="if(event.key === 'Enter') executeSimuCLI()">
-                            <button onclick="executeSimuCLI()" style="padding:6px 16px; background:var(--accent-primary); color:#000; border:none; border-radius:2px; font-weight:800; font-family:var(--font-mono); font-size:0.75rem; cursor:pointer; transition:all 0.2s; box-shadow: 0 2px 4px rgba(56,189,248,0.2);">EXECUTE</button>
+                            <button onclick="executeSimuCLI()" style="padding:6px 16px; background:var(--accent-primary); color:#000; border:none; border-radius:2px; font-weight:800; font-family:var(--font-mono); font-size:0.75rem; cursor:pointer; transition:all 0.2s; box-shadow: 0 2px 4px rgba(56,189,248,0.2);">执行 EXECUTE</button>
                         </div>
                         <div style="flex:1; overflow-y:auto; padding:0 16px 16px 16px; margin-top:12px;">
                             <table class="institutional-table" style="font-size:0.75rem;">
                                 <thead>
                                     <tr>
-                                        <th>ACTION</th>
-                                        <th>TICKER</th>
-                                        <th style="text-align:right;">QTY/WT</th>
-                                        <th style="text-align:right;">EST COST</th>
+                                        <th>方向 <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">ACTION</span></th>
+                                        <th>标的 <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">TICKER</span></th>
+                                        <th style="text-align:right;">数量/比例 <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">QTY/WT</span></th>
+                                        <th style="text-align:right;">预估成本 <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">EST COST</span></th>
                                         <th></th>
                                     </tr>
                                 </thead>
@@ -690,7 +690,7 @@
                     <!-- Right: Nested Doughnut -->
                     <div class="glass-card">
                         <div class="card-header">
-                            <h3>PROJECTED ALLOCATION <span style="font-size:0.7em; color:var(--text-tertiary); font-weight:400; margin-left:8px; letter-spacing:1px;">内外环偏离透视</span></h3>
+                            <h3>内外环偏离透视 <span style="font-size:0.7em; color:var(--text-tertiary); font-weight:400; margin-left:8px; letter-spacing:1px;">PROJECTED ALLOCATION</span></h3>
                         </div>
                         <div id="chart-simu-allocation" class="chart-container" style="height: 300px;"></div>
                     </div>
@@ -699,20 +699,20 @@
                 <!-- L3: Projected Ledger -->
                 <div class="glass-card" style="display:flex; flex-direction:column; height:500px;">
                     <div class="card-header" style="margin-bottom:0; border-bottom:none;">
-                        <h3 style="display:flex; align-items:baseline;">PROJECTED LEDGER <span style="font-size:0.7em; color:var(--text-tertiary); font-weight:400; margin-left:8px; letter-spacing:1px;">试算后底层账本</span></h3>
+                        <h3 style="display:flex; align-items:baseline;">试算后底层账本 <span style="font-size:0.7em; color:var(--text-tertiary); font-weight:400; margin-left:8px; letter-spacing:1px;">PROJECTED LEDGER</span></h3>
                     </div>
                     <div style="flex:1; overflow-y:auto; border:1px solid rgba(255,255,255,0.05); border-radius:4px; margin-top:12px;">
                         <table class="institutional-table" style="margin:0; width:100%; white-space:nowrap;">
                             <thead style="position:sticky; top:0; z-index:1; background:var(--bg-surface);">
                                 <tr>
-                                    <th style="padding-left:16px;">ASSET <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">资产/代码</span></th>
-                                    <th style="text-align:right;">CURR QTY <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">当前持仓</span></th>
-                                    <th style="text-align:right;">DELTA <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">变动</span></th>
-                                    <th style="text-align:right;">NEW QTY <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">试算后持仓</span></th>
-                                    <th style="text-align:right;">NEW MKT VAL <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">试算后市值</span></th>
-                                    <th style="text-align:right;">CURR WT <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">原权重</span></th>
-                                    <th style="text-align:right;">TGT WT <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">目标权重</span></th>
-                                    <th style="text-align:right; padding-right:16px;">DRIFT <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">偏离度</span></th>
+                                    <th style="padding-left:16px;">资产/代码 <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">ASSET</span></th>
+                                    <th style="text-align:right;">当前持仓 <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">CURR QTY</span></th>
+                                    <th style="text-align:right;">变动 <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">DELTA</span></th>
+                                    <th style="text-align:right;">试算后持仓 <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">NEW QTY</span></th>
+                                    <th style="text-align:right;">试算后市值 <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">NEW MKT VAL</span></th>
+                                    <th style="text-align:right;">原权重 <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">CURR WT</span></th>
+                                    <th style="text-align:right;">目标权重 <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">TGT WT</span></th>
+                                    <th style="text-align:right; padding-right:16px;">偏离度 <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">DRIFT</span></th>
                                 </tr>
                             </thead>
                             <tbody id="simu-ledger-body">
@@ -765,7 +765,7 @@
                     
                     <div class="glass-card" style="flex-grow:1; display:flex; flex-direction:column; min-height:400px;">
                         <div class="card-header" style="justify-content:space-between;">
-                            <h3>COMPOUND EQUITY CURVE <span style="font-size:0.7em; color:var(--text-tertiary); font-weight:400; margin-left:8px; letter-spacing:1px;">合成净值曲线 (1Y)</span></h3>
+                            <h3>合成净值曲线 (1Y) <span style="font-size:0.7em; color:var(--text-tertiary); font-weight:400; margin-left:8px; letter-spacing:1px;">COMPOUND EQUITY CURVE</span></h3>
                         </div>
                         <div class="terminal-grid-4" id="strategy-metrics-container" style="margin-bottom:16px;">
                             <!-- Filled by JS -->
@@ -775,7 +775,7 @@
                     
                     <div class="glass-card">
                         <div class="card-header">
-                            <h3>ETF UNIVERSE <span style="font-size:0.7em; color:var(--text-tertiary); font-weight:400; margin-left:8px; letter-spacing:1px;">监控资产池</span></h3>
+                            <h3>监控资产池 <span style="font-size:0.7em; color:var(--text-tertiary); font-weight:400; margin-left:8px; letter-spacing:1px;">ETF UNIVERSE</span></h3>
                         </div>
                         <div style="display:flex; gap:16px; flex-wrap:wrap;" id="strategy-universe-container">
                             <!-- Filled by JS -->
@@ -838,14 +838,36 @@
                 <!-- Funnel Layer 5 -->
                 <div class="glass-card" id="hub-l5-card" style="border-top:4px solid #8b5cf6;">
                     <div class="card-header">
-                        <h3>L5: AI-CIO SYNTHESIS <span style="font-size:0.7em; color:var(--text-tertiary); margin-left:8px;">投委会最终裁决</span></h3>
+                        <h3>投委会最终裁决 <span style="font-size:0.7em; color:var(--text-tertiary); margin-left:8px;">L5: AI-CIO SYNTHESIS</span></h3>
                     </div>
                     <div id="hub-l5-content" style="font-size:1rem; line-height:1.6; color:var(--text-primary); padding:20px; background:rgba(0,0,0,0.3); border-radius:8px; border:1px solid rgba(255,255,255,0.05);">
                         <div class="skeleton" style="height:80px;"></div>
                     </div>
                 </div>
             </div>
+
+            <!-- Funnel Layer 6: Trade Blotter -->
+            <div class="glass-card" id="hub-l6-card" style="margin-top:20px; border-top:4px solid var(--accent-primary); display:none;">
+                <div class="card-header" style="justify-content:space-between; align-items:center;">
+                    <h3>L6: 实盘交易报单面板 <span style="font-size:0.7em; color:var(--text-tertiary); margin-left:8px;">INSTITUTIONAL TRADE BLOTTER (QMT/FIX)</span></h3>
+                    <div id="blotter-status-badge" style="padding:4px 8px; font-size:0.7rem; font-family:var(--font-mono); border-radius:4px; font-weight:700;">AWAITING ORDERS</div>
+                </div>
+                <div id="hub-l6-content" style="margin-top:12px;">
+                    <!-- Filled by JS -->
+                </div>
+            </div>
         </div>
+        
+            <!-- Historical Executions (Audit Trail) -->
+            <div class="glass-card" id="hub-execution-history-card" style="margin-top:20px; border-top:4px solid var(--accent-secondary); display:none;">
+                <div class="card-header" style="justify-content:space-between; align-items:center;">
+                    <h3>底层交易流水账本 <span style="font-size:0.7em; color:var(--text-tertiary); margin-left:8px;">EXECUTION AUDIT TRAIL (SQLite)</span></h3>
+                </div>
+                <div id="hub-execution-history-content" style="margin-top:12px;">
+                    <!-- Filled by JS -->
+                </div>
+            </div>
+            
         </main>
     </div>
     <script src="main.js?v=31"></script>
@@ -869,18 +891,18 @@
             <div style="background:rgba(0,0,0,0.3); padding:16px; border-radius:4px; border:1px solid rgba(255,255,255,0.05); margin-bottom:16px;">
                 <div style="display:flex; gap:10px;">
                     <input type="number" id="modal-input-qty" placeholder="QUANTITY" style="flex:1; background:rgba(0,0,0,0.5); border:1px solid rgba(255,255,255,0.1); color:#fff; font-family:var(--font-mono); font-weight:700; padding:10px; border-radius:4px; font-size:1.1rem; outline:none; transition:border 0.2s;" onfocus="this.style.borderColor='var(--accent-primary)'" onblur="this.style.borderColor='rgba(255,255,255,0.1)'">
-                    <button onclick="executeActionModalBuy()" class="modal-action-btn" style="padding:0 20px; background:linear-gradient(180deg, rgba(34,197,94,0.2) 0%, rgba(34,197,94,0.05) 100%); color:var(--success); border:1px solid rgba(34,197,94,0.4); border-radius:4px; font-weight:800; font-family:var(--font-mono); cursor:pointer; transition:all 0.2s;">BUY</button>
-                    <button onclick="executeActionModalSell()" class="modal-action-btn" style="padding:0 20px; background:linear-gradient(180deg, rgba(239,68,68,0.2) 0%, rgba(239,68,68,0.05) 100%); color:var(--danger); border:1px solid rgba(239,68,68,0.4); border-radius:4px; font-weight:800; font-family:var(--font-mono); cursor:pointer; transition:all 0.2s;">SELL</button>
+                    <button onclick="executeActionModalBuy()" class="modal-action-btn" style="padding:0 20px; background:linear-gradient(180deg, rgba(34,197,94,0.2) 0%, rgba(34,197,94,0.05) 100%); color:var(--success); border:1px solid rgba(34,197,94,0.4); border-radius:4px; font-weight:800; font-family:var(--font-mono); cursor:pointer; transition:all 0.2s;">买入 BUY</button>
+                    <button onclick="executeActionModalSell()" class="modal-action-btn" style="padding:0 20px; background:linear-gradient(180deg, rgba(239,68,68,0.2) 0%, rgba(239,68,68,0.05) 100%); color:var(--danger); border:1px solid rgba(239,68,68,0.4); border-radius:4px; font-weight:800; font-family:var(--font-mono); cursor:pointer; transition:all 0.2s;">卖出 SELL</button>
                 </div>
             </div>
             
                 <div style="display:flex; gap:12px;">
                     <button onclick="executeActionModalTP()" class="modal-action-btn" style="flex:1; padding:12px; background:linear-gradient(180deg, rgba(56,189,248,0.1) 0%, rgba(56,189,248,0.02) 100%); color:var(--accent-primary); border:1px solid rgba(56,189,248,0.4); border-radius:4px; font-weight:800; font-family:var(--font-mono); cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:4px; transition:all 0.2s; box-shadow: inset 0 1px 0 rgba(255,255,255,0.1);">
-                        <span style="font-size:0.9rem; letter-spacing:1px;">TAKE PROFIT</span>
+                        <span style="font-size:0.9rem; letter-spacing:1px;">止盈 TAKE PROFIT</span>
                         <span style="font-size:0.6rem; color:var(--text-tertiary); font-weight:500;">SELL 50%</span>
                     </button>
                     <button onclick="executeActionModalSL()" class="modal-action-btn" style="flex:1; padding:12px; background:linear-gradient(180deg, rgba(239,68,68,0.15) 0%, rgba(239,68,68,0.02) 100%); color:var(--danger); border:1px solid rgba(239,68,68,0.4); border-radius:4px; font-weight:800; font-family:var(--font-mono); cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:4px; transition:all 0.2s; box-shadow: inset 0 1px 0 rgba(255,255,255,0.1);">
-                        <span style="font-size:0.9rem; letter-spacing:1px;">STOP LOSS</span>
+                        <span style="font-size:0.9rem; letter-spacing:1px;">止损 STOP LOSS</span>
                         <span style="font-size:0.6rem; color:var(--text-tertiary); font-weight:500;">SELL 100% (CLEAR)</span>
                     </button>
                 </div>

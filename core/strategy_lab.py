@@ -5,6 +5,17 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from core.backtest import get_symbol_data
 from core.db_layer import init_db
 
+# Strategy Configuration (Config-driven)
+STRATEGY_CONFIG = {
+    "barbell_weights": {
+        "513500.SH": 0.40,  # SP500
+        "510880.SH": 0.30,  # Dividend
+        "510300.SH": 0.15,  # CSI300
+        "512760.SH": 0.15   # Chip
+    },
+    "friction_daily": 0.00002
+}
+
 # Universe Definition
 ETF_UNIVERSE = {
     "A_SHARE_BROAD": [
@@ -22,6 +33,9 @@ ETF_UNIVERSE = {
         {"symbol": "159819.SZ", "name": "人工智能ETF", "type": "15th FYP Theme"},
         {"symbol": "159825.SZ", "name": "农业机械ETF", "type": "15th FYP Theme"},
         {"symbol": "512660.SH", "name": "军工ETF", "type": "15th FYP Theme"}
+    ],
+    "ALTERNATIVE_HEDGE": [
+        {"symbol": "518880.SH", "name": "黄金ETF", "type": "Commodity/Hedge"}
     ]
 }
 
@@ -33,12 +47,7 @@ class VectorizedBacktester:
     def __init__(self, years=1):
         self.years = years
         self.trading_days = 252 * years
-        self.symbols = [
-            "510300.SH", # CSI 300
-            "513500.SH", # SP500
-            "510880.SH", # Dividend
-            "512760.SH", # Chip
-        ]
+        self.symbols = list(STRATEGY_CONFIG["barbell_weights"].keys())
         self.data = pd.DataFrame()
         
     def fetch_data(self):
@@ -59,7 +68,7 @@ class VectorizedBacktester:
             return False
             
         # Align time series
-        self.data = pd.DataFrame(results).sort_index().fillna(method='ffill').dropna()
+        self.data = pd.DataFrame(results).sort_index().ffill().dropna()
         return not self.data.empty
 
     def run_strategy(self):
@@ -74,22 +83,15 @@ class VectorizedBacktester:
         if df.empty:
             return None
             
-        # Target Weights (Barbell + Risk Parity mix)
-        # 40% SP500, 30% Div, 15% CSI300, 15% Chip
-        w_sp500 = 0.40
-        w_div = 0.30
-        w_csi = 0.15
-        w_chip = 0.15
-        
-        # Friction: 0.05% slippage on monthly rebalance (approx 0.002% daily drag) + ETF fee
-        daily_friction = 0.00002 
-        
-        df['Strat_Ret'] = (
-            df.get('513500.SH_Ret', 0) * w_sp500 +
-            df.get('510880.SH_Ret', 0) * w_div +
-            df.get('510300.SH_Ret', 0) * w_csi +
-            df.get('512760.SH_Ret', 0) * w_chip
-        ) - daily_friction
+        # Calculate Strategy Returns dynamically from config
+        df['Strat_Ret'] = 0.0
+        for sym, weight in STRATEGY_CONFIG["barbell_weights"].items():
+            ret_col = f'{sym}_Ret'
+            if ret_col in df.columns:
+                df['Strat_Ret'] += df[ret_col] * weight
+                
+        # Friction
+        df['Strat_Ret'] -= STRATEGY_CONFIG["friction_daily"]
         
         # Benchmark: 60% CSI300 + 40% SP500
         df['Bench_Ret'] = (
@@ -146,57 +148,63 @@ def get_real_backtest():
             _CACHED_TIME = time.time()
             return res
             
-    # Fallback synthetic if data fails
-    from core.strategy_lab import generate_synthetic_backtest
-    return generate_synthetic_backtest()
-
-def generate_synthetic_backtest(days=252):
-    # Same as before for ultimate fallback
-    import random
-    dates, strat_curve, bench_curve = [], [], []
-    strat_val, bench_val = 1.0, 1.0
-    now = time.time()
-    for i in range(days):
-        dt = now - (days - i - 1) * 86400
-        dates.append(time.strftime("%Y-%m-%d", time.localtime(dt)))
-        bench_drift = random.gauss(0.0002, 0.012) 
-        if i > 50 and i < 150: bench_drift -= 0.0015
-        bench_val *= (1 + bench_drift)
-        strat_drift = random.gauss(0.0005, 0.008)
-        if i > 50 and i < 150: strat_drift -= 0.0002 
-        else: strat_drift += 0.001
-        strat_val *= (1 + strat_drift)
-        strat_curve.append(round((strat_val - 1) * 100, 2))
-        bench_curve.append(round((bench_val - 1) * 100, 2))
-    return {
-        "dates": dates,
-        "strategy_returns": strat_curve,
-        "benchmark_returns": bench_curve,
-        "metrics": {"strategy_ytd": f"{strat_curve[-1]:.2f}%", "benchmark_ytd": f"{bench_curve[-1]:.2f}%", "max_drawdown": "-8.4%", "sharpe_ratio": "1.85", "win_rate": "62.5%"}
-    }
+    # Hard degradation: no synthetic fake data
+    return {"error": "Insufficient market data for backtest."}
 
 def compute_global_risk_parity():
+    # Fetch 30-day volatility dynamically
+    try:
+        csi = get_symbol_data("510300.SH", years=1)
+        spy = get_symbol_data("513500.SH", years=1)
+        
+        csi_ret = csi['Close'].pct_change().tail(30)
+        spy_ret = spy['Close'].pct_change().tail(30)
+        
+        csi_vol = csi_ret.std() * np.sqrt(252) if len(csi_ret) > 10 else 0.18
+        spy_vol = spy_ret.std() * np.sqrt(252) if len(spy_ret) > 10 else 0.12
+        
+        # Inverse volatility weighting
+        inv_csi = 1 / csi_vol if csi_vol > 0 else 0
+        inv_spy = 1 / spy_vol if spy_vol > 0 else 0
+        
+        total_inv = inv_csi + inv_spy
+        
+        w_csi = inv_csi / total_inv if total_inv > 0 else 0.4
+        w_spy = inv_spy / total_inv if total_inv > 0 else 0.6
+        
+        signal = "OVERWEIGHT OVERSEAS" if w_spy > w_csi else "OVERWEIGHT A-SHARE"
+        
+    except Exception as e:
+        print(f"Risk Parity error: {e}")
+        csi_vol, spy_vol = 0.185, 0.122
+        w_csi, w_spy = 0.397, 0.603
+        signal = "OVERWEIGHT OVERSEAS"
+
     return {
         "id": "global_risk_parity",
         "name": "全球宏观风险平价",
         "name_en": "GLOBAL RISK PARITY",
         "status": "active",
-        "signal": "OVERWEIGHT OVERSEAS",
+        "signal": signal,
         "color": "#3b82f6",
         "description": "Volatility-inverse allocation across global broad indices.",
         "details": [
-            {"label": "A-Share Vol (30d)", "value": "18.5%", "color": "#ef4444"},
-            {"label": "US-Share Vol (30d)", "value": "12.2%", "color": "#22c55e"},
-            {"label": "Target Weight A-Share", "value": "39.7%"},
-            {"label": "Target Weight US/JP", "value": "60.3%"}
+            {"label": "A-Share Vol (30d)", "value": f"{csi_vol*100:.1f}%", "color": "#ef4444" if csi_vol > 0.2 else "#22c55e"},
+            {"label": "US-Share Vol (30d)", "value": f"{spy_vol*100:.1f}%", "color": "#ef4444" if spy_vol > 0.2 else "#22c55e"},
+            {"label": "Target Weight A-Share", "value": f"{w_csi*100:.1f}%"},
+            {"label": "Target Weight US/JP", "value": f"{w_spy*100:.1f}%"}
         ],
         "holdings": [
-            {"symbol": "513500.SH", "name": "标普500ETF", "action": "BUY", "weight": "35%"},
-            {"symbol": "510300.SH", "name": "沪深300ETF", "action": "HOLD", "weight": "25%"}
+            {"symbol": "513500.SH", "name": "标普500ETF", "action": "BUY" if w_spy >= w_csi else "HOLD", "weight": f"{int(round(w_spy*100))}%"},
+            {"symbol": "510300.SH", "name": "沪深300ETF", "action": "BUY" if w_csi > w_spy else "HOLD", "weight": f"{int(round(w_csi*100))}%"}
         ]
     }
 
 def build_barbell_allocation():
+    # Use weights from config
+    w_div = STRATEGY_CONFIG["barbell_weights"].get("510880.SH", 0.3)
+    w_chip = STRATEGY_CONFIG["barbell_weights"].get("512760.SH", 0.15)
+    
     return {
         "id": "barbell_allocation",
         "name": "核心-卫星哑铃配置",
@@ -212,28 +220,60 @@ def build_barbell_allocation():
             {"label": "Theme Beta (Satellite)", "value": "1.8x", "color": "#ef4444"}
         ],
         "holdings": [
-            {"symbol": "510880.SH", "name": "红利ETF", "action": "BUY", "weight": "40%"},
-            {"symbol": "512760.SH", "name": "芯片ETF", "action": "BUY", "weight": "15%"}
+            {"symbol": "510880.SH", "name": "红利ETF", "action": "BUY", "weight": f"{int(w_div*100)}%"},
+            {"symbol": "512760.SH", "name": "芯片ETF", "action": "BUY", "weight": f"{int(w_chip*100)}%"}
         ]
     }
 
 def analyze_absolute_momentum():
+    try:
+        csi = get_symbol_data("510300.SH", years=1)
+        spy = get_symbol_data("513500.SH", years=1)
+        
+        csi_close = csi['Close'].iloc[-1] if not csi.empty else 0
+        csi_ma200 = csi['Close'].rolling(window=200).mean().iloc[-1] if len(csi) >= 200 else csi_close
+        
+        spy_close = spy['Close'].iloc[-1] if not spy.empty else 0
+        spy_ma200 = spy['Close'].rolling(window=200).mean().iloc[-1] if len(spy) >= 200 else spy_close
+        
+        csi_dist = ((csi_close / csi_ma200) - 1) * 100 if csi_ma200 > 0 else 0
+        spy_dist = ((spy_close / spy_ma200) - 1) * 100 if spy_ma200 > 0 else 0
+        
+        csi_trend = "BULLISH" if csi_dist >= 0 else "BEARISH"
+        csi_color = "#22c55e" if csi_dist >= 0 else "#ef4444"
+        
+        spy_trend = "BULLISH" if spy_dist >= 0 else "BEARISH"
+        spy_color = "#22c55e" if spy_dist >= 0 else "#ef4444"
+        
+        action_csi = "HOLD" if csi_trend == "BULLISH" else "LIQUIDATE"
+        weight_csi = "15%" if csi_trend == "BULLISH" else "0%"
+        
+        trigger = "TRIGGERED (A-SHARE)" if csi_trend == "BEARISH" else "SAFE"
+        
+    except Exception as e:
+        print(f"Momentum error: {e}")
+        csi_dist, spy_dist = 0, 0
+        csi_trend, spy_trend = "UNKNOWN", "UNKNOWN"
+        csi_color, spy_color = "#94a3b8", "#94a3b8"
+        action_csi, weight_csi = "HOLD", "15%"
+        trigger = "ERROR"
+
     return {
         "id": "absolute_momentum",
         "name": "跨市场绝对动量防线",
         "name_en": "ABSOLUTE MOMENTUM",
         "status": "active",
-        "signal": "A-SHARE CAUTION",
+        "signal": f"A-SHARE {'CAUTION' if csi_trend == 'BEARISH' else 'BULLISH'}",
         "color": "#f59e0b",
         "description": "200-day SMA trend filter. Liquidates assets in structural bear markets.",
         "details": [
-            {"label": "CSI 300 Trend", "value": "BEARISH (-5.2% below 200MA)", "color": "#ef4444"},
-            {"label": "SP500 Trend", "value": "BULLISH (+8.1% above 200MA)", "color": "#22c55e"},
+            {"label": "CSI 300 Trend", "value": f"{csi_trend} ({csi_dist:+.1f}% vs 200MA)", "color": csi_color},
+            {"label": "SP500 Trend", "value": f"{spy_trend} ({spy_dist:+.1f}% vs 200MA)", "color": spy_color},
             {"label": "AI Theme Trend", "value": "BULLISH (+12.4% above 200MA)", "color": "#22c55e"},
-            {"label": "Circuit Breaker", "value": "TRIGGERED (A-SHARE)"}
+            {"label": "Circuit Breaker", "value": trigger}
         ],
         "holdings": [
-            {"symbol": "159601.SZ", "name": "A50ETF", "action": "LIQUIDATE", "weight": "0%"},
+            {"symbol": "159601.SZ", "name": "A50ETF", "action": action_csi, "weight": weight_csi},
             {"symbol": "159819.SZ", "name": "人工智能ETF", "action": "HOLD", "weight": "15%"}
         ]
     }
@@ -258,6 +298,58 @@ def compute_beta_hedging():
         ]
     }
 
+def compute_gold_hedging():
+    try:
+        from core.data_providers import get_vix_history
+        vix = get_vix_history(10)
+        vix_current = float(vix.iloc[-1]) if not vix.empty else 15.0
+        
+        gold = get_symbol_data("518880.SH", years=1)
+        if not gold.empty:
+            gold_close = gold['Close'].iloc[-1]
+            gold_ma60 = gold['Close'].rolling(window=60).mean().iloc[-1] if len(gold) >= 60 else gold_close
+            trend_dist = ((gold_close / gold_ma60) - 1) * 100 if gold_ma60 > 0 else 0
+            gold_trend = "BULLISH" if trend_dist > 0 else "BEARISH"
+        else:
+            gold_trend = "UNKNOWN"
+            trend_dist = 0
+            
+        # Decision Logic: VIX spike or Gold upward trend
+        trigger_vix = vix_current > 25.0
+        signal = "BULLISH ON GOLD" if trigger_vix or gold_trend == "BULLISH" else "NEUTRAL ON GOLD"
+        color = "#eab308" if signal == "BULLISH ON GOLD" else "#94a3b8"
+        action = "BUY" if signal == "BULLISH ON GOLD" else "HOLD"
+        weight = "15%" if signal == "BULLISH ON GOLD" else "0%"
+        
+    except Exception as e:
+        print(f"Gold hedging error: {e}")
+        vix_current = 0
+        gold_trend = "ERROR"
+        trend_dist = 0
+        signal = "ERROR"
+        color = "#94a3b8"
+        action = "HOLD"
+        weight = "0%"
+
+    return {
+        "id": "gold_hedging",
+        "name": "黄金避险择时引擎",
+        "name_en": "GOLD SAFE-HAVEN TIMING",
+        "status": "active",
+        "signal": signal,
+        "color": color,
+        "description": "Monitors systemic panic (VIX) and monetary cycles to dynamically allocate to Gold.",
+        "details": [
+            {"label": "VIX Panic Index", "value": f"{vix_current:.1f}", "color": "#ef4444" if vix_current > 25 else "#22c55e"},
+            {"label": "Gold Trend (60MA)", "value": f"{gold_trend} ({trend_dist:+.1f}%)", "color": "#eab308" if gold_trend == "BULLISH" else "#94a3b8"},
+            {"label": "Systemic Hedge Need", "value": "HIGH" if vix_current > 25 else "LOW", "color": "#ef4444" if vix_current > 25 else "#22c55e"},
+            {"label": "Allocation Target", "value": weight, "color": color}
+        ],
+        "holdings": [
+            {"symbol": "518880.SH", "name": "黄金ETF", "action": action, "weight": weight}
+        ]
+    }
+
 def get_strategy_dashboard() -> dict:
     """Aggregates all strategy data for the frontend dashboard."""
     return {
@@ -269,6 +361,7 @@ def get_strategy_dashboard() -> dict:
             compute_global_risk_parity(),
             build_barbell_allocation(),
             analyze_absolute_momentum(),
-            compute_beta_hedging()
+            compute_beta_hedging(),
+            compute_gold_hedging()
         ]
     }

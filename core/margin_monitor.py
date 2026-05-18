@@ -53,16 +53,16 @@ def get_margin_data(days: int = 60) -> dict:
 
     if rz_balance and len(rz_balance) > 5:
         trend_rz = rz_balance[-1] - rz_balance[-5]
-        trend_signal = "融资加杠杆" if trend_rz > 200 else ("融资降杠杆" if trend_rz < -200 else "持平")
+        trend_signal = "融资加杠杆 MARGIN EXPANSION" if trend_rz > 200 else ("融资降杠杆 DELEVERAGING" if trend_rz < -200 else "持平 FLAT")
     else:
         trend_signal = "--"
 
     if "加杠杆" in trend_signal:
-        zone, zone_color = "● 市场偏多", "#22c55e"
+        zone, zone_color = "● 市场偏多 BULLISH", "#22c55e"
     elif "降杠杆" in trend_signal:
-        zone, zone_color = "● 市场偏空", "#ef4444"
+        zone, zone_color = "● 市场偏空 BEARISH", "#ef4444"
     else:
-        zone, zone_color = "● 中性", "#fbbf24"
+        zone, zone_color = "● 中性 NEUTRAL", "#fbbf24"
 
     return {
         "dates": dates, "rz_balance": rz_balance, "rq_balance": rq_balance,

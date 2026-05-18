@@ -11,6 +11,7 @@ from core.config import settings
 from core.allocation_model import build_allocation_recommendation
 from core.data_quality import score_payload
 from core.china_macro import get_china_macro
+from core.execution_engine import generate_broker_orders
 
 def _build_portfolio():
     return build_portfolio_snapshot(load_portfolio_positions(settings.PORTFOLIO_BOOK_PATH))
@@ -37,28 +38,59 @@ def get_l1_macro_state():
         
         china_data = get_china_macro(months=12)
         dec = compute_decision(vix=vix, tnx=tnx, tnx_data=tnx_dict, yc_data=yc_data, china=china_data)
+        
+        # Derive crowding level proxy from valuation and vix
+        crowding_level = round(max(0, min(100, 80 - vix + (100 - locals().get('pe_pct', 50)) * 0.2)), 1)
+        
+        # Derive liquidity state
+        if vix > 30:
+            liquidity_state = "流动性枯竭 (CRISIS)"
+        elif tnx > 4.5 and yc_data and yc_data.get("spread_values", [0])[-1] < 0:
+            liquidity_state = "边际收紧 (TIGHTENING)"
+        elif vix < 15 and tnx < 4.0:
+            liquidity_state = "极度充裕 (AMPLE)"
+        else:
+            liquidity_state = "中性合理 (NEUTRAL)"
+
         return {
             "regime": dec.get("signal_en", "NEUTRAL"),
             "vix_level": vix,
-            "score": dec.get("score", 50),
+            "macro_score": dec.get("score", 50),
+            "crowding_level": crowding_level,
+            "liquidity_state": liquidity_state,
+            "score": dec.get("score", 50), # Kept for backwards compatibility
             "max_equity_exposure": 0.30 if vix > 25 else 0.80,
             "recommended_action": "REDUCE DURATION" if tnx > 4.5 else "MAINTAIN"
         }
     except Exception as e:
         print(f"L1 Macro Error: {e}")
-        return {"regime": "UNKNOWN", "vix_level": 20.0, "score": 50, "max_equity_exposure": 0.50, "recommended_action": "OBSERVE"}
+        return {"regime": "UNKNOWN", "vix_level": 20.0, "macro_score": 50, "crowding_level": 50.0, "liquidity_state": "未知 (UNKNOWN)", "score": 50, "max_equity_exposure": 0.50, "recommended_action": "OBSERVE"}
 
 def get_l2_quant_signals():
     """L2 Quant Engine Array: Real output from Strategy Lab"""
     stra_dash = get_strategy_dashboard()
     engines = stra_dash.get("engines", [])
-    signals = []
+    signals = {}
     for eng in engines:
-        signals.append({
+        k = eng.get("id", eng.get("name_en", "unknown").lower().replace(" ", "_"))
+        raw_sig = str(eng.get("signal", "")).upper()
+        
+        # Convert string signals to numeric for frontend JS logic
+        numeric_sig = 0.0
+        if "OVERSEAS" in raw_sig or "BULLISH" in raw_sig:
+            numeric_sig = 1.0
+        elif "A-SHARE" in raw_sig and "OVERWEIGHT" in raw_sig:
+            numeric_sig = -1.0
+        elif "BEARISH" in raw_sig or ("ACTIVE" in raw_sig and "INACTIVE" not in raw_sig):
+            numeric_sig = -1.0
+
+        signals[k] = {
             "source": eng.get("name_en", "Unknown"),
-            "signal": eng.get("signal", 0),
+            "source_zh": eng.get("name", ""),
+            "signal": numeric_sig,
+            "raw_text": raw_sig,
             "top_holding": eng.get("holdings", [None])[0] if eng.get("holdings") else None
-        })
+        }
     return signals
 
 def run_l3_allocator(l1_macro, portfolio, data_quality):
@@ -161,9 +193,57 @@ def compute_decision_matrix(portfolio=None, data_quality=None):
     except Exception as e:
         print(f"[Decision Hub] Failed to run backtest for metrics: {e}")
         bt_metrics = {}
+        
+    # Generate institutional trade directives and execution plan
+    all_symbols = set(list(before_weights.keys()) + list(l3_weights.keys()))
+    trade_directives = []
+    execution_plan = []
+    has_hard_block = l4["gate_status"] == "HARD_BLOCK"
     
+    for s in all_symbols:
+        diff_weight = l3_weights.get(s, 0.0) - before_weights.get(s, 0.0)
+        diff_pct = diff_weight * 100
+        
+        if abs(diff_pct) > 0.5:
+            directive_status = "BLOCKED_BY_COMPLIANCE" if has_hard_block else "APPROVED"
+            trade_directives.append({
+                "symbol": s,
+                "name": symbol_names.get(s, s),
+                "action": "BUY" if diff_pct > 0 else "SELL",
+                "amount_pct": round(abs(diff_pct), 2),
+                "status": directive_status
+            })
+            
+            # For execution engine
+            execution_plan.append({
+                "symbol": s,
+                "action": "INCREASE" if diff_weight > 0 else "DECREASE",
+                "delta_weight": diff_weight
+            })
+            
+    # Generate Broker Orders (FIX/QMT format)
+    # We only generate orders if compliance passed
+    broker_orders = []
+    if not has_hard_block and portfolio is not None:
+        broker_orders = generate_broker_orders(portfolio, execution_plan)
+        
+    # If blocked, enforce risk: freeze target weights back to current
+    if has_hard_block:
+        l3_weights = before_weights.copy()
+    
+    try:
+        from core.db_layer import get_recent_trades
+        recent_executions = get_recent_trades(15)
+    except Exception:
+        recent_executions = []
+
     return {
         "timestamp": int(time.time()),
+        "global_status": l4["gate_status"],
+        "drift_monitor": {"total_gap_pct": sum(abs(v - before_weights.get(k, 0)) for k, v in l3_weights.items()) * 100},
+        "execution_plan": execution_plan,
+        "broker_orders": broker_orders,
+        "recent_executions": recent_executions,
         "l1_macro": l1,
         "l2_signals": l2,
         "l3_routing": {
@@ -171,7 +251,8 @@ def compute_decision_matrix(portfolio=None, data_quality=None):
             "target_weights": l3_weights,
             "rationale": l3_rationale,
             "backtest_metrics": bt_metrics,
-            "symbol_names": symbol_names
+            "symbol_names": symbol_names,
+            "trade_directives": trade_directives
         },
         "l4_compliance": l4,
         "l5_ai_memo": l5

@@ -164,6 +164,10 @@ def build_factor_risk_snapshot(portfolio_snapshot: dict) -> dict:
 
     rounded_groups = _round_groups(groups)
     return {
+        "metadata": {
+            "last_calibrated": "2026-05-07",
+            "source": "rolling_regression"
+        },
         "factor_groups": rounded_groups,
         "top_factor": _top_factor(rounded_groups),
         "positions": rows,

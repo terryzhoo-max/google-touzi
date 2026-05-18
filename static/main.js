@@ -116,7 +116,7 @@ async function initDashboard() {
         const ad = document.getElementById('alloc-detail');
         if (ad) {
             const w = d.regime_alloc || { spy: 60, tlt: 30, gld: 10, cash: 0 };
-            ad.textContent = `股 ${w.spy}% ｜ 债 ${w.tlt}% ｜ 金 ${w.gld}% ｜ 现 ${w.cash}%`;
+            ad.textContent = `股 EQ ${w.spy}% ｜ 债 FI ${w.tlt}% ｜ 金 GLD ${w.gld}% ｜ 现 CASH ${w.cash}%`;
         }
 
         // ── alert banner ──
@@ -1623,10 +1623,10 @@ async function initGlobalAssets() {
             <table class="institutional-table" style="margin:0; width:100%;">
                 <thead style="position:sticky; top:0; z-index:10; background:rgba(15,23,42,0.95); backdrop-filter:blur(8px); border-bottom:1px solid rgba(255,255,255,0.1);">
                     <tr>
-                        <th style="padding:12px 16px; text-align:left;">ASSET</th>
-                        <th style="text-align:left;">CLASS</th>
-                        <th style="text-align:left;">MOMENTUM</th>
-                        <th style="text-align:center;">TREND PROFILE (1D → YTD)</th>
+                        <th style="padding:12px 16px; text-align:left;">资产/指数 <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">ASSET</span></th>
+                        <th style="text-align:left;">资产类别 <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">CLASS</span></th>
+                        <th style="text-align:left;">动量状态 <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">MOMENTUM</span></th>
+                        <th style="text-align:center;">趋势轮廓 <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">TREND PROFILE (1D &rarr; YTD)</span></th>
                     </tr>
                 </thead>
                 <tbody>` +
@@ -2663,6 +2663,7 @@ function recomputeSandbox() {
             pos = { symbol: t.ticker, name: t.ticker, asset_class: 'equity', quantity: 0, current_price: 10.0, market_value: 0 };
             proj.push(pos);
         }
+        t._name = pos.name;
         
         let tradeQty = 0;
         let isBuy = true;
@@ -2694,7 +2695,7 @@ function recomputeSandbox() {
         } else {
             if (pos.quantity < tradeQty) {
                 complianceFailed = true;
-                complianceMsgs.push(`裸卖空熔断: ${t.ticker}`);
+                complianceMsgs.push(`裸卖空熔断: ${t.ticker} ${pos.name}`);
             }
             pos.quantity = Math.max(0, pos.quantity - tradeQty);
             pos.market_value = Math.max(0, pos.market_value - cost);
@@ -2731,7 +2732,7 @@ function recomputeSandbox() {
         
         if (p.asset_class !== 'cash' && p._projWt > 0.3) {
             complianceFailed = true;
-            complianceMsgs.push(`高集中度风险: ${p.symbol}`);
+            complianceMsgs.push(`高集中度风险: ${p.symbol} ${p.name}`);
         }
     });
     
@@ -2779,7 +2780,7 @@ function recomputeSandbox() {
         tHtml += `
             <tr>
                 <td>${actionStr}</td>
-                <td style="font-family:var(--font-mono); font-weight:700;">${t.ticker}</td>
+                <td style="font-family:var(--font-mono); font-weight:700;">${t.ticker} <span style="font-weight:400; color:var(--text-tertiary); font-size:0.85em; margin-left:4px;">${t._name !== t.ticker ? t._name : ''}</span></td>
                 <td style="text-align:right; font-family:var(--font-mono); font-size:0.7rem;">${valStr}</td>
                 <td style="text-align:right; font-family:var(--font-mono); color:var(--text-tertiary);">¥${t._estCost.toLocaleString(undefined, {maximumFractionDigits:0})}</td>
                 <td><button onclick="window.removeSimuTrade(${t.id})" style="background:transparent; border:none; color:var(--danger); cursor:pointer;">×</button></td>
@@ -2896,23 +2897,41 @@ window.closeActionModal = function() {
     currentActionContext = null;
 };
 
-function injectTradeFromModal(action, qty) {
+async function injectTradeFromModal(action, qty) {
     if (!currentActionContext || qty <= 0) return;
     
-    simuTrades.push({
-        id: Date.now(),
-        ticker: currentActionContext.ticker,
-        action: action,
-        val: qty,
-        mode: 'qty'
-    });
-    
-    recomputeSandbox();
-    closeActionModal();
-    
-    // Automatically switch to SIMU tab if not already there, so user sees the result
-    if (!document.getElementById('view-simu').classList.contains('active')) {
-        switchView('simu');
+    // UI state: disable buttons
+    const btns = document.querySelectorAll('.modal-action-btn');
+    btns.forEach(b => b.disabled = true);
+    const originalText = btns[0].innerText;
+    btns[0].innerText = 'EXECUTING...';
+
+    try {
+        const response = await fetch('/api/execute', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                ticker: currentActionContext.ticker,
+                action: action,
+                qty: parseFloat(qty)
+            })
+        });
+        const result = await response.json();
+        if(result.status === 'success') {
+            // refresh execution history immediately
+            if(window.refreshAuditTrail) window.refreshAuditTrail();
+        } else {
+            alert('[SYS_ERROR] Gateway Execution Failed: ' + (result.error || 'Unknown error'));
+        }
+    } catch(e) {
+        alert('[SYS_ERROR] Gateway Offline or Unreachable.');
+    } finally {
+        btns.forEach(b => b.disabled = false);
+        btns[0].innerText = originalText;
+        closeActionModal();
+        if (!document.getElementById('view-simu').classList.contains('active')) {
+            switchView('simu');
+        }
     }
 }
 
@@ -4019,3 +4038,78 @@ async function initDecisionHub() {
       });
 }
 
+
+
+// ==========================================
+// L6 EXECUTION GATEWAY & POLLING
+// ==========================================
+
+function renderExecutionHistory(recentExecutions) {
+    const historyCard = document.getElementById('hub-execution-history-card');
+    const historyContent = document.getElementById('hub-execution-history-content');
+    if (!historyCard || !historyContent) return;
+    
+    historyCard.style.display = 'block';
+    
+    let historyHTML = `
+        <table class="institutional-table" style="width:100%; font-family:var(--font-mono); font-size:0.8rem; margin:0; border-collapse:collapse;">
+            <thead>
+                <tr style="border-bottom:1px solid rgba(255,255,255,0.1); color:var(--text-tertiary);">
+                    <th style="padding:8px; text-align:left;">时间 <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">TIMESTAMP</span></th>
+                    <th style="padding:8px; text-align:left;">单号 <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">ORDER ID</span></th>
+                    <th style="padding:8px; text-align:left;">方向 <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">ACTION</span></th>
+                    <th style="padding:8px; text-align:left;">标的 <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">SYMBOL</span></th>
+                    <th style="padding:8px; text-align:right;">数量 <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">QTY</span></th>
+                    <th style="padding:8px; text-align:right;">成交价 <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">PRICE</span></th>
+                    <th style="padding:8px; text-align:right;">状态 <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">STATUS</span></th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+    
+    if (!recentExecutions || recentExecutions.length === 0) {
+        historyHTML += `
+            <tr style="background:rgba(0,0,0,0.2);">
+                <td colspan="7" style="text-align:center; padding:30px; color:var(--text-tertiary); font-family:var(--font-mono); font-size:0.85rem; letter-spacing:2px; border-bottom:1px solid rgba(255,255,255,0.05);">
+                    NO EXECUTED TRADES FOUND IN DATABASE
+                </td>
+            </tr>
+        `;
+    } else {
+        recentExecutions.forEach(tx => {
+            const dateObj = new Date(tx.timestamp * 1000);
+            const timeStr = dateObj.toLocaleTimeString('zh-CN', {hour12:false});
+            const actionColor = tx.action.includes('BUY') ? '#22c55e' : (tx.action.includes('SELL') ? '#ef4444' : '#f59e0b');
+            const actionBg = tx.action.includes('BUY') ? 'rgba(34,197,94,0.1)' : (tx.action.includes('SELL') ? 'rgba(239,68,68,0.1)' : 'rgba(245,158,11,0.1)');
+            
+            historyHTML += `
+                <tr style="border-bottom:1px solid rgba(255,255,255,0.05); transition:background 0.2s;">
+                    <td style="padding:8px;">${timeStr}</td>
+                    <td style="padding:8px; color:var(--accent-secondary);">${tx.order_id}</td>
+                    <td style="padding:8px;">
+                        <span style="color:${actionColor}; background:${actionBg}; padding:2px 6px; border-radius:3px; font-weight:700; font-size:0.7rem;">${tx.action}</span>
+                    </td>
+                    <td style="padding:8px; font-weight:700;">${tx.symbol}</td>
+                    <td style="padding:8px; text-align:right; color:var(--text-primary);">${tx.quantity}</td>
+                    <td style="padding:8px; text-align:right; color:var(--text-secondary);">${parseFloat(tx.limit_price || 0).toFixed(2)}</td>
+                    <td style="padding:8px; text-align:right; color:#22c55e;">${tx.status}</td>
+                </tr>
+            `;
+        });
+    }
+    historyHTML += `</tbody></table>`;
+    historyContent.innerHTML = historyHTML;
+}
+
+window.refreshAuditTrail = function() {
+    fetch('/api/audit_trail')
+    .then(r => r.json())
+    .then(data => {
+        if(data && data.trades) {
+            renderExecutionHistory(data.trades);
+        }
+    }).catch(e => console.error('Audit trail poll failed', e));
+};
+
+// Start polling every 3 seconds
+setInterval(window.refreshAuditTrail, 3000);

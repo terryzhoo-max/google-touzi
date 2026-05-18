@@ -264,7 +264,7 @@ def invalidate(key: str | None = None):
     """Clear specific or all cached route results."""
     import sqlite3
     from core.db_layer import DB_PATH
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=10.0)
     cursor = conn.cursor()
     if key:
         cursor.execute('DELETE FROM api_cache WHERE endpoint_key = ?', (key,))

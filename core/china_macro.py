@@ -42,7 +42,7 @@ def get_china_macro(months: int = 24) -> dict:
                 "dates": dates, "values": vals,
                 "current": round(cur, 2),
                 "change": round(cur - prev, 2),
-                "signal": "通缩" if cur < 0 else ("温和" if cur < 2 else "通胀压力"),
+                "signal": "通缩 DEFLATION" if cur < 0 else ("温和 MILD" if cur < 2 else "通胀压力 INFLATION RISK"),
                 "color": "#4ade80" if 0 <= cur <= 2 else ("#fbbf24" if cur < 3 else "#ef4444"),
             }
     except Exception as e:
@@ -66,7 +66,7 @@ def get_china_macro(months: int = 24) -> dict:
             result["pmi"] = {
                 "dates": dates, "values": vals,
                 "current": round(cur, 1),
-                "signal": "扩张" if cur >= 50 else "收缩",
+                "signal": "扩张 EXPANSION" if cur >= 50 else "收缩 CONTRACTION",
                 "color": "#4ade80" if cur >= 50 else "#ef4444",
             }
     except Exception as e:
@@ -92,7 +92,7 @@ def get_china_macro(months: int = 24) -> dict:
             result["m2"] = {
                 "dates": dates, "values": vals,
                 "current": round(cur, 1),
-                "signal": "宽松" if cur > 10 else ("中性" if cur > 8 else "偏紧"),
+                "signal": "宽松 LOOSE" if cur > 10 else ("中性 NEUTRAL" if cur > 8 else "偏紧 TIGHT"),
                 "color": "#4ade80" if cur > 9 else ("#fbbf24" if cur > 7 else "#ef4444"),
             }
     except Exception as e:
@@ -116,7 +116,7 @@ def get_china_macro(months: int = 24) -> dict:
             result["gdp"] = {
                 "dates": dates, "values": vals,
                 "current": round(cur, 1),
-                "signal": "稳健" if cur > 5 else ("放缓" if cur > 3 else "低迷"),
+                "signal": "稳健 ROBUST" if cur > 5 else ("放缓 SLOWING" if cur > 3 else "低迷 SLUGGISH"),
                 "color": "#4ade80" if cur >= 5 else ("#fbbf24" if cur >= 3 else "#ef4444"),
             }
     except Exception as e:

@@ -64,4 +64,8 @@ class Settings:
     CALIBRATED_MAX_TURNOVER: float = float(os.getenv("CALIB_MAX_TURNOVER", "0.16"))
     CALIBRATED_MAX_GOLD_WEIGHT: float = float(os.getenv("CALIB_MAX_GOLD", "0.22"))
 
+    # ── AIAE Institutional Parameters ─────────────
+    AIAE_VIX_THRESHOLD: float = float(os.getenv("AIAE_VIX_THRESHOLD", "25.0"))
+    AIAE_TURNOVER_THRESHOLD: float = float(os.getenv("AIAE_TURNOVER_THRESHOLD", "0.05"))
+
 settings = Settings()

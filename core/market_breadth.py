@@ -81,13 +81,13 @@ def get_market_breadth(days: int = 60) -> dict:
             flow_20d = round(sum(flows[-20:]), 2)
 
     if flow_series:
-        trend = "净流入" if current_flow > 0 else ("净流出" if current_flow < 0 else "持平")
+        trend = "净流入 NET INFLOW" if current_flow > 0 else ("净流出 NET OUTFLOW" if current_flow < 0 else "持平 FLAT")
         if flow_20d > 0 and flow_5d > 0:
-            signal = "外资持续流入"
+            signal = "外资持续流入 FOREIGN INFLOWS"
         elif flow_20d < 0 and flow_5d < 0:
-            signal = "外资持续流出"
+            signal = "外资持续流出 FOREIGN OUTFLOWS"
         else:
-            signal = "短期分歧"
+            signal = "短期分歧 SHORT-TERM DIVERGENCE"
         insight = (
             f"北向资金 {current_flow:.1f}亿 ({trend}) | "
             f"5日 {flow_5d:.1f}亿 | 20日 {flow_20d:.1f}亿"

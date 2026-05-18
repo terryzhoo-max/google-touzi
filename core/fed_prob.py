@@ -61,15 +61,15 @@ def get_fed_probability() -> dict:
         y2 = float(s2.iloc[-1]) if len(s2) > 0 else 4.0
         spread = y2 - ((cur_upper + cur_lower) / 2)
         if spread < -0.75:
-            direction, signal = "easing", "降息预期 (市场定价宽松)"
+            direction, signal = "easing", "降息预期 (市场定价宽松) DOVISH PRICING"
         elif spread < -0.25:
-            direction, signal = "easing_bias", "温和降息预期"
+            direction, signal = "easing_bias", "温和降息预期 MILD EASING"
         elif spread > 0.50:
-            direction, signal = "tightening", "加息预期 (市场定价紧缩)"
+            direction, signal = "tightening", "加息预期 (市场定价紧缩) HAWKISH PRICING"
         elif spread > 0.15:
-            direction, signal = "tightening_bias", "温和加息预期"
+            direction, signal = "tightening_bias", "温和加息预期 MILD HAWKISH"
         else:
-            direction, signal = "holding", "按兵不动 (市场定价中性)"
+            direction, signal = "holding", "按兵不动 (市场定价中性) NEUTRAL HOLD"
     except Exception:
         spread = 0.0
 

@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 # Import refactored core modules
 from core.market_data import background_data_fetcher, fetch_yfinance_data, shutdown_event
 from core.quant_engine import calculate_asset_allocation, calculate_correlation_matrix, run_montecarlo_sim
-from core.llm_agent import generate_llm_insight
+from core.llm_agent import generate_llm_insight, generate_morning_brief
 from core.yield_curve import get_yield_curve
 from core.scenario import run_scenario_analysis
 from core.signals import get_multi_timeframe_signals
@@ -26,6 +26,7 @@ from core.market_breadth import get_market_breadth
 from core.fed_prob import get_fed_probability
 from core.global_assets import get_global_assets
 from core.valuation import get_valuation
+from core.data_providers import get_attribution_returns
 
 from core.cache_store import cached, cached_async, ROUTE_TTL, get_cache_stats, invalidate
 from core.config import settings
@@ -210,10 +211,14 @@ def get_spread_data():
 async def _build_decision_payload():
     """Aggregate all macro factors into a single decision payload."""
     import asyncio
-    vix_data = fetch_yfinance_data("^VIX", "vix")
-    tnx_data = fetch_yfinance_data("^TNX", "tnx")
-    yc_data  = get_yield_curve(days=60)
-    corr_data = await asyncio.to_thread(calculate_correlation_matrix)
+    
+    # Run all blocking IO operations concurrently in threadpool to prevent event loop starvation
+    vix_data, tnx_data, yc_data, corr_data = await asyncio.gather(
+        asyncio.to_thread(fetch_yfinance_data, "^VIX", "vix"),
+        asyncio.to_thread(fetch_yfinance_data, "^TNX", "tnx"),
+        asyncio.to_thread(get_yield_curve, 60),
+        asyncio.to_thread(calculate_correlation_matrix)
+    )
 
     try:    vix = float(vix_data["data"][-1]) if vix_data.get("data") else 20.0
     except Exception: vix = 20.0
@@ -226,7 +231,7 @@ async def _build_decision_payload():
             if (item[0] == 0 and item[1] == 1) or (item[0] == 1 and item[1] == 0):
                 spy_tlt_corr = float(item[2]); break
 
-    regime, alloc = "中性震荡", {"spy":60,"tlt":30,"gld":10,"cash":0}
+    regime, alloc = "中性震荡 NEUTRAL CHOP", {"spy":60,"tlt":30,"gld":10,"cash":0}
     try:
         from core.backtest import run_backtest
         bt = await asyncio.to_thread(run_backtest)
@@ -239,8 +244,10 @@ async def _build_decision_payload():
     china_data = {}
     pe_pct = 50.0
     try:
-        china_data = get_china_macro(months=12)
-        val_data = get_valuation()
+        china_data, val_data = await asyncio.gather(
+            asyncio.to_thread(get_china_macro, 12),
+            asyncio.to_thread(get_valuation)
+        )
         for idx in val_data.get("indices", []):
             if "300" in idx.get("name", ""):
                 pe_pct = float(idx.get("pe_pct", 50))
@@ -391,7 +398,16 @@ def _build_institutional_payload() -> dict:
     benchmark = build_default_benchmark()
     benchmark_payload = benchmark_to_dict(benchmark)
     active_risk = build_active_risk_snapshot(portfolio, benchmark)
-    attribution = build_attribution_snapshot(portfolio, benchmark, period="T+1")
+    
+    # Run attribution data fetching (synchronously here since it's a huge payload endpoint, 
+    # but it uses ThreadPool internally)
+    all_symbols = list(set([p["symbol"] for p in portfolio.get("positions", [])] + list(benchmark.positions.keys())))
+    returns_t1 = get_attribution_returns(all_symbols, period="T-1")
+    attribution = build_attribution_snapshot(
+        portfolio, benchmark, period="T-1", 
+        asset_returns=returns_t1, benchmark_returns=returns_t1
+    )
+    
     ticket = build_decision_ticket(data_quality, risk, scenarios, portfolio=portfolio, policy=policy)
     what_if = _build_institutional_what_if(portfolio, build_default_risk_reduction_adjustments(portfolio))
     action = generate_action_recommendation(ticket, what_if)
@@ -625,9 +641,23 @@ def api_institutional_active_risk():
 
 
 @app.get("/api/institutional/attribution")
-def api_institutional_attribution(period: str = "T+1"):
+async def api_institutional_attribution(period: str = "T-1"):
     portfolio = _build_institutional_portfolio()
-    return build_attribution_snapshot(portfolio, build_default_benchmark(), period=period)
+    benchmark = build_default_benchmark()
+    
+    # Extract unique symbols from portfolio and benchmark
+    port_symbols = [p["symbol"] for p in portfolio.get("positions", [])]
+    bench_symbols = list(benchmark.positions.keys())
+    all_symbols = list(set(port_symbols + bench_symbols))
+    
+    # Fetch returns concurrently
+    import asyncio
+    returns = await asyncio.to_thread(get_attribution_returns, all_symbols, period)
+    
+    return build_attribution_snapshot(
+        portfolio, benchmark, period=period, 
+        asset_returns=returns, benchmark_returns=returns
+    )
 
 
 @app.get("/api/institutional/compliance")
@@ -656,26 +686,32 @@ def api_institutional_decision():
 
 @app.post("/api/institutional/import_tdx")
 async def api_import_tdx(file: UploadFile = File(...)):
+    import shutil
+    import tempfile
+    import os
+    
+    fd, temp_path = tempfile.mkstemp(suffix=".txt")
     try:
         from core.tdx_parser import import_tdx_to_portfolio
-        import shutil
-        import tempfile
         
         # Save uploaded file to a temporary file
-        fd, temp_path = tempfile.mkstemp(suffix=".txt")
         with os.fdopen(fd, 'wb') as f:
             shutil.copyfileobj(file.file, f)
             
         import_tdx_to_portfolio(temp_path, settings.PORTFOLIO_BOOK_PATH)
-        
-        # Clean up temp file
-        os.remove(temp_path)
         
         # Invalidate decision cache
         invalidate("institutional_decision")
         return {"status": "success", "message": "TDX portfolio imported"}
     except Exception as exc:
         return JSONResponse(content={"error": str(exc)}, status_code=400)
+    finally:
+        # Clean up temp file safely
+        try:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+        except Exception:
+            pass
 
 
 @app.get("/api/institutional/import_tdx")
@@ -745,6 +781,20 @@ def api_institutional_decision_hub():
 @cached(ttl=ROUTE_TTL["institutional_policy"], key="institutional_policy")
 def api_institutional_policy():
     return get_default_decision_policy()
+
+
+@app.get("/api/institutional/aiae_backtest")
+async def api_aiae_backtest():
+    try:
+        from core.backtest_scientific import run_scientific_backtest
+        # Run in threadpool since it does blocking HTTP requests and heavy pandas calculations
+        res = await asyncio.to_thread(run_scientific_backtest)
+        if "error" in res:
+            return JSONResponse(status_code=500, content=res)
+        return res
+    except Exception as exc:
+        return JSONResponse(status_code=500, content={"error": str(exc)})
+
 
 
 @app.get("/api/institutional/allocation_model")
@@ -943,6 +993,73 @@ def api_record_due_institutional_review_scores():
     invalidate("institutional_reviews_summary")
     return {"recorded_count": len(scored), "scores": scored}
 
+
+@app.get("/api/institutional/morning_brief")
+async def api_institutional_morning_brief():
+    try:
+        portfolio = build_portfolio_snapshot(load_portfolio_positions("data/institutional_portfolio.json"))
+        
+        # We need to compute multiple things concurrently for speed, but for simplicity we can do it sequentially or use asyncio if we wrap them.
+        # compute_decision_matrix uses DATA_CACHE extensively.
+        decision_matrix = compute_decision_matrix(portfolio=portfolio)
+        
+        # factor risk
+        factor_risk = build_factor_risk_snapshot(portfolio)
+        
+        # scenarios
+        scenarios = run_portfolio_scenarios(portfolio)
+        
+        # macro context
+        from core.market_data import DATA_CACHE
+        def get_last_val(key, default=0.0):
+            d = DATA_CACHE.get(key, {}).get("data")
+            if d is None: return default
+            vals = d.get("data", d) if isinstance(d, dict) else d
+            if hasattr(vals, "iloc"): return float(vals.iloc[-1]) if len(vals) > 0 else default
+            elif isinstance(vals, (list, tuple, str)): return float(vals[-1]) if len(vals) > 0 else default
+            return default
+            
+        macro_data = {
+            "vix": get_last_val("vix", 20.0),
+            "tnx": get_last_val("tnx", 4.0)
+        }
+        
+        brief_result = generate_morning_brief(decision_matrix, scenarios, factor_risk, macro_data)
+        
+        return {"status": "ok", "timestamp": int(time.time()), "data": brief_result}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+
+class ExecuteTradeRequest(BaseModel):
+    ticker: str
+    action: str
+    qty: float
+
+@app.post("/api/execute")
+def api_execute_trade(req: ExecuteTradeRequest):
+    try:
+        from core.db_layer import record_trade
+        import uuid
+        import time
+        order_id = str(uuid.uuid4())[:8].upper()
+        # Mock price for now, or fetch from market data if needed
+        price = 100.0 
+        record_trade(order_id, req.ticker, req.action.upper(), int(req.qty), price, "EXECUTED")
+        return {"status": "success", "order_id": order_id, "message": f"{req.action} {req.qty} {req.ticker} executed"}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+@app.get("/api/audit_trail")
+def api_audit_trail(limit: int = 50):
+    try:
+        from core.db_layer import get_recent_trades
+        trades = get_recent_trades(limit=limit)
+        return {"status": "success", "trades": trades}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
 
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
 

@@ -303,6 +303,76 @@ def main():
             `;
         }
         
+        // ----------------------------------------------------------------
+        // Render L6 Trade Blotter
+        // ----------------------------------------------------------------
+        const l6Card = document.getElementById('hub-l6-card');
+        const l6Content = document.getElementById('hub-l6-content');
+        if (l6Card && l6Content) {
+            l6Card.style.display = 'block';
+            
+            const isBlocked = data.global_status === 'HARD_BLOCK';
+            const badge = document.getElementById('blotter-status-badge');
+            
+            if (isBlocked) {
+                badge.style.background = 'rgba(239, 68, 68, 0.2)';
+                badge.style.color = '#ef4444';
+                badge.style.border = '1px solid rgba(239, 68, 68, 0.5)';
+                badge.textContent = 'SYSTEM BLOCKED - TRADING HALTED';
+                
+                l6Content.innerHTML = `<div style="text-align:center; padding:30px; color:#ef4444; font-family:var(--font-mono); font-weight:bold; letter-spacing:2px; border:1px dashed rgba(239, 68, 68, 0.3); background:rgba(239, 68, 68, 0.05);">⚠️ NO ORDERS GENERATED DUE TO COMPLIANCE HARD BLOCK</div>`;
+            } else {
+                badge.style.background = 'rgba(34, 197, 94, 0.2)';
+                badge.style.color = '#22c55e';
+                badge.style.border = '1px solid rgba(34, 197, 94, 0.5)';
+                badge.textContent = 'READY TO EXECUTE';
+                
+                const orders = data.broker_orders || [];
+                if (orders.length === 0) {
+                    l6Content.innerHTML = `<div style="text-align:center; padding:30px; color:var(--text-tertiary); font-family:var(--font-mono); letter-spacing:1px;">NO REBALANCING REQUIRED</div>`;
+                } else {
+                    let tableHTML = `
+                        <div style="margin-bottom:12px; display:flex; justify-content:space-between; align-items:flex-end;">
+                            <span style="font-size:0.75rem; color:var(--text-tertiary); font-family:var(--font-mono);">TOTAL ORDERS: <strong style="color:var(--text-primary);">${orders.length}</strong></span>
+                            <button onclick="alert('执行网关模拟：\\\\n正在将 ${orders.length} 笔订单通过 FIX/QMT 专线下发...\\\\n\\\\n[+] ORDER SUCCESSFUL');" style="background:var(--accent-primary); color:#000; border:none; padding:6px 16px; border-radius:4px; font-weight:900; font-family:var(--font-mono); font-size:0.8rem; cursor:pointer; box-shadow:0 0 10px rgba(56, 189, 248, 0.4); transition:all 0.2s;">
+                                [ EXECUTE FIX / QMT ]
+                            </button>
+                        </div>
+                        <table class="institutional-table" style="width:100%; font-family:var(--font-mono); font-size:0.85rem; margin:0;">
+                            <thead>
+                                <tr>
+                                    <th>ORDER ID</th>
+                                    <th>ACTION</th>
+                                    <th>SYMBOL</th>
+                                    <th style="text-align:right;">QTY (LOTS)</th>
+                                    <th style="text-align:right;">LIMIT PX</th>
+                                    <th style="text-align:right;">EST VALUE</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                    `;
+                    
+                    orders.forEach(ord => {
+                        const isBuy = ord.side === 'BUY';
+                        const sideColor = isBuy ? '#ef4444' : '#22c55e'; // A股红涨绿跌，买入通常用红色
+                        tableHTML += \`
+                            <tr style="background:rgba(0,0,0,0.2);">
+                                <td style="color:var(--text-tertiary); font-size:0.75rem;">\${ord.order_id}</td>
+                                <td><span style="background:\${sideColor}20; color:\${sideColor}; padding:2px 6px; border-radius:3px; font-weight:bold; border:1px solid \${sideColor}40;">\${ord.side}</span></td>
+                                <td style="color:var(--text-primary); font-weight:bold;">\${ord.symbol}</td>
+                                <td style="text-align:right; color:var(--text-secondary);">\${ord.quantity.toLocaleString()}</td>
+                                <td style="text-align:right; color:var(--text-secondary);">￥\${ord.limit_price.toFixed(3)}</td>
+                                <td style="text-align:right; color:var(--text-secondary);">￥\${ord.estimated_value.toLocaleString()}</td>
+                            </tr>
+                        \`;
+                    });
+                    
+                    tableHTML += \`</tbody></table>\`;
+                    l6Content.innerHTML = tableHTML;
+                }
+            }
+        }
+        
     } catch (e) {
         console.error("Decision Hub Error", e);
         const l1 = document.getElementById('hub-l1-content');
