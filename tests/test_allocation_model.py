@@ -14,7 +14,19 @@ from core.scenario_engine import run_portfolio_scenarios
 
 
 def _portfolio():
-    return build_portfolio_snapshot(load_portfolio_positions("data/institutional_portfolio.json"))
+    from core.portfolio_book import Position
+    positions = [
+        Position("CSI300_ETF", "CSI300 ETF", "equity", "CNY", 100000.0, region="China", strategy="broad_market"),
+        Position("CSI500_ETF", "CSI500 ETF", "equity", "CNY", 100000.0, region="China", strategy="small_mid_cap"),
+        Position("STAR50_ETF", "STAR50 ETF", "equity", "CNY", 100000.0, region="China", strategy="technology"),
+        Position("HSTECH_ETF", "HSTECH ETF", "equity", "HKD", 100000.0, region="HongKong", strategy="technology"),
+        Position("SP500_ETF", "SP500 ETF", "equity", "USD", 100000.0, region="US", strategy="broad_market"),
+        Position("NASDAQ_ETF", "NASDAQ ETF", "equity", "USD", 100000.0, region="US", strategy="technology"),
+        Position("NIKKEI225_ETF", "NIKKEI225 ETF", "equity", "JPY", 100000.0, region="Japan", strategy="overseas"),
+        Position("CHIP_ETF", "CHIP ETF", "equity", "CNY", 100000.0, region="China", strategy="technology"),
+        Position("GOLD_ETF", "GOLD ETF", "gold", "CNY", 100000.0, region="Gold", strategy="gold"),
+    ]
+    return build_portfolio_snapshot(positions)
 
 
 def _quality(score=100, flags=None):

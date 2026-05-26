@@ -101,22 +101,30 @@ def get_cached_timeseries(symbol, start_date, end_date):
     df.rename(columns={'close': 'Close'}, inplace=True)
     return df
 
-def record_trade(order_id: str, symbol: str, side: str, quantity: int, price: float, status: str):
-    """Persist an executed or dry-run trade into the audit journal."""
-    conn = sqlite3.connect(DB_PATH, timeout=10.0)
-    cursor = conn.cursor()
-    cursor.execute('''
-        INSERT OR REPLACE INTO trade_journal (order_id, symbol, side, quantity, price, status, timestamp)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    ''', (order_id, symbol, side, int(quantity), float(price), status, time.time()))
-    conn.commit()
-    conn.close()
+def _migrate_schema(cursor):
+    """Idempotently migrate database schema to add institutional algorithmic columns."""
+    for col, col_type in [
+        ("execution_algo", "TEXT DEFAULT 'DIRECT'"),
+        ("benchmark_price", "REAL DEFAULT 0.0"),
+        ("executed_qty", "INTEGER DEFAULT 0"),
+        ("avg_executed_price", "REAL DEFAULT 0.0"),
+        ("slippage_bps", "REAL DEFAULT 0.0"),
+        ("portfolio_id", "TEXT DEFAULT 'institutional_portfolio'")
+    ]:
+        try:
+            cursor.execute(f"ALTER TABLE trade_journal ADD COLUMN {col} {col_type};")
+        except sqlite3.OperationalError:
+            # Field already exists
+            pass
 
-def is_order_processed(order_id: str) -> bool:
-    """Check if an order_id has already been processed and journaled."""
+def record_trade(order_id: str, symbol: str, side: str, quantity: int, price: float, status: str,
+                 execution_algo: str = 'DIRECT', benchmark_price: float = 0.0,
+                 executed_qty: int = 0, avg_executed_price: float = 0.0, slippage_bps: float = 0.0,
+                 portfolio_id: str = 'institutional_portfolio'):
+    """Persist an executed or dry-run trade into the audit journal, including algorithm logs."""
     conn = sqlite3.connect(DB_PATH, timeout=10.0)
     cursor = conn.cursor()
-    # Ensure table exists in case init_db wasn't called by this process yet
+    # Auto-ensure table exists
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS trade_journal (
             order_id TEXT PRIMARY KEY,
@@ -128,13 +136,67 @@ def is_order_processed(order_id: str) -> bool:
             timestamp REAL
         )
     ''')
-    cursor.execute('SELECT 1 FROM trade_journal WHERE order_id = ?', (order_id,))
-    row = cursor.fetchone()
+    _migrate_schema(cursor)
+    cursor.execute('''
+        INSERT OR REPLACE INTO trade_journal (
+            order_id, symbol, side, quantity, price, status, timestamp,
+            execution_algo, benchmark_price, executed_qty, avg_executed_price, slippage_bps, portfolio_id
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (order_id, symbol, side, int(quantity), float(price), status, time.time(),
+          execution_algo, float(benchmark_price), int(executed_qty), float(avg_executed_price), float(slippage_bps), portfolio_id))
+    conn.commit()
     conn.close()
-    return row is not None
 
-def get_recent_trades(limit: int = 10) -> list[dict]:
-    """Fetch the most recent executed/journaled trades."""
+def update_trade_execution(order_id: str, executed_qty: int, avg_executed_price: float, status: str, portfolio_id: str = 'institutional_portfolio') -> bool:
+    """Update execution progression of an algorithmic order and compute slippage dynamically in Bps."""
+    conn = sqlite3.connect(DB_PATH, timeout=10.0)
+    cursor = conn.cursor()
+    # Ensure schema is valid
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS trade_journal (
+            order_id TEXT PRIMARY KEY,
+            symbol TEXT,
+            side TEXT,
+            quantity INTEGER,
+            price REAL,
+            status TEXT,
+            timestamp REAL
+        )
+    ''')
+    _migrate_schema(cursor)
+    
+    cursor.execute('SELECT side, price, benchmark_price FROM trade_journal WHERE order_id = ?', (order_id,))
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return False
+        
+    side, limit_price, benchmark_price = row
+    if not benchmark_price or benchmark_price <= 0:
+        benchmark_price = limit_price if limit_price > 0 else avg_executed_price
+        
+    # Calculate Slippage (Bps)
+    # Buy slippage = (AvgPrice - BenchPrice) / BenchPrice * 10000
+    # Sell slippage = (BenchPrice - AvgPrice) / BenchPrice * 10000
+    slippage_bps = 0.0
+    if benchmark_price > 0 and avg_executed_price > 0:
+        if side == "BUY":
+            slippage_bps = (avg_executed_price - benchmark_price) / benchmark_price * 10000.0
+        else:
+            slippage_bps = (benchmark_price - avg_executed_price) / benchmark_price * 10000.0
+            
+    cursor.execute('''
+        UPDATE trade_journal
+        SET executed_qty = ?, avg_executed_price = ?, slippage_bps = ?, status = ?, timestamp = ?, portfolio_id = ?
+        WHERE order_id = ?
+    ''', (int(executed_qty), float(avg_executed_price), float(slippage_bps), status, time.time(), portfolio_id, order_id))
+    conn.commit()
+    conn.close()
+    return True
+
+def is_order_processed(order_id: str, portfolio_id: str = None) -> bool:
+    """Check if an order_id has already been processed and journaled."""
     conn = sqlite3.connect(DB_PATH, timeout=10.0)
     cursor = conn.cursor()
     # Ensure table exists
@@ -149,12 +211,53 @@ def get_recent_trades(limit: int = 10) -> list[dict]:
             timestamp REAL
         )
     ''')
+    _migrate_schema(cursor)
+    if portfolio_id:
+        cursor.execute('SELECT status FROM trade_journal WHERE order_id = ? AND portfolio_id = ?', (order_id, portfolio_id))
+    else:
+        cursor.execute('SELECT status FROM trade_journal WHERE order_id = ?', (order_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if row:
+        return row[0] in ("EXECUTING", "FILLED", "EXECUTED")
+    return False
+
+def get_recent_trades(limit: int = 10, portfolio_id: str = None) -> list[dict]:
+    """Fetch the most recent executed/journaled trades, enriched with algo statistics."""
+    conn = sqlite3.connect(DB_PATH, timeout=10.0)
+    cursor = conn.cursor()
+    # Ensure table and columns exist
     cursor.execute('''
-        SELECT order_id, symbol, side, quantity, price, status, timestamp
-        FROM trade_journal
-        ORDER BY timestamp DESC
-        LIMIT ?
-    ''', (limit,))
+        CREATE TABLE IF NOT EXISTS trade_journal (
+            order_id TEXT PRIMARY KEY,
+            symbol TEXT,
+            side TEXT,
+            quantity INTEGER,
+            price REAL,
+            status TEXT,
+            timestamp REAL
+        )
+    ''')
+    _migrate_schema(cursor)
+    
+    if portfolio_id:
+        cursor.execute('''
+            SELECT order_id, symbol, side, quantity, price, status, timestamp,
+                   execution_algo, benchmark_price, executed_qty, avg_executed_price, slippage_bps
+            FROM trade_journal
+            WHERE portfolio_id = ?
+            ORDER BY timestamp DESC
+            LIMIT ?
+        ''', (portfolio_id, limit))
+    else:
+        cursor.execute('''
+            SELECT order_id, symbol, side, quantity, price, status, timestamp,
+                   execution_algo, benchmark_price, executed_qty, avg_executed_price, slippage_bps
+            FROM trade_journal
+            ORDER BY timestamp DESC
+            LIMIT ?
+        ''', (limit,))
+        
     rows = cursor.fetchall()
     conn.close()
     
@@ -167,6 +270,11 @@ def get_recent_trades(limit: int = 10) -> list[dict]:
             "quantity": row[3],
             "limit_price": row[4],
             "status": row[5],
-            "timestamp": row[6]
+            "timestamp": row[6],
+            "execution_algo": row[7] if row[7] is not None else 'DIRECT',
+            "benchmark_price": row[8] if row[8] is not None else row[4],
+            "executed_qty": row[9] if row[9] is not None else 0,
+            "avg_executed_price": row[10] if row[10] is not None else 0.0,
+            "slippage_bps": row[11] if row[11] is not None else 0.0
         })
     return trades

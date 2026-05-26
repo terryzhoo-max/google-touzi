@@ -45,9 +45,22 @@ def _position_from_dict(item: dict) -> Position:
 
 
 def load_portfolio_positions(path: str | None = None) -> list[Position]:
+    from core.config import settings
     if not path:
-        return get_sample_portfolio()
-    if not os.path.exists(path):
+        path = settings.PORTFOLIO_BOOK_PATH
+
+    # Attempt to auto-resolve short catalog names (e.g. 'tactical_hedged_portfolio') inside data/
+    if path and not os.path.exists(path):
+        data_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data"))
+        candidate = os.path.join(data_dir, f"{path}_portfolio.json")
+        if os.path.exists(candidate):
+            path = candidate
+        else:
+            candidate = os.path.join(data_dir, f"{path}.json")
+            if os.path.exists(candidate):
+                path = candidate
+
+    if not path or not os.path.exists(path):
         return get_sample_portfolio()
 
     with open(path, "r", encoding="utf-8") as handle:
@@ -58,6 +71,36 @@ def load_portfolio_positions(path: str | None = None) -> list[Position]:
     if not positions:
         raise ValueError("portfolio file must contain at least one position")
     return positions
+
+
+def get_available_portfolios() -> list[dict]:
+    """Scan the data/ directory for all *_portfolio.json configuration books."""
+    data_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data"))
+    if not os.path.exists(data_dir):
+        return [{"name": "institutional_portfolio", "display_name": "默认机构账本"}]
+        
+    books = []
+    for f in os.listdir(data_dir):
+        if f.endswith(".json"):
+            name = f.replace(".json", "")
+            path = os.path.join(data_dir, f)
+            display_name = "未命名组合"
+            try:
+                with open(path, "r", encoding="utf-8") as handle:
+                    payload = json.load(handle)
+                    display_name = payload.get("display_name", payload.get("portfolio_name", name))
+            except Exception:
+                display_name = name
+                
+            books.append({
+                "name": name,
+                "display_name": display_name,
+                "file": f
+            })
+            
+    if not books:
+        books.append({"name": "institutional_portfolio", "display_name": "默认机构账本"})
+    return books
 
 
 def build_portfolio_snapshot(positions: list[Position]) -> dict:
@@ -103,6 +146,12 @@ def build_portfolio_snapshot(positions: list[Position]) -> dict:
     else:
         concentration_level = "low"
 
+    # High-fidelity Funding Drag Cost Simulation (T+1 Clearing Lock)
+    risk_asset_mv = sum(p.market_value for p in positions if p.symbol != "CASH")
+    cash_t1_locked = round(risk_asset_mv * 0.10, 2)  # Simulate 10% of risk assets locked in T+1 settlement
+    funding_drag_cost = round(cash_t1_locked * (0.035 / 365.0), 4)  # Daily funding cost at 3.5% p.a.
+    funding_drag_bps = round((funding_drag_cost / total) * 10000.0, 6) if total > 0 else 0.0
+
     return {
         "total_market_value": total,
         "positions": rows,
@@ -114,4 +163,39 @@ def build_portfolio_snapshot(positions: list[Position]) -> dict:
         "top_3_weight": top_3_weight,
         "concentration_level": concentration_level,
         "position_count": len(rows),
+        "cash_t1_locked": cash_t1_locked,
+        "funding_drag_cost": funding_drag_cost,
+        "funding_drag_bps": funding_drag_bps,
     }
+
+
+def get_portfolio_metadata(portfolio: str | None = None) -> dict:
+    from core.config import settings
+    path = portfolio or settings.PORTFOLIO_BOOK_PATH
+    
+    # Attempt to auto-resolve short catalog names
+    if path and not os.path.exists(path):
+        data_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data"))
+        candidate = os.path.join(data_dir, f"{path}_portfolio.json")
+        if os.path.exists(candidate):
+            path = candidate
+        else:
+            candidate = os.path.join(data_dir, f"{path}.json")
+            if os.path.exists(candidate):
+                path = candidate
+                
+    if not path or not os.path.exists(path):
+        return {}
+        
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+        if isinstance(payload, dict):
+            return {
+                "display_name": payload.get("display_name"),
+                "benchmark": payload.get("benchmark"),
+                "portfolio_name": payload.get("portfolio_name")
+            }
+    except Exception:
+        pass
+    return {}

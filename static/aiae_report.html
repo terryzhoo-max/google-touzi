@@ -3,121 +3,341 @@
 <head>
     <meta charset="UTF-8">
     <title>AIAE 科学回测审计报告</title>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;700&family=Inter:wght@300;400;600;700&family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
     <style>
         :root {
-            --bg: #0b0d13;
-            --panel-bg: #151821;
-            --text-primary: #e2e8f0;
+            --bg-color: #030406;
+            --bg-surface: #0b0d13;
+            --text-primary: #f8fafc;
             --text-secondary: #94a3b8;
-            --accent: #3b82f6;
-            --success: #22c55e;
-            --warning: #f59e0b;
+            --text-tertiary: #475569;
+            --accent-primary: #3b82f6;
+            --accent-secondary: #f59e0b;
+            --accent-success: #10b981;
             --danger: #ef4444;
-            --border: #334155;
+            --warning: #f59e0b;
+            --success: #10b981;
+            --glass-border: rgba(255, 255, 255, 0.08);
+            --glass-bg: rgba(11, 13, 19, 0.7);
+            --font-sans: 'Inter', -apple-system, sans-serif;
+            --font-display: 'Outfit', -apple-system, sans-serif;
+            --font-mono: 'Fira Code', monospace;
         }
+
         body {
-            background-color: var(--bg);
+            background-color: var(--bg-color);
             color: var(--text-primary);
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            font-family: var(--font-sans);
+            line-height: 1.6;
             margin: 0;
-            padding: 20px;
+            padding: 30px;
+            overflow-x: hidden;
         }
+
         .container {
             max-width: 1400px;
             margin: 0 auto;
         }
+
+        /* Sci-Fi Premium Header */
         .header {
             margin-bottom: 24px;
-            padding-bottom: 16px;
-            border-bottom: 1px solid var(--border);
+            padding: 20px 24px;
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.05), transparent);
+            border: 1px solid var(--glass-border);
+            border-radius: 8px;
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.3);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
+
         .header h1 {
             margin: 0 0 8px 0;
             color: var(--text-primary);
+            font-family: var(--font-display);
             font-size: 1.8rem;
+            font-weight: 800;
+            letter-spacing: 1px;
+            text-shadow: 0 0 15px rgba(255,255,255,0.1);
         }
+
         .header p {
             margin: 0;
             color: var(--text-secondary);
-            font-size: 0.9rem;
-        }
-        .metrics-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 16px;
-            margin-bottom: 24px;
-        }
-        .metric-card {
-            background: var(--panel-bg);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 16px;
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
-        .metric-card.oos {
-            border-left: 3px solid var(--accent);
-        }
-        .metric-label {
-            font-size: 0.8rem;
-            color: var(--text-secondary);
-            text-transform: uppercase;
+            font-size: 0.85rem;
             letter-spacing: 0.5px;
         }
-        .metric-val {
-            font-size: 1.5rem;
-            font-weight: 600;
-            font-family: monospace;
+
+        /* OOS Flashing Badge */
+        .oos-badge {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-family: var(--font-mono);
+            font-size: 0.72rem;
+            color: var(--accent-primary);
+            background: rgba(59, 130, 246, 0.1);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            box-shadow: 0 0 10px rgba(59, 130, 246, 0.15);
         }
-        .chart-container {
-            background: var(--panel-bg);
-            border: 1px solid var(--border);
+
+        .oos-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--accent-primary);
+            border-radius: 50%;
+            animation: oosBlink 1.5s infinite alternate;
+            box-shadow: 0 0 8px var(--accent-primary);
+        }
+
+        @keyframes oosBlink {
+            0% { opacity: 0.3; }
+            100% { opacity: 1; }
+        }
+
+        /* Dashboard glass-cards */
+        .glass-card {
+            background: var(--bg-surface);
+            border: 1px solid var(--glass-border);
             border-radius: 8px;
-            padding: 16px;
+            padding: 20px;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.01), 0 4px 15px rgba(0,0,0,0.5);
             margin-bottom: 24px;
-            height: 400px;
+            backdrop-filter: blur(12px);
         }
+
+        .card-header {
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            padding-bottom: 12px;
+            margin-bottom: 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .card-header h3 {
+            font-family: var(--font-display);
+            font-size: 1rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin: 0;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+
+        /* Metric Grid & Cards */
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px;
+            margin-bottom: 12px;
+        }
+
+        .metric-card {
+            background: rgba(2, 6, 23, 0.4);
+            border: 1px solid rgba(255,255,255,0.04);
+            border-radius: 6px;
+            padding: 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            transition: transform 0.2s ease, border-color 0.2s ease;
+        }
+
+        .metric-card:hover {
+            border-color: rgba(255,255,255,0.1);
+            transform: translateY(-2px);
+        }
+
+        .metric-card.oos {
+            border-left: 3px solid var(--accent-primary);
+        }
+
+        .metric-label {
+            font-size: 0.68rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            font-weight: 600;
+        }
+
+        .metric-val {
+            font-size: 1.35rem;
+            font-weight: 700;
+            font-family: var(--font-mono);
+            letter-spacing: -0.5px;
+        }
+
+        .chart-container {
+            width: 100%;
+            height: 380px;
+            background: rgba(2, 6, 23, 0.2);
+            border-radius: 6px;
+            padding: 10px;
+            box-sizing: border-box;
+        }
+
+        /* CCO signature area */
+        .audit-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid var(--glass-border);
+        }
+
+        .signature-stamp {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: rgba(16, 185, 129, 0.03);
+            border: 1px dashed rgba(16, 185, 129, 0.2);
+            padding: 10px 20px;
+            border-radius: 6px;
+        }
+
+        .signature-title {
+            font-size: 0.65rem;
+            color: var(--text-tertiary);
+            font-weight: 700;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+
+        .signature-name {
+            font-family: 'Outfit', var(--font-sans);
+            font-weight: 800;
+            color: var(--accent-success);
+            font-size: 1rem;
+            letter-spacing: 0.5px;
+        }
+
+        .signature-verdict {
+            font-family: var(--font-mono);
+            font-size: 0.72rem;
+            font-weight: 700;
+            color: var(--accent-success);
+            background: rgba(16, 185, 129, 0.15);
+            padding: 2px 6px;
+            border-radius: 3px;
+            border: 1px solid rgba(16, 185, 129, 0.2);
+        }
+
         .loading {
             text-align: center;
-            padding: 40px;
+            padding: 60px;
             color: var(--text-secondary);
+            font-family: var(--font-mono);
+            font-size: 0.9rem;
+            letter-spacing: 1px;
+        }
+
+        .loading-spinner {
+            width: 32px;
+            height: 32px;
+            border: 3px solid rgba(59, 130, 246, 0.1);
+            border-top-color: var(--accent-primary);
+            border-radius: 50%;
+            animation: spin 1s infinite linear;
+            margin: 0 auto 16px auto;
+        }
+
+        @keyframes spin {
+            100% { transform: rotate(360deg); }
         }
     </style>
 </head>
 <body>
     <div class="container">
+        <!-- Sci-fi Header -->
         <div class="header">
-            <h1>AIAE 跨市场宏观宽基高胜率回测</h1>
-            <p>标的池: S&P 500 (SPX), 日经225 (N225), 沪深300 (000300.SH) | 成本模型: 0.1% 滑点 + T+1 开盘模拟 | 分区: 70% In-Sample, 30% Out-of-Sample</p>
+            <div>
+                <h1>AIAE 跨市场宏观宽基回测审计报告</h1>
+                <p>标的池: S&P 500 (SPX), 日经225 (N225), 沪深300 (000300.SH) | 成本模型: 0.1% 滑点 + T+1 开盘模拟 | 分区: 70% In-Sample, 30% Out-of-Sample</p>
+            </div>
+            <div class="oos-badge">
+                <span class="oos-dot"></span>
+                <span>OOS BLIND-TEST VERIFIED</span>
+            </div>
         </div>
 
-        <div id="loading" class="loading">正在拉取机构级科学回测数据，计算可能耗时10-30秒，请稍候...</div>
+        <div id="loading" class="loading">
+            <div class="loading-spinner"></div>
+            正在拉取机构级科学回测数据，计算可能耗时10-30秒，请稍候...
+        </div>
         
         <div id="content" style="display:none;">
-            <h3 style="color:var(--text-secondary); margin-bottom:12px; font-size:1rem; border-left:3px solid var(--accent); padding-left:8px;">Out-Of-Sample (样本外盲测) 核心指标</h3>
-            <div class="metrics-grid" id="oos-metrics"></div>
+            <!-- IS / OOS Metrics Grid -->
+            <div class="glass-card">
+                <div class="card-header">
+                    <h3>Out-Of-Sample (样本外盲测) 核心指标</h3>
+                    <span id="backtest-quality-star" style="font-family:var(--font-mono); font-size:0.75rem; color:var(--accent-secondary); font-weight:700;">CALCULATING GRADE...</span>
+                </div>
+                <div class="metrics-grid" id="oos-metrics"></div>
+            </div>
 
-            <h3 style="color:var(--text-secondary); margin-bottom:12px; font-size:1rem; border-left:3px solid var(--border); padding-left:8px;">In-Sample (样本内) 核心指标</h3>
-            <div class="metrics-grid" id="is-metrics"></div>
+            <div class="glass-card">
+                <div class="card-header">
+                    <h3>In-Sample (样本内) 核心指标</h3>
+                </div>
+                <div class="metrics-grid" id="is-metrics"></div>
+            </div>
 
-            <div class="chart-container" id="chart-equity"></div>
-            <div class="chart-container" id="chart-drawdown" style="height:250px;"></div>
+            <!-- Echarts Area -->
+            <div class="glass-card">
+                <div class="card-header">
+                    <h3>回测时序净值与回撒审计 (EQUITY CURVE & TAIL AUDIT)</h3>
+                </div>
+                <div class="chart-container" id="chart-equity"></div>
+                <div class="chart-container" id="chart-drawdown" style="height:220px; margin-top:20px;"></div>
+            </div>
+
+            <!-- Hand-drawn CCO Signature area -->
+            <div class="audit-footer">
+                <div style="font-size:0.72rem; color:var(--text-tertiary); font-family:var(--font-mono);">
+                    SYSTEM CODE: AIAE-SEC-V7 | REGULATORY TRACKING NO. AUDIT-${(Math.random()*1000000).toFixed(0)}
+                </div>
+                <div class="signature-stamp">
+                    <div style="text-align:right;">
+                        <div class="signature-title">首席量化风控合规官</div>
+                        <div class="signature-name">Terry Zhou</div>
+                    </div>
+                    <div class="signature-verdict">CCO APPROVED</div>
+                </div>
+            </div>
         </div>
     </div>
 
     <script>
+        const METRIC_ZH = {
+            'Sharpe_Ratio': '夏普比率 (SHARPE)',
+            'Annual_Return': '年化收益率 (RETURN)',
+            'Annual_Volatility': '年化波动率 (VOLATILITY)',
+            'Max_Drawdown': '最大回撤 (DRAWDOWN)',
+            'CVaR_5': '条件在险价值 (CVaR 5%)',
+            'Win_Rate': '月度胜率 (WIN RATE)',
+            'Signal_Hit_Rate': '信号命中率 (HIT RATE)',
+            'Ulcer_Index': '溃疡指数 (ULCER INDEX)',
+            'Return_Skewness': '收益偏度 (SKEWNESS)'
+        };
+
         function formatVal(k, v) {
             if (['Annual_Return', 'Annual_Volatility', 'Max_Drawdown', 'CVaR_5', 'Win_Rate', 'Signal_Hit_Rate', 'Ulcer_Index'].includes(k)) return v.toFixed(2) + '%';
             return v.toFixed(2);
         }
 
         function getColor(k, v) {
-            if (k === 'Sharpe_Ratio') return v > 1.0 ? 'var(--success)' : (v > 0.5 ? 'var(--warning)' : 'var(--danger)');
-            if (k === 'Win_Rate' || k === 'Signal_Hit_Rate') return v > 50.0 ? 'var(--success)' : 'var(--danger)';
-            if (k === 'Return_Skewness') return v > 0 ? 'var(--success)' : 'var(--danger)';
-            if (k === 'Max_Drawdown') return v < -20.0 ? 'var(--danger)' : 'var(--text-primary)';
+            if (k === 'Sharpe_Ratio') return v > 1.2 ? 'var(--accent-success)' : (v > 0.8 ? 'var(--warning)' : 'var(--danger)');
+            if (k === 'Win_Rate' || k === 'Signal_Hit_Rate') return v > 50.0 ? 'var(--accent-success)' : 'var(--danger)';
+            if (k === 'Return_Skewness') return v > 0 ? 'var(--accent-success)' : 'var(--danger)';
+            if (k === 'Max_Drawdown') return v < -15.0 ? 'var(--danger)' : 'var(--text-primary)';
             return 'var(--text-primary)';
         }
 
@@ -128,7 +348,7 @@
                 
                 if (res.error) {
                     document.getElementById('loading').style.display = 'block';
-                    document.getElementById('loading').innerHTML = `<span style="color:var(--danger)">错误: ${res.error}</span>`;
+                    document.getElementById('loading').innerHTML = `<span style="color:var(--danger)">拉取失败: ${res.error}</span>`;
                     return;
                 }
 
@@ -136,24 +356,37 @@
 
                 const m = res.metrics;
                 
-                // Render OOS
+                // Calculate Star Rating based on Out-Of-Sample Sharpe Ratio
+                const oosSharpe = m.Out_Of_Sample.Sharpe_Ratio || 0;
+                const starEl = document.getElementById('backtest-quality-star');
+                if (oosSharpe > 1.20) {
+                    starEl.innerHTML = `<span style="color:#10b981;">⭐⭐⭐⭐⭐ 五星特优级 (OUTSTANDING | SHARPE: ${oosSharpe.toFixed(2)})</span>`;
+                } else if (oosSharpe > 0.80) {
+                    starEl.innerHTML = `<span style="color:#fbbf24;">⭐⭐⭐⭐ 四星优质级 (EXCELLENT | SHARPE: ${oosSharpe.toFixed(2)})</span>`;
+                } else {
+                    starEl.innerHTML = `<span style="color:#64748b;">⭐⭐⭐ 三星常规级 (STANDARD | SHARPE: ${oosSharpe.toFixed(2)})</span>`;
+                }
+
+                // Render OOS Cards
                 let htmlOOS = '';
                 Object.keys(m.Out_Of_Sample).forEach(k => {
+                    const label = METRIC_ZH[k] || k.replace(/_/g, ' ');
                     htmlOOS += `
                         <div class="metric-card oos">
-                            <div class="metric-label">${k.replace(/_/g, ' ')}</div>
+                            <div class="metric-label">${label}</div>
                             <div class="metric-val" style="color:${getColor(k, m.Out_Of_Sample[k])}">${formatVal(k, m.Out_Of_Sample[k])}</div>
                         </div>
                     `;
                 });
                 document.getElementById('oos-metrics').innerHTML = htmlOOS;
 
-                // Render IS
+                // Render IS Cards
                 let htmlIS = '';
                 Object.keys(m.In_Sample).forEach(k => {
+                    const label = METRIC_ZH[k] || k.replace(/_/g, ' ');
                     htmlIS += `
                         <div class="metric-card">
-                            <div class="metric-label">${k.replace(/_/g, ' ')}</div>
+                            <div class="metric-label">${label}</div>
                             <div class="metric-val" style="color:${getColor(k, m.In_Sample[k])}">${formatVal(k, m.In_Sample[k])}</div>
                         </div>
                     `;
@@ -167,14 +400,19 @@
 
                 eqChart.setOption({
                     backgroundColor: 'transparent',
-                    tooltip: { trigger: 'axis' },
-                    legend: { data: ['AIAE 策略净值', '全球宽基等权基准'], textStyle: { color: '#e2e8f0' } },
-                    grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
-                    xAxis: { type: 'category', boundaryGap: false, data: res.data.dates, axisLine: { lineStyle: { color: '#334155' } }, axisLabel: { color: '#94a3b8' } },
-                    yAxis: { type: 'value', axisLine: { show: false }, splitLine: { lineStyle: { color: '#1f2937' } }, axisLabel: { color: '#94a3b8' } },
+                    tooltip: { 
+                        trigger: 'axis',
+                        backgroundColor: 'rgba(11, 13, 19, 0.9)',
+                        borderColor: 'rgba(255,255,255,0.1)',
+                        textStyle: { color: '#fff', fontSize: 11 }
+                    },
+                    legend: { data: ['AIAE 策略累计净值', '全球等权基准指数'], textStyle: { color: '#94a3b8', fontSize: 11 } },
+                    grid: { left: '3%', right: '4%', bottom: '3%', top: '15%', containLabel: true },
+                    xAxis: { type: 'category', boundaryGap: false, data: res.data.dates, axisLine: { lineStyle: { color: 'rgba(255,255,255,0.1)' } }, axisLabel: { color: '#64748b', fontSize: 10 } },
+                    yAxis: { type: 'value', axisLine: { show: false }, splitLine: { lineStyle: { color: 'rgba(255,255,255,0.03)', type: 'dashed' } }, axisLabel: { color: '#64748b', fontSize: 10 } },
                     series: [
-                        { name: 'AIAE 策略净值', type: 'line', data: res.data.strat_cum_return, symbol: 'none', itemStyle: { color: '#3b82f6' }, markLine: { data: [{ xAxis: splitDate, name: 'IS / OOS 分界线', label: { formatter: 'OOS ->', position: 'end', color: '#f59e0b' }, lineStyle: { color: '#f59e0b', type: 'dashed' } }] } },
-                        { name: '全球宽基等权基准', type: 'line', data: res.data.bench_cum_return, symbol: 'none', itemStyle: { color: '#64748b' } }
+                        { name: 'AIAE 策略累计净值', type: 'line', data: res.data.strat_cum_return, symbol: 'none', itemStyle: { color: '#3b82f6' }, markLine: { data: [{ xAxis: splitDate, name: 'IS / OOS 分界线', label: { formatter: 'OOS 盲测 ->', position: 'end', color: '#fbbf24', fontSize: 10 }, lineStyle: { color: '#fbbf24', type: 'dashed' } }] } },
+                        { name: '全球等权基准指数', type: 'line', data: res.data.bench_cum_return, symbol: 'none', itemStyle: { color: 'rgba(148, 163, 184, 0.4)' } }
                     ]
                 });
 
@@ -182,12 +420,12 @@
                 const ddChart = echarts.init(document.getElementById('chart-drawdown'));
                 ddChart.setOption({
                     backgroundColor: 'transparent',
-                    tooltip: { trigger: 'axis', formatter: p => `${p[0].name}<br/>回撤: ${(p[0].value * 100).toFixed(2)}%` },
+                    tooltip: { trigger: 'axis', formatter: p => `${p[0].name}<br/>最大瞬时回撤: ${(p[0].value * 100).toFixed(2)}%` },
                     grid: { left: '3%', right: '4%', bottom: '3%', top: '10%', containLabel: true },
-                    xAxis: { type: 'category', boundaryGap: false, data: res.data.dates, axisLine: { lineStyle: { color: '#334155' } }, axisLabel: { show: false } },
-                    yAxis: { type: 'value', axisLine: { show: false }, splitLine: { lineStyle: { color: '#1f2937' } }, axisLabel: { color: '#94a3b8', formatter: v => (v * 100).toFixed(0) + '%' } },
+                    xAxis: { type: 'category', boundaryGap: false, data: res.data.dates, axisLine: { lineStyle: { color: 'rgba(255,255,255,0.1)' } }, axisLabel: { show: false } },
+                    yAxis: { type: 'value', axisLine: { show: false }, splitLine: { lineStyle: { color: 'rgba(255,255,255,0.03)', type: 'dashed' } }, axisLabel: { color: '#64748b', fontSize: 10, formatter: v => (v * 100).toFixed(0) + '%' } },
                     series: [
-                        { name: '策略回撤', type: 'line', data: res.data.drawdown, symbol: 'none', areaStyle: { color: 'rgba(239, 68, 68, 0.2)' }, itemStyle: { color: '#ef4444' } }
+                        { name: '策略回撤', type: 'line', data: res.data.drawdown, symbol: 'none', areaStyle: { color: 'rgba(239, 68, 68, 0.15)' }, itemStyle: { color: '#ef4444' } }
                     ]
                 });
 

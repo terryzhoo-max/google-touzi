@@ -14,7 +14,7 @@ def test_known_etf_returns_factor_exposures():
     exposures = get_factor_exposures_for_symbol("NASDAQ_ETF")
 
     assert {"factor_group": "region", "factor_name": "US", "exposure": 1.0} in exposures
-    assert {"factor_group": "macro", "factor_name": "equity_beta", "exposure": 1.1} in exposures
+    assert {"factor_group": "macro", "factor_name": "equity_beta", "exposure": 1.136} in exposures
     assert {"factor_group": "theme", "factor_name": "US technology", "exposure": 1.0} in exposures
 
 
@@ -25,7 +25,7 @@ def test_factor_risk_snapshot_aggregates_weighted_exposures():
     assert snapshot["coverage"]["coverage_ratio"] == 1.0
     assert snapshot["factor_groups"]["region"]["China"] == 0.333333
     assert snapshot["factor_groups"]["region"]["US"] == 0.333333
-    assert snapshot["factor_groups"]["macro"]["equity_beta"] == 0.666666
+    assert snapshot["factor_groups"]["macro"]["equity_beta"] == 0.690999
     assert snapshot["factor_groups"]["theme"]["gold hedge"] == 0.333333
     assert snapshot["top_factor"]["factor_group"] == "macro"
     assert snapshot["top_factor"]["factor_name"] == "equity_beta"

@@ -321,13 +321,69 @@ def _akshare_us_etf(symbol: str, days_back: int) -> pd.Series:
     return s
 
 
+# ── SQLite Fallback & Resilience ──────────────────────────────
+import os
+import sqlite3
+
+_fallback_active: dict[str, bool] = {}
+
+def get_fallback_active_state() -> dict:
+    """Return dict of symbols showing whether fallback is currently active."""
+    return dict(_fallback_active)
+
+def _sqlite_failover_series(symbol: str, limit: int = 60) -> pd.Series:
+    """Fallback mechanism to read time-series data from local SQLite database."""
+    try:
+        db_path = getattr(settings, 'DB_PATH', "alphacore.db")
+        if not os.path.exists(db_path):
+            db_path = os.path.join(os.path.dirname(__file__), '..', 'alphacore.db')
+        
+        if not os.path.exists(db_path):
+            return pd.Series(dtype=float)
+            
+        conn = sqlite3.connect(db_path, timeout=5.0)
+        query = "SELECT date, close FROM time_series WHERE symbol = ? ORDER BY date DESC LIMIT ?"
+        df = pd.read_sql_query(query, conn, params=(symbol, limit))
+        conn.close()
+        
+        # Try aliases if empty
+        if df.empty:
+            alias_map = {
+                "VIXCLS": "VIX", "VIX": "VIXCLS",
+                "DGS10": "10Y", "10Y": "DGS10",
+                "USDOLLAR.FXCM": "DXY", "DXY": "USDOLLAR.FXCM",
+                "513500.SH": "SPY", "SPY": "513500.SH",
+                "518880.SH": "GLD", "GLD": "518880.SH",
+                "511260.SH": "TLT", "TLT": "511260.SH"
+            }
+            alt = alias_map.get(symbol)
+            if alt:
+                conn = sqlite3.connect(db_path, timeout=5.0)
+                df = pd.read_sql_query(query, conn, params=(alt, limit))
+                conn.close()
+                
+        if df.empty:
+            return pd.Series(dtype=float)
+            
+        df = df.sort_values("date")
+        s = pd.Series(df["close"].values, index=pd.to_datetime(df["date"]), name=symbol)
+        s.attrs["fallback"] = True
+        s.attrs["source"] = "sqlite_offline"
+        print(f"[data_providers] Failover hit: loaded {symbol} from SQLite ({len(s)} rows)")
+        return s
+    except Exception as e:
+        print(f"[data_providers] Failover failed completely: {e}")
+        return pd.Series(dtype=float)
+
+
 # ── primary public API ──────────────────────────────────────────
 
 def get_vix_history(days: int = 30) -> pd.Series:
-    """VIX daily close.  Primary: FRED VIXCLS.  Fallback: AKShare."""
+    """VIX daily close.  Primary: FRED VIXCLS.  Fallback: AKShare. Failover: SQLite."""
     try:
         s = _fred_series("VIXCLS", limit=days)
         if len(s) > 0:
+            _fallback_active["VIX"] = False
             return s
     except Exception as e:
         print(f"[data_providers] FRED VIXCLS failed: {e}")
@@ -347,12 +403,12 @@ def get_vix_history(days: int = 30) -> pd.Series:
                     continue
                 if fn_name == "index_vix":
                     df = _retry_akshare(fn, start_date=start.strftime("%Y-%m-%d"),
-                            end_date=end.strftime("%Y-%m-%d"))
+                             end_date=end.strftime("%Y-%m-%d"))
                 else:
                     df = _retry_akshare(fn, country="美国", index_name="VIX恐慌指数",
-                            period="每日",
-                            start_date=start.strftime("%Y-%m-%d"),
-                            end_date=end.strftime("%Y-%m-%d"))
+                             period="每日",
+                             start_date=start.strftime("%Y-%m-%d"),
+                             end_date=end.strftime("%Y-%m-%d"))
                 if df is not None and not df.empty:
                     break
             except Exception:
@@ -364,15 +420,23 @@ def get_vix_history(days: int = 30) -> pd.Series:
             close_col = next((c for c in df.columns if "收" in c or "close" in c.lower()), df.columns[-1])
             df[date_col] = pd.to_datetime(df[date_col])
             df = df.sort_values(date_col)
-            return pd.Series(df[close_col].values, index=df[date_col], name="VIX")
+            s = pd.Series(df[close_col].values, index=df[date_col], name="VIX")
+            _fallback_active["VIX"] = False
+            return s
     except Exception as e2:
         print(f"[data_providers] AKShare VIX also failed: {e2}")
+
+    # Primary & Secondary failed — load from SQLite Local Failover
+    s_fail = _sqlite_failover_series("VIXCLS", limit=days)
+    if len(s_fail) > 0:
+        _fallback_active["VIX"] = True
+        return s_fail
 
     return pd.Series(dtype=float)
 
 
 def get_dxy_history(days: int = 30) -> pd.Series:
-    """USD index daily close.  Primary: Tushare fx_daily.  Fallback: FRED DTWEXBGS."""
+    """USD index daily close.  Primary: Tushare fx_daily.  Fallback: FRED DTWEXBGS. Failover: SQLite."""
     try:
         end = datetime.date.today()
         start = end - datetime.timedelta(days=days + 5)
@@ -387,31 +451,59 @@ def get_dxy_history(days: int = 30) -> pd.Series:
         )
         s = _ts_items_to_series(items, date_col=0, val_col=1, name="DXY")
         if len(s) > 0:
+            _fallback_active["DXY"] = False
             return s
     except Exception as e:
         print(f"[data_providers] Tushare DXY failed: {e}")
 
     print("[data_providers] Falling back to FRED DTWEXBGS for DXY …")
-    return _fred_series("DTWEXBGS", limit=days)
+    try:
+        s = _fred_series("DTWEXBGS", limit=days)
+        if len(s) > 0:
+            _fallback_active["DXY"] = False
+            return s
+    except Exception as e2:
+        print(f"[data_providers] FRED DTWEXBGS failed: {e2}")
+
+    # All failed — SQLite Local Failover
+    s_fail = _sqlite_failover_series("USDOLLAR.FXCM", limit=days)
+    if len(s_fail) > 0:
+        _fallback_active["DXY"] = True
+        return s_fail
+
+    return pd.Series(dtype=float)
 
 
 def get_tnx_history(days: int = 30) -> pd.Series:
-    """10Y US Treasury yield.  Primary: FRED DGS10."""
-    return _fred_series("DGS10", limit=days)
+    """10Y US Treasury yield.  Primary: FRED DGS10. Failover: SQLite."""
+    try:
+        s = _fred_series("DGS10", limit=days)
+        if len(s) > 0:
+            _fallback_active["TNX"] = False
+            return s
+    except Exception as e:
+        print(f"[data_providers] FRED DGS10 failed: {e}")
+
+    # Fallback to SQLite
+    s_fail = _sqlite_failover_series("DGS10", limit=days)
+    if len(s_fail) > 0:
+        _fallback_active["TNX"] = True
+        return s_fail
+
+    return pd.Series(dtype=float)
 
 
 def get_us_etf_history(symbol: str, months: int = 6) -> pd.Series:
     """US ETF daily close (SPY / TLT / GLD).
     Primary: Tushare QDII ETF (works in CN without VPN).
-    Fallback: AKShare (East Money, may be blocked)."""
+    Fallback: AKShare.
+    Failover: SQLite."""
     days = months * 31 + 5
 
-    # proxy map: US ETF → Tushare QDII / domestic ETF
-    # All three are China-listed ETFs accessible via Tushare fund_daily (2000+ pts)
     proxy_map = {
-        "SPY": "513500.SH",   # 标普500ETF
-        "GLD": "518880.SH",   # 黄金ETF
-        "TLT": "511260.SH",   # 10年国债ETF (directional proxy for US long bonds)
+        "SPY": "513500.SH",
+        "GLD": "518880.SH",
+        "TLT": "511260.SH",
     }
 
     ts_code = proxy_map.get(symbol)
@@ -432,23 +524,29 @@ def get_us_etf_history(symbol: str, months: int = 6) -> pd.Series:
                                     name=f"{symbol}_proxy({ts_code})")
             if len(s) > 0:
                 print(f"[data_providers] {symbol} → Tushare QDII {ts_code} ({len(s)} rows)")
+                _fallback_active[symbol] = False
                 return s
         except Exception as e:
             print(f"[data_providers] Tushare QDII {ts_code} failed for {symbol}: {e}")
-    else:
-        print(f"[data_providers] No proxy mapping for {symbol}")
 
-    # fallback: AKShare (may work on some networks)
     try:
         s = _akshare_us_etf(symbol, days_back=days)
         if len(s) > 0:
             print(f"[data_providers] {symbol} → AKShare ({len(s)} rows)")
+            _fallback_active[symbol] = False
             return s
     except Exception as e:
         print(f"[data_providers] AKShare failed for {symbol}: {e}")
 
+    # SQLite Local Failover
+    s_fail = _sqlite_failover_series(ts_code if ts_code else symbol, limit=days)
+    if len(s_fail) > 0:
+        _fallback_active[symbol] = True
+        return s_fail
+
     print(f"[data_providers] ⚠ all sources exhausted for {symbol}")
     return pd.Series(dtype=float)
+
 
 
 def get_us_etf_history_long(symbol: str, years: int = 5) -> pd.Series:

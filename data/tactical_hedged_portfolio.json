@@ -1,0 +1,85 @@
+{
+  "portfolio_name": "tactical_hedged_portfolio",
+  "display_name": "全球战术对冲组合 (Tactical Hedged)",
+  "benchmark": {
+    "version": "benchmark_v1",
+    "display_name": "60% 沪深300 + 20% 标普500 + 20% 黄金黄金",
+    "positions": {
+      "510300": 0.60,
+      "513500": 0.20,
+      "518880": 0.20
+    }
+  },
+  "positions": [
+    {
+      "symbol": "CASH",
+      "name": "人民币现金",
+      "asset_class": "cash",
+      "currency": "CNY",
+      "region": "China",
+      "strategy": "core",
+      "market_value": 200000.0,
+      "quantity": 200000.0,
+      "current_price": 1.0,
+      "cost_basis": 200000.0,
+      "float_pnl": 0.0,
+      "pnl_pct": 0.0
+    },
+    {
+      "symbol": "002851",
+      "name": "麦格米特",
+      "asset_class": "equity",
+      "currency": "CNY",
+      "region": "China",
+      "strategy": "core",
+      "market_value": 150000.0,
+      "quantity": 3800.0,
+      "current_price": 39.47,
+      "cost_basis": 120000.0,
+      "float_pnl": 30000.0,
+      "pnl_pct": 25.0
+    },
+    {
+      "symbol": "518880",
+      "name": "黄金ETF华安",
+      "asset_class": "gold",
+      "currency": "CNY",
+      "region": "Gold",
+      "strategy": "gold",
+      "market_value": 250000.0,
+      "quantity": 50000.0,
+      "current_price": 5.0,
+      "cost_basis": 230000.0,
+      "float_pnl": 20000.0,
+      "pnl_pct": 8.7
+    },
+    {
+      "symbol": "513100",
+      "name": "纳指100ETF广发",
+      "asset_class": "equity",
+      "currency": "USD",
+      "region": "US",
+      "strategy": "technology",
+      "market_value": 150000.0,
+      "quantity": 34000.0,
+      "current_price": 4.41,
+      "cost_basis": 140000.0,
+      "float_pnl": 10000.0,
+      "pnl_pct": 7.14
+    },
+    {
+      "symbol": "510300",
+      "name": "沪深300ETF华泰柏瑞",
+      "asset_class": "equity",
+      "currency": "CNY",
+      "region": "China",
+      "strategy": "broad_market",
+      "market_value": 250000.0,
+      "quantity": 72000.0,
+      "current_price": 3.47,
+      "cost_basis": 260000.0,
+      "float_pnl": -10000.0,
+      "pnl_pct": -3.85
+    }
+  ]
+}

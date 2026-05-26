@@ -1,0 +1,11 @@
+{
+  "timestamp": 1779717994.713422,
+  "has_xtquant": false,
+  "dry_run": true,
+  "account_id": "YOUR_ACCOUNT_ID",
+  "data_dir": "D:\\迅投极速交易终端睿智版\\userdata_mini",
+  "status": "ONLINE",
+  "gateway_resilience_status": "HEALTHY",
+  "retry_count": 0,
+  "backoff_sec": 0.0
+}

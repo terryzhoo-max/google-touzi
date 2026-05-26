@@ -1,4 +1,6 @@
 import time
+import hashlib
+import json
 import pandas as pd
 import numpy as np
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -6,6 +8,7 @@ from core.backtest import get_symbol_data
 from core.db_layer import init_db
 
 # Strategy Configuration (Config-driven)
+STRATEGY_POLICY_VERSION = "strategy_factory_policy_v1"
 STRATEGY_CONFIG = {
     "barbell_weights": {
         "513500.SH": 0.40,  # SP500
@@ -15,6 +18,35 @@ STRATEGY_CONFIG = {
     },
     "friction_daily": 0.00002
 }
+
+
+def _stable_hash(payload: dict) -> str:
+    raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def get_strategy_policy() -> dict:
+    payload = {
+        "version": STRATEGY_POLICY_VERSION,
+        "barbell_weights": STRATEGY_CONFIG["barbell_weights"],
+        "friction_daily": STRATEGY_CONFIG["friction_daily"],
+        "backtest_window_years": 1,
+        "benchmark": {"510300.SH": 0.60, "513500.SH": 0.40},
+        "risk_parity_window_days": 30,
+        "momentum_window_days": 200,
+        "gold_trend_window_days": 60,
+        "vix_panic_threshold": 25.0,
+    }
+    payload["strategy_policy_hash"] = _stable_hash(payload)
+    return payload
+
+
+def _data_quality(status: str = "ok", degraded_reason: str | None = None, source: str = "market_data_cache") -> dict:
+    return {
+        "status": status,
+        "source": source,
+        "degraded_reason": degraded_reason,
+    }
 
 # Universe Definition
 ETF_UNIVERSE = {
@@ -125,6 +157,8 @@ class VectorizedBacktester:
             "dates": dates,
             "strategy_returns": strat_curve,
             "benchmark_returns": bench_curve,
+            "status": "ok",
+            "data_quality": _data_quality(),
             "metrics": {
                 "strategy_ytd": f"{strat_ytd:.2f}%",
                 "benchmark_ytd": f"{bench_ytd:.2f}%",
@@ -149,7 +183,15 @@ def get_real_backtest():
             return res
             
     # Hard degradation: no synthetic fake data
-    return {"error": "Insufficient market data for backtest."}
+    return {
+        "status": "unavailable",
+        "error": "Insufficient market data for backtest.",
+        "data_quality": _data_quality("degraded", "insufficient_market_data"),
+        "metrics": None,
+        "dates": [],
+        "strategy_returns": [],
+        "benchmark_returns": [],
+    }
 
 def compute_global_risk_parity():
     # Fetch 30-day volatility dynamically
@@ -173,20 +215,27 @@ def compute_global_risk_parity():
         w_spy = inv_spy / total_inv if total_inv > 0 else 0.6
         
         signal = "OVERWEIGHT OVERSEAS" if w_spy > w_csi else "OVERWEIGHT A-SHARE"
+        status = "active"
+        quality = _data_quality()
         
     except Exception as e:
         print(f"Risk Parity error: {e}")
         csi_vol, spy_vol = 0.185, 0.122
-        w_csi, w_spy = 0.397, 0.603
-        signal = "OVERWEIGHT OVERSEAS"
+        w_csi, w_spy = 0.0, 0.0
+        signal = "NO_SIGNAL"
+        status = "degraded"
+        quality = _data_quality("degraded", str(e))
 
     return {
         "id": "global_risk_parity",
         "name": "全球宏观风险平价",
         "name_en": "GLOBAL RISK PARITY",
-        "status": "active",
+        "status": status,
         "signal": signal,
         "color": "#3b82f6",
+        "model_mode": "live" if status == "active" else "degraded",
+        "tradeable": status == "active",
+        "data_quality": quality,
         "description": "Volatility-inverse allocation across global broad indices.",
         "details": [
             {"label": "A-Share Vol (30d)", "value": f"{csi_vol*100:.1f}%", "color": "#ef4444" if csi_vol > 0.2 else "#22c55e"},
@@ -195,13 +244,20 @@ def compute_global_risk_parity():
             {"label": "Target Weight US/JP", "value": f"{w_spy*100:.1f}%"}
         ],
         "holdings": [
-            {"symbol": "513500.SH", "name": "标普500ETF", "action": "BUY" if w_spy >= w_csi else "HOLD", "weight": f"{int(round(w_spy*100))}%"},
-            {"symbol": "510300.SH", "name": "沪深300ETF", "action": "BUY" if w_csi > w_spy else "HOLD", "weight": f"{int(round(w_csi*100))}%"}
+            {"symbol": "513500.SH", "name": "标普500ETF", "action": "BUY" if status == "active" and w_spy >= w_csi else "HOLD", "weight": f"{int(round(w_spy*100))}%"},
+            {"symbol": "510300.SH", "name": "沪深300ETF", "action": "BUY" if status == "active" and w_csi > w_spy else "HOLD", "weight": f"{int(round(w_csi*100))}%"}
         ]
     }
 
 def build_barbell_allocation():
     # Use weights from config
+    weights = STRATEGY_CONFIG["barbell_weights"]
+    core_weight = (
+        weights.get("513500.SH", 0.0) +
+        weights.get("510880.SH", 0.0) +
+        weights.get("510300.SH", 0.0)
+    )
+    satellite_weight = weights.get("512760.SH", 0.0)
     w_div = STRATEGY_CONFIG["barbell_weights"].get("510880.SH", 0.3)
     w_chip = STRATEGY_CONFIG["barbell_weights"].get("512760.SH", 0.15)
     
@@ -212,10 +268,13 @@ def build_barbell_allocation():
         "status": "active",
         "signal": "DEFENSIVE TILT",
         "color": "#a855f7",
-        "description": "70% Core (Broad+Div) + 30% Satellite (15th FYP).",
+        "model_mode": "policy_static",
+        "tradeable": True,
+        "data_quality": _data_quality(source="strategy_policy"),
+        "description": "Policy barbell allocation using configured broad, dividend, and 15th FYP theme weights.",
         "details": [
-            {"label": "Core Allocation", "value": "70.0%"},
-            {"label": "Satellite Allocation", "value": "30.0%"},
+            {"label": "Core Allocation", "value": f"{core_weight*100:.1f}%"},
+            {"label": "Satellite Allocation", "value": f"{satellite_weight*100:.1f}%"},
             {"label": "Dividend Yield (Core)", "value": "4.2%", "color": "#22c55e"},
             {"label": "Theme Beta (Satellite)", "value": "1.8x", "color": "#ef4444"}
         ],
@@ -257,6 +316,7 @@ def analyze_absolute_momentum():
         csi_color, spy_color = "#94a3b8", "#94a3b8"
         action_csi, weight_csi = "HOLD", "15%"
         trigger = "ERROR"
+    quality = _data_quality("degraded", "momentum_data_unavailable") if trigger == "ERROR" else _data_quality()
 
     return {
         "id": "absolute_momentum",
@@ -265,11 +325,14 @@ def analyze_absolute_momentum():
         "status": "active",
         "signal": f"A-SHARE {'CAUTION' if csi_trend == 'BEARISH' else 'BULLISH'}",
         "color": "#f59e0b",
+        "model_mode": "live_with_placeholder_theme",
+        "tradeable": trigger != "ERROR",
+        "data_quality": quality,
         "description": "200-day SMA trend filter. Liquidates assets in structural bear markets.",
         "details": [
             {"label": "CSI 300 Trend", "value": f"{csi_trend} ({csi_dist:+.1f}% vs 200MA)", "color": csi_color},
             {"label": "SP500 Trend", "value": f"{spy_trend} ({spy_dist:+.1f}% vs 200MA)", "color": spy_color},
-            {"label": "AI Theme Trend", "value": "BULLISH (+12.4% above 200MA)", "color": "#22c55e"},
+            {"label": "AI Theme Trend", "value": "PLACEHOLDER (model inactive)", "color": "#94a3b8"},
             {"label": "Circuit Breaker", "value": trigger}
         ],
         "holdings": [
@@ -284,14 +347,17 @@ def compute_beta_hedging():
         "name": "动态贝塔中性化对冲",
         "name_en": "DYNAMIC BETA-HEDGING",
         "status": "standby",
-        "signal": "HEDGE INACTIVE",
+        "signal": "PLACEHOLDER - NOT TRADEABLE",
         "color": "#10b981",
+        "model_mode": "placeholder",
+        "tradeable": False,
+        "data_quality": _data_quality("degraded", "beta_hedging_model_not_connected", "placeholder"),
         "description": "Shorts Broad A-share ETF to isolate pure policy alpha of 15th FYP.",
         "details": [
-            {"label": "Systemic Risk Level", "value": "LOW (22/100)"},
-            {"label": "Thematic Beta", "value": "1.25"},
+            {"label": "Systemic Risk Level", "value": "PLACEHOLDER"},
+            {"label": "Thematic Beta", "value": "PLACEHOLDER"},
             {"label": "Hedge Ratio", "value": "0.0%"},
-            {"label": "Alpha Capture", "value": "100.0%", "color": "#22c55e"}
+            {"label": "Alpha Capture", "value": "NOT LIVE", "color": "#94a3b8"}
         ],
         "holdings": [
             {"symbol": "510300.SH", "name": "IF Index Futures", "action": "NEUTRAL", "weight": "0%"}
@@ -320,24 +386,31 @@ def compute_gold_hedging():
         color = "#eab308" if signal == "BULLISH ON GOLD" else "#94a3b8"
         action = "BUY" if signal == "BULLISH ON GOLD" else "HOLD"
         weight = "15%" if signal == "BULLISH ON GOLD" else "0%"
+        status = "active"
+        quality = _data_quality()
         
     except Exception as e:
         print(f"Gold hedging error: {e}")
         vix_current = 0
         gold_trend = "ERROR"
         trend_dist = 0
-        signal = "ERROR"
+        signal = "NO_SIGNAL"
         color = "#94a3b8"
         action = "HOLD"
         weight = "0%"
+        status = "degraded"
+        quality = _data_quality("degraded", str(e))
 
     return {
         "id": "gold_hedging",
         "name": "黄金避险择时引擎",
         "name_en": "GOLD SAFE-HAVEN TIMING",
-        "status": "active",
+        "status": status,
         "signal": signal,
         "color": color,
+        "model_mode": "live" if status == "active" else "degraded",
+        "tradeable": status == "active",
+        "data_quality": quality,
         "description": "Monitors systemic panic (VIX) and monetary cycles to dynamically allocate to Gold.",
         "details": [
             {"label": "VIX Panic Index", "value": f"{vix_current:.1f}", "color": "#ef4444" if vix_current > 25 else "#22c55e"},
@@ -352,16 +425,35 @@ def compute_gold_hedging():
 
 def get_strategy_dashboard() -> dict:
     """Aggregates all strategy data for the frontend dashboard."""
+    policy = get_strategy_policy()
+    backtest = get_real_backtest()
+    engines = [
+        compute_global_risk_parity(),
+        build_barbell_allocation(),
+        analyze_absolute_momentum(),
+        compute_beta_hedging(),
+        compute_gold_hedging()
+    ]
+    degraded_components = []
+    if backtest.get("status") != "ok":
+        degraded_components.append("backtest")
+    degraded_components.extend(
+        engine.get("id", "unknown_engine")
+        for engine in engines
+        if engine.get("data_quality", {}).get("status") != "ok"
+    )
+    dashboard_quality = _data_quality(
+        status="degraded" if degraded_components else "ok",
+        degraded_reason=";".join(degraded_components) if degraded_components else None,
+        source="strategy_factory",
+    )
     return {
-        "status": "ok",
+        "status": "degraded" if degraded_components else "ok",
         "timestamp": int(time.time()),
+        "strategy_policy": policy,
+        "strategy_policy_hash": policy["strategy_policy_hash"],
+        "data_quality": dashboard_quality,
         "universe": ETF_UNIVERSE,
-        "backtest": get_real_backtest(),
-        "engines": [
-            compute_global_risk_parity(),
-            build_barbell_allocation(),
-            analyze_absolute_momentum(),
-            compute_beta_hedging(),
-            compute_gold_hedging()
-        ]
+        "backtest": backtest,
+        "engines": engines
     }

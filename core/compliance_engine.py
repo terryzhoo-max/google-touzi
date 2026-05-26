@@ -11,6 +11,7 @@ class CompliancePolicy:
     max_strategy_weight: float = 0.45
     max_turnover: float = 0.2
     max_trade_weight: float = 0.1
+    max_dtl: float = 5.0
     weak_data_score: int = 80
     warning_buffer: float = 0.03
 
@@ -90,6 +91,19 @@ def evaluate_pre_trade_compliance(
         if trade_size > limits.max_trade_weight:
             violations.append(f"trade_size_exceeded:{symbol}")
             repair_suggestions.append("Reduce proposed single-trade size before approval.")
+
+    # 3. Liquidity Risk (Days to Liquidate - DTL) compliance check
+    from core.risk_engine import calculate_portfolio_risk
+    target_risk = calculate_portfolio_risk(target_snapshot)
+    target_liquidity = target_risk.get("liquidity_metrics", {})
+    target_dtl = target_liquidity.get("days_to_liquidate", {})
+    
+    for symbol, dtl in target_dtl.items():
+        if dtl > 10.0:  # Block threshold for extreme illiquidity
+            violations.append(f"liquidity_limit_exceeded:{symbol}")
+            repair_suggestions.append(f"Reduce position qty for {symbol} to lower Days to Liquidate below 10.0 days.")
+        elif dtl > limits.max_dtl:  # Warning buffer for liquidity
+            warnings.append(f"liquidity_limit_near:{symbol}")
 
     _append_limit_results(
         _exposure(target_snapshot, "region_exposure"),

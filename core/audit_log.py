@@ -220,6 +220,14 @@ class AuditLogStore:
                 ),
             )
             conn.commit()
+
+        # Build cryptographic immutable snapshot for deep audit protection
+        try:
+            from core.audit_snapshot import SnapshotAuditEngine
+            SnapshotAuditEngine().create_snapshot(ticket_id, payload)
+        except Exception:
+            pass
+
         return row
 
     def list_decisions(self, limit: int = 20) -> list[dict]:
@@ -345,18 +353,56 @@ class AuditLogStore:
             if stored_summary[key] != expected:
                 summary_errors.append(f"{key}_mismatch")
         payload_verified = row[1] == computed_hash
+        
+        # Dual-layer verification with cryptographic snapshot
+        snapshot_verified = True
+        snapshot_status = "NOT_FOUND"
+        try:
+            from core.audit_snapshot import SnapshotAuditEngine
+            snap_v = SnapshotAuditEngine().verify_snapshot(ticket_id)
+            snapshot_status = snap_v.get("status", "NOT_FOUND")
+            if snapshot_status == "TAMPERED":
+                payload_verified = False
+                snapshot_verified = False
+            elif snapshot_status == "SUCCESS":
+                snapshot_verified = True
+        except Exception:
+            pass
+            
         summary_verified = not summary_errors
+        
+        # Anomalous Drift Auditor for Stage 3
+        drift_status = "NORMAL"
+        drift_bps = 0.0
+        try:
+            ticket = payload.get("decision_ticket", {})
+            score = float(ticket.get("score") or 80.0)
+            expected_return = score / 1000.0
+            
+            realized_return = float(payload.get("portfolio_return") or payload.get("recommended_action", {}).get("expected_yield", expected_return))
+            
+            drift = abs(realized_return - expected_return)
+            drift_bps = round(drift * 10000.0, 2)
+            if drift > 0.03:  # 300 Bps threshold (3% deviation)
+                drift_status = "ANOMALY_DRIFT"
+        except Exception:
+            pass
+
         return {
             "ticket_id": row[0],
             "verified": payload_verified and summary_verified,
             "payload_verified": payload_verified,
             "summary_verified": summary_verified,
+            "snapshot_verified": snapshot_verified,
+            "snapshot_status": snapshot_status,
             "stored_hash": row[1],
             "computed_hash": computed_hash,
             "stored_summary": stored_summary,
             "computed_summary": expected_summary,
             "summary_errors": summary_errors,
             "error": error,
+            "drift_status": drift_status,
+            "drift_bps": drift_bps,
         }
 
     def verify_recent_decisions(self, limit: int = 100) -> dict:

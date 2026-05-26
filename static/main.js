@@ -1,6 +1,71 @@
 // main.js - Logic and Chart Initialization
-
+// --- 1. Institutional Multi-Portfolio Global Interceptor ---
+window.currentPortfolio = '';
+const originalFetch = window.fetch;
+window.fetch = function(input, init) {
+    if (window.currentPortfolio) {
+        if (typeof input === 'string' && input.startsWith('/api/institutional/')) {
+            const urlObj = new URL(input, window.location.origin);
+            if (!urlObj.searchParams.has('portfolio')) {
+                urlObj.searchParams.set('portfolio', window.currentPortfolio);
+                input = urlObj.pathname + urlObj.search;
+            }
+        } else if (input instanceof Request && input.url.includes('/api/institutional/')) {
+            const urlObj = new URL(input.url);
+            if (!urlObj.searchParams.has('portfolio')) {
+                urlObj.searchParams.set('portfolio', window.currentPortfolio);
+                input = new Request(urlObj.toString(), input);
+            }
+        }
+    }
+    return originalFetch.call(this, input, init);
+};
+window.refreshInstitutionalPanels = function() {
+    console.log("[PORTFOLIO SWITCH] Active portfolio changed to:", window.currentPortfolio);
+    
+    // Rerun specific institutional initializers to hot-reload
+    if (typeof initPortfolio === 'function') initPortfolio();
+    if (typeof initPortfolioLedger === 'function') initPortfolioLedger();
+    if (typeof initInstitutionalDecision === 'function') initInstitutionalDecision();
+    if (typeof initHistoricalScenarios === 'function') initHistoricalScenarios();
+    if (typeof loadBlackLittermanAssets === 'function') loadBlackLittermanAssets();
+    if (typeof loadRiskParityAssets === 'function') loadRiskParityAssets();
+    if (typeof initGenAI === 'function') initGenAI();
+};
+async function initPortfolioSelector() {
+    const selector = document.getElementById('global-portfolio-selector');
+    if (!selector) return;
+    
+    try {
+        const resp = await fetch('/api/institutional/portfolios');
+        const data = await resp.json();
+        
+        let html = '';
+        data.portfolios.forEach(p => {
+            html += `<option value="${p.name}">${p.display_name}</option>`;
+        });
+        selector.innerHTML = html;
+        
+        // Listen to change
+        selector.addEventListener('change', function() {
+            window.currentPortfolio = this.value;
+            window.refreshInstitutionalPanels();
+        });
+        
+        // Set initial
+        if (data.portfolios.length > 0) {
+            window.currentPortfolio = data.portfolios[0].name;
+            selector.value = window.currentPortfolio;
+        }
+    } catch (e) {
+        console.error('Failed to initialize portfolio selector:', e);
+    }
+}
 document.addEventListener("DOMContentLoaded", () => {
+    // Populate portfolio switcher on startup
+    initPortfolioSelector();
+    activateInitialView();
+    window.addEventListener('hashchange', activateViewFromHash);
     const totalPanels = 21;
     let loadedCount = 0;
     const updateProgress = () => {
@@ -12,7 +77,6 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     };
     const track = (fn) => async () => { try { await fn(); } catch(e) {} finally { updateProgress(); } };
-
     // Phase 0: immediate — Dashboard + core macro
     scheduleInitializers([
         [track(initDashboard), 0],
@@ -44,21 +108,23 @@ document.addEventListener("DOMContentLoaded", () => {
         [track(initInstitutionalDecision), 4000],
         [track(initPortfolioLedger), 4500],
         [track(initGenAI), 5000],
+        [track(loadBlackLittermanAssets), 5100],
+        [track(loadRiskParityAssets), 5200],
+        [track(initHistoricalScenarios), 5300],
     ]);
-
-    // Simple smooth scroll for nav links
+    // Simple smooth scroll for in-panel anchor links
     document.querySelectorAll('a[href^="#"]').forEach(anchor => {
         anchor.addEventListener('click', function (e) {
+            if (this.closest('.terminal-nav')) return;
+            const target = document.querySelector(this.getAttribute('href'));
+            if (!target) return;
             e.preventDefault();
-            document.querySelector(this.getAttribute('href')).scrollIntoView({
+            target.scrollIntoView({
                 behavior: 'smooth'
             });
         });
     });
-
-
 });
-
 function scheduleInitializers(jobs) {
     jobs.forEach(([job, delay]) => {
         window.setTimeout(() => {
@@ -70,11 +136,9 @@ function scheduleInitializers(jobs) {
         }, delay);
     });
 }
-
 async function initDashboard() {
     try {
         const d = await fetchJsonWithRetry('/api/macro/decision');
-
         // ── signal ring ──
         const perc = d.score / 100;
         const arc = document.getElementById('signal-arc');
@@ -87,7 +151,6 @@ async function initDashboard() {
         if (st) { st.textContent = d.score; st.style.color = d.color; }
         const sl = document.getElementById('signal-label');
         if (sl) { sl.textContent = d.signal; sl.style.color = d.color; }
-
         // ── regime badge ──
         const rb = document.getElementById('regime-badge');
         if (rb) {
@@ -101,7 +164,6 @@ async function initDashboard() {
         if (rd) {
             rd.textContent = d.factors.map(f => `${f.name}: ${f.score}`).join(' ｜ ');
         }
-
         // ── allocation bars ──
         const ab = document.getElementById('alloc-bars');
         if (ab) {
@@ -118,7 +180,6 @@ async function initDashboard() {
             const w = d.regime_alloc || { spy: 60, tlt: 30, gld: 10, cash: 0 };
             ad.textContent = `股 EQ ${w.spy}% ｜ 债 FI ${w.tlt}% ｜ 金 GLD ${w.gld}% ｜ 现 CASH ${w.cash}%`;
         }
-
         // ── alert banner ──
         const banner = document.getElementById('alert-banner');
         const count = document.getElementById('alert-count');
@@ -147,11 +208,9 @@ async function initDashboard() {
         } else if (banner) {
             banner.style.display = 'none';
         }
-
     } catch (e) {
         console.error('Dashboard failed:', e);
     }
-
     // data freshness
     try {
         const h = await fetch('/api/health');
@@ -176,24 +235,20 @@ async function initDashboard() {
         console.error('Health check failed:', e);
     }
 }
-
 // ── shared panel helper ──────────────────────────────────
 function clearChildren(el) {
     while (el.firstChild) {
         el.removeChild(el.firstChild);
     }
 }
-
 function safeCssColor(value, fallback = '#94a3b8') {
     const text = String(value || '').trim();
     return /^#[0-9a-fA-F]{3,8}$/.test(text) ? text : fallback;
 }
-
 function safeLevelClass(value) {
     const level = String(value || 'info').toLowerCase();
     return ['info', 'warning', 'warn', 'error', 'critical'].includes(level) ? level : 'info';
 }
-
 function appendTextBlock(parent, text, styles = {}) {
     const el = document.createElement('div');
     el.textContent = text ?? '';
@@ -201,7 +256,6 @@ function appendTextBlock(parent, text, styles = {}) {
     parent.appendChild(el);
     return el;
 }
-
 function renderAlertList(list, warnings) {
     clearChildren(list);
     (warnings || []).forEach(warning => {
@@ -211,7 +265,6 @@ function renderAlertList(list, warnings) {
         list.appendChild(row);
     });
 }
-
 function renderScenarioMetric(parent, label, value, color) {
     const box = document.createElement('div');
     appendTextBlock(box, label, { fontSize: '0.65rem', color: '#94a3b8' });
@@ -223,7 +276,6 @@ function renderScenarioMetric(parent, label, value, color) {
     });
     parent.appendChild(box);
 }
-
 function renderScenarioGrid(grid, scenarios) {
     clearChildren(grid);
     (scenarios || []).forEach(scenario => {
@@ -232,7 +284,6 @@ function renderScenarioGrid(grid, scenarios) {
         const benchRet = Number(scenario.bench_ret || 0);
         const isWin = portRet > benchRet;
         const beat = (portRet - benchRet).toFixed(1);
-
         const card = document.createElement('div');
         Object.assign(card.style, {
             background: 'rgba(255,255,255,0.02)',
@@ -243,11 +294,9 @@ function renderScenarioGrid(grid, scenarios) {
             flexDirection: 'column',
             gap: '10px',
         });
-
         appendTextBlock(card, scenario.name || '--', { fontSize: '0.95rem', fontWeight: 'bold', color: '#e2e8f0' });
         appendTextBlock(card, scenario.period || '--', { fontSize: '0.7rem', color: '#94a3b8' });
         appendTextBlock(card, scenario.desc || '', { fontSize: '0.75rem', color: '#64748b', lineHeight: '1.5' });
-
         const metrics = document.createElement('div');
         Object.assign(metrics.style, {
             display: 'grid',
@@ -260,7 +309,6 @@ function renderScenarioGrid(grid, scenarios) {
         renderScenarioMetric(metrics, 'Strategy return', `${portRet}%`, color);
         renderScenarioMetric(metrics, 'Benchmark return', `${benchRet}%`, '#ef4444');
         card.appendChild(metrics);
-
         appendTextBlock(card, `Strategy ${isWin ? 'leads' : 'lags'} benchmark ${isWin ? '+' : ''}${beat}%`, {
             fontSize: '0.7rem',
             color: isWin ? '#4ade80' : '#ef4444',
@@ -274,56 +322,74 @@ function renderScenarioGrid(grid, scenarios) {
             color,
             alignSelf: 'flex-start',
         });
-
         grid.appendChild(card);
     });
 }
-
 function formatTopExposure(exposure) {
     const rows = Object.entries(exposure || {})
         .map(([name, weight]) => [name, Number(weight) || 0])
         .filter(([, weight]) => weight > 0)
         .sort((a, b) => b[1] - a[1]);
-
     if (!rows.length) return '--';
-
     return rows
         .slice(0, 2)
         .map(([name, weight]) => `${name} ${Math.round(weight * 100)}%`)
         .join(' / ');
 }
-
 function formatReasonCodes(reasonCodes) {
     const codes = (reasonCodes || []).map(item => item.code).filter(Boolean);
     if (!codes.length) return '--';
     return codes.slice(0, 3).join(' / ');
 }
-
 function shortHash(value) {
     const text = String(value || '');
     return text ? text.slice(0, 12) : '--';
 }
-
 function formatTopFactor(factorRisk) {
     const top = factorRisk?.top_factor || {};
     if (!top.factor_name) return '--';
     const exposure = Number(top.exposure || 0);
     return `${top.factor_group}:${top.factor_name} ${Math.round(exposure * 100)}%`;
 }
-
+function getSymbolChineseName(symbol) {
+    if (window.symbolNamesCache && window.symbolNamesCache[symbol]) {
+        return window.symbolNamesCache[symbol];
+    }
+    if (window.portfolioData && window.portfolioData.positions) {
+        const p = window.portfolioData.positions.find(pos => pos.symbol === symbol);
+        if (p && p.name) return p.name;
+    }
+    const assetZH = {
+        'CSI300_ETF': '沪深300ETF',
+        'CSI300': '沪深300指数',
+        '688981': '中芯国际',
+        '600519': '贵州茅台',
+        'CASH': '现金账户'
+    };
+    if (assetZH[symbol]) return assetZH[symbol];
+    const base = symbol.split('.')[0];
+    if (assetZH[base]) return assetZH[base];
+    return symbol;
+}
 function formatLargestActive(activeRisk) {
     const row = (activeRisk?.largest_active_exposures || [])[0];
     if (!row) return '--';
     return `${row.symbol} ${Math.round((row.active_weight || 0) * 1000) / 10}%`;
 }
-
+function formatLargestActiveHTML(activeRisk) {
+    const row = (activeRisk?.largest_active_exposures || [])[0];
+    if (!row) return '--';
+    const symbol = row.symbol || '';
+    const pct = `${Math.round((row.active_weight || 0) * 1000) / 10}%`;
+    const name = getSymbolChineseName(symbol);
+    return `<span style="font-size:1.05rem; font-weight:800; color:var(--text-primary); font-family:var(--font-sans);">${name}</span><span style="font-family:var(--font-mono); font-size:0.7rem; color:var(--text-tertiary); margin-left:6px; font-weight:400;">(${symbol})</span><span style="font-family:var(--font-mono); font-size:1.15rem; font-weight:800; color:var(--accent-primary); margin-left:10px; text-shadow:0 0 10px rgba(56,189,248,0.4);">${pct}</span>`;
+}
 function formatComplianceIssues(compliance) {
     const violations = compliance?.violations || [];
     const warnings = compliance?.warnings || [];
     const issues = violations.length ? violations : warnings;
     return issues.length ? issues.slice(0, 3).join(' / ') : 'clear';
 }
-
 function formatAttribution(attribution) {
     if (!attribution) return '--';
     const decision = Number(attribution.decision_effect || 0);
@@ -331,14 +397,12 @@ function formatAttribution(attribution) {
     const selection = Number(attribution.selection_effect || 0);
     return `D ${Math.round(decision * 10000) / 100}bp / A ${Math.round(allocation * 10000) / 100}bp / S ${Math.round(selection * 10000) / 100}bp`;
 }
-
 function formatEvidence(evidenceChain) {
     const items = evidenceChain?.items || [];
     const weak = items.filter(item => item.direction === 'below_threshold');
     const sourceMode = evidenceChain?.source_quality?.mode || 'unknown';
     return `${sourceMode} / ${weak.length} watch`;
 }
-
 function renderAllocationWeightRows(model) {
     const allocationModelWeights = document.getElementById('allocation-model-weights');
     if (!allocationModelWeights) return;
@@ -362,7 +426,6 @@ function renderAllocationWeightRows(model) {
         allocationModelWeights.appendChild(row);
     });
 }
-
 function renderAllocationTradeRows(model) {
     const allocationModelTrades = document.getElementById('allocation-model-trades');
     if (!allocationModelTrades) return;
@@ -371,7 +434,6 @@ function renderAllocationTradeRows(model) {
         ? trades.slice(0, 4).map(row => `${row.symbol} ${row.delta_weight > 0 ? '+' : ''}${Math.round(row.delta_weight * 1000) / 10}%`).join(' / ')
         : 'no trade';
 }
-
 function renderAllocationEvidenceRows(model) {
     const allocationModelEvidence = document.getElementById('allocation-model-evidence');
     if (!allocationModelEvidence) return;
@@ -380,11 +442,9 @@ function renderAllocationEvidenceRows(model) {
         ? evidence.slice(0, 3).map(row => row.code || row.message || 'evidence').join(' / ')
         : '--';
 }
-
 function renderAllocationReviewSchedule(model) {
     setFlowText('allocation-model-review', (model.review_schedule || []).join(' / ') || '--');
 }
-
 function renderAllocationModel(model) {
     const panel = document.getElementById('allocation-model-panel');
     if (!panel) return;
@@ -400,7 +460,6 @@ function renderAllocationModel(model) {
     renderAllocationReviewSchedule(model);
     renderAllocationTradeTable(model);
     renderAllocationEvidenceRows(model);
-
     // ── Zone indicator ──
     const mStatus = model.status || 'unknown';
     const zone = document.getElementById('allocation-model-zone');
@@ -420,7 +479,6 @@ function renderAllocationModel(model) {
         zone.style.padding='6px 16px'; zone.style.borderRadius='6px';
         zone.style.border=`1px solid ${zc}30`;
     }
-
     // color constraint cell
     const cs = document.getElementById('allocation-model-constraint');
     if (cs) {
@@ -429,7 +487,6 @@ function renderAllocationModel(model) {
         else cs.className = 'risk-medium';
     }
 }
-
 function renderAllocationTradeTable(model) {
     const el = document.getElementById('allocation-model-trades-table');
     if (!el) return;
@@ -449,15 +506,12 @@ function renderAllocationTradeTable(model) {
             </tr>`;
         }).join('') + '</tbody></table>';
 }
-
-
 const ACTION_ZH = {
     "Proceed with proposed rebalance.": "准予执行该调仓计划 (PROCEED)",
     "Do not execute the proposed rebalance.": "拒绝/中止该调仓计划 (BLOCK)",
     "Wait for better execution window.": "建议暂缓执行寻找更佳窗口 (WAIT)",
     "Requires manual review.": "需要人工风控介入复核 (REVIEW)"
 };
-
 const REASON_ZH = {
     "scenario_loss_high": "尾部风险超限 (Scenario Loss)",
     "constraint_cash_below_minimum": "现金流耗竭警告 (Cash Minimum)",
@@ -466,13 +520,14 @@ const REASON_ZH = {
     "factor_volatility_high": "组合波动率因子过高 (Factor Volatility)",
     "compliance_passed": "各项合规/风控指标均达标 (Compliance Passed)"
 };
-
 async function initInstitutionalDecision() {
     const panel = document.getElementById('view-institutional');
     if (!panel) return;
-
     try {
         const data = await fetchJsonWithRetry('/api/institutional/decision');
+        if (data && data.l3_routing && data.l3_routing.symbol_names) {
+            window.symbolNamesCache = data.l3_routing.symbol_names;
+        }
         const auditResp = await fetch('/api/institutional/audit/decisions?limit=10');
         
         
@@ -506,42 +561,6 @@ async function initInstitutionalDecision() {
         const active_risk = data.active_risk || {};
         const compliance = data.compliance || {};
         const attribution = data.attribution || {};
-
-        // Score Gauge
-        const score = ticket.score ?? 0;
-        const perc = score / 100;
-        const arc = document.getElementById('decision-gauge-arc');
-        if (arc) {
-            const len = 327 * Math.max(0.02, perc);
-            arc.setAttribute('stroke-dasharray', `${len} ${327 - len}`);
-            const gaugeColor = score >= 80 ? '#22c55e' : score >= 60 ? '#fbbf24' : score >= 40 ? '#f97316' : '#ef4444';
-            arc.setAttribute('stroke', gaugeColor);
-        }
-        const gtxt = document.getElementById('decision-gauge-text');
-        if (gtxt) { gtxt.textContent = score; gtxt.style.color = score >= 80 ? '#22c55e' : score >= 60 ? '#fbbf24' : '#ef4444'; }
-        
-        // Hero Action
-        const actionHero = document.getElementById('decision-action-hero');
-        if (actionHero) {
-            const actText = action.action || ticket.suggested_action || '--';
-            const mappedText = ACTION_ZH[actText] || actText;
-            const ticketStatus = ticket.decision_status || '';
-            if (ticketStatus === 'allow') actionHero.style.color = '#22c55e';
-            else if (ticketStatus === 'observe' || ticketStatus === 'block') actionHero.style.color = '#ef4444';
-            else actionHero.style.color = '#fbbf24';
-            actionHero.textContent = mappedText;
-        }
-        
-        const reasonHero = document.getElementById('decision-reason-hero');
-        if (reasonHero) {
-            const codes = explanation.reason_codes || [];
-            const driver = explanation.primary_driver?.code || '';
-            const text = codes.length 
-                ? codes.map(c => { const code = c.code || c; return REASON_ZH[code] || code; }).join('  |  ') 
-                : (REASON_ZH[driver] || driver || '--');
-            reasonHero.innerHTML = `<span style="color:var(--text-tertiary);">▸</span> <span>${text}</span>`;
-        }
-        
         const tradesAlert = document.getElementById('decision-trades-alert');
         if (tradesAlert) {
             const trades = ticket.proposed_trades || [];
@@ -558,18 +577,16 @@ async function initInstitutionalDecision() {
                 tradesAlert.innerHTML = '';
             }
         }
-
         // Risk Profile
         setFlowText('decision-var', `${risk.var_95_pct ?? '--'}%`);
         setFlowText('decision-worst', `${worst.portfolio_loss_pct ?? '--'}%`);
         setFlowText('decision-primary-driver', explanation.primary_driver?.code || '--');
         setFlowText('decision-concentration', portfolio.concentration_level || '--');
-
         // Factor Exposure
         setFlowText('workbench-top-factor', formatTopFactor(factor_risk));
         setFlowText('workbench-tracking-error', `${active_risk.tracking_error_proxy_pct ?? '--'}%`);
-        setFlowText('workbench-largest-active', formatLargestActive(active_risk));
-
+        const activeEl = document.getElementById('workbench-largest-active');
+        if (activeEl) activeEl.innerHTML = formatLargestActiveHTML(active_risk);
         // Audit Trail Table
         const tbody = document.getElementById('audit-log-table-body');
         if (tbody) {
@@ -600,7 +617,6 @@ async function initInstitutionalDecision() {
         console.error('Error fetching institutional decision:', error);
     }
 }
-
 function initPanel({url, indicatorId, insightId, onData, onError}) {
     fetchJsonWithRetry(url).then(d=>{
         if(d.error)throw new Error(d.error);
@@ -612,7 +628,6 @@ function initPanel({url, indicatorId, insightId, onData, onError}) {
         if(ind){ind.innerText='加载失败';ind.style.color='#ef4444';}
     });
 }
-
 // Common ECharts styling for dark theme
 const chartTheme = {
     color: ['#00F0FF', '#7000FF', '#4ade80', '#fbbf24'],
@@ -625,7 +640,6 @@ const chartTheme = {
     },
     grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true }
 };
-
 // Fetch real data from our FastAPI Quant Engine
 async function fetchMacroData(endpoint) {
     try {
@@ -641,7 +655,6 @@ async function fetchMacroData(endpoint) {
         };
     }
 }
-
 async function initERPChart() {
     const chartDom = document.getElementById('erp-chart');
     if (!chartDom) return;
@@ -652,7 +665,6 @@ async function initERPChart() {
     
     const macroData = await fetchMacroData('erp');
     myChart.hideLoading();
-
     // Dynamically update Quant Signals in DOM
     const ind = document.getElementById('tnx-indicator');
     const ins = document.getElementById('tnx-insight');
@@ -665,7 +677,6 @@ async function initERPChart() {
     }
     
     const lineColor = macroData.signal_color || '#00F0FF';
-
     const option = {
         backgroundColor: 'transparent',
         color: [lineColor],
@@ -715,11 +726,9 @@ async function initERPChart() {
             }
         ]
     };
-
     myChart.setOption(option);
     window.addEventListener('resize', () => myChart.resize());
 }
-
 function initSpreadChart() {
     const chartDom = document.getElementById('spread-chart');
     if (!chartDom) return;
@@ -728,7 +737,6 @@ function initSpreadChart() {
     
     fetchMacroData('spread').then(macroData => {
         myChart.hideLoading();
-
         // Dynamically update Quant Signals in DOM
         const ind = document.getElementById('vix-indicator');
         const ins = document.getElementById('vix-insight');
@@ -739,9 +747,7 @@ function initSpreadChart() {
             ind.style.boxShadow = `0 0 10px ${macroData.signal_color}40`;
             ins.innerText = macroData.action_insight;
         }
-
         const lineColor = macroData.signal_color || '#7000FF';
-
         const option = {
             backgroundColor: 'transparent',
             color: [lineColor],
@@ -786,18 +792,15 @@ function initSpreadChart() {
                 }
             ]
         };
-
         myChart.setOption(option);
     });
     
     window.addEventListener('resize', () => myChart.resize());
 }
-
 async function initSignals() {
     try {
         const data = await fetchJsonWithRetry('/api/macro/signals');
         if (data.error) return;
-
         const containers = { tnx: 'tnx-insight', vix: 'vix-insight' };
         for (const [key, elId] of Object.entries(containers)) {
             const el = document.getElementById(elId);
@@ -812,17 +815,14 @@ async function initSignals() {
         console.error("Signals failed:", e);
     }
 }
-
 async function initYieldCurve() {
     const chartDom = document.getElementById('yieldcurve-chart');
     if (!chartDom) return;
     const myChart = echarts.init(chartDom, 'dark');
     myChart.showLoading({ text: '拉取期限结构...', color: '#fbbf24', textColor: '#fff', maskColor: 'rgba(20, 20, 25, 0.8)' });
-
     try {
         const data = await fetchJsonWithRetry('/api/macro/yield_curve');
         myChart.hideLoading();
-
         const ind = document.getElementById('yc-indicator');
         const ins = document.getElementById('yc-insight');
         if (ind && ins) {
@@ -832,7 +832,6 @@ async function initYieldCurve() {
             ind.style.boxShadow = `0 0 10px ${data.signal_color}40`;
             ins.innerText = data.insight;
         }
-
         const option = {
             backgroundColor: 'transparent',
             tooltip: { trigger: 'axis', axisPointer: { type: 'cross' } },
@@ -880,7 +879,6 @@ async function initYieldCurve() {
         console.error("Yield curve failed:", e);
     }
 }
-
 async function initAllocationChart() {
     const chartDom = document.getElementById('allocation-chart');
     if (!chartDom) return;
@@ -891,7 +889,6 @@ async function initAllocationChart() {
     try {
         const allocData = await fetchJsonWithRetry('/api/macro/allocation');
         myChart.hideLoading();
-
         const ind = document.getElementById('alloc-indicator');
         const ins = document.getElementById('alloc-insight');
         if (ind && ins) {
@@ -901,7 +898,6 @@ async function initAllocationChart() {
             ind.style.boxShadow = `0 0 10px rgba(74, 222, 128, 0.4)`;
             ins.innerText = `当前宏观锚点: VIX=${allocData.vix_ref} | 10Y=${allocData.tnx_ref}% | DXY=${allocData.dxy_ref}。引擎已自动输出当前宏观状态下的极简持仓比例。`;
         }
-
         const option = {
             backgroundColor: 'transparent',
             color: ['#00F0FF', '#7000FF', '#4ade80', '#fbbf24', '#ef4444'],
@@ -956,7 +952,6 @@ async function initAllocationChart() {
         console.error("Allocation sandbox failed:", e);
     }
 }
-
 async function initCorrelationChart() {
     const chartDom = document.getElementById('correlation-chart');
     if (!chartDom) return;
@@ -966,9 +961,7 @@ async function initCorrelationChart() {
     try {
         const corrData = await fetchJsonWithRetry('/api/macro/correlation');
         myChart.hideLoading();
-
         if (corrData.error) throw new Error(corrData.error);
-
         const ind = document.getElementById('corr-indicator');
         const ins = document.getElementById('corr-insight');
         const banner = document.getElementById('corr-action-banner');
@@ -982,14 +975,12 @@ async function initCorrelationChart() {
             ind.style.boxShadow = `0 0 10px ${color}40`;
             ins.textContent = corrData.insight;
         }
-
         if (corrData.extreme_action && banner && actionText) {
             banner.style.display = 'block';
             actionText.innerText = corrData.extreme_action;
         } else if (banner) {
             banner.style.display = 'none';
         }
-
         const option = {
             backgroundColor: 'transparent',
             tooltip: {
@@ -1050,23 +1041,19 @@ async function initCorrelationChart() {
         console.error("Correlation matrix failed:", e);
     }
 }
-
 async function initEfficientFrontier() {
     const chartDom = document.getElementById('frontier-chart');
     if (!chartDom) return;
     const myChart = echarts.init(chartDom, 'dark');
     myChart.showLoading({ text: '优化计算中...', color: '#7000FF', textColor: '#fff', maskColor: 'rgba(20, 20, 25, 0.8)' });
-
     try {
         const data = await fetchJsonWithRetry('/api/macro/efficient_frontier');
         myChart.hideLoading();
         if (data.error) throw new Error(data.error);
-
         const ind = document.getElementById('ef-indicator');
         const ins = document.getElementById('ef-insight');
         if (ind) { ind.innerText = '前沿计算完成'; ind.style.color = '#a78bfa'; ind.style.borderColor = '#a78bfa'; }
         if (ins) ins.innerText = data.insight;
-
         const option = {
             backgroundColor: 'transparent',
             tooltip: { trigger: 'item', formatter: p => `${p.seriesName}<br/>收益: ${p.value[0]}%  |  波动: ${p.value[1]}%` },
@@ -1110,30 +1097,24 @@ async function initEfficientFrontier() {
         console.error("Efficient frontier failed:", e);
     }
 }
-
 async function initScenarioTest() {
     const grid = document.getElementById('scenario-grid');
     const ind = document.getElementById('sc-indicator');
     const ins = document.getElementById('sc-insight');
     if (!grid || !ind) return;
-
     try {
         const data = await fetchJsonWithRetry('/api/macro/scenario');
-
         ind.innerText = '三情景穿透完成';
         ind.style.color = '#fbbf24';
         ind.style.borderColor = '#fbbf24';
         if (ins) ins.innerText = data.insight;
-
         renderScenarioGrid(grid, data.scenarios);
-
     } catch (e) {
         console.error("Scenario test failed:", e);
         ind.innerText = '推演失败';
         ind.style.color = '#ef4444';
     }
 }
-
 async function initMonteCarloChart() {
     const chartDom = document.getElementById('mc-chart');
     if (!chartDom) return;
@@ -1143,9 +1124,7 @@ async function initMonteCarloChart() {
     try {
         const mcData = await fetchJsonWithRetry('/api/macro/montecarlo');
         myChart.hideLoading();
-
         if (mcData.error) throw new Error(mcData.error);
-
         const ind = document.getElementById('mc-indicator');
         const ins = document.getElementById('mc-insight');
         if (ind && ins) {
@@ -1155,7 +1134,6 @@ async function initMonteCarloChart() {
             ind.style.boxShadow = `0 0 10px ${mcData.color}40`;
             ins.innerText = mcData.insight;
         }
-
         const option = {
             backgroundColor: 'transparent',
             tooltip: {
@@ -1219,7 +1197,6 @@ async function initMonteCarloChart() {
         console.error("Monte Carlo simulation failed:", e);
     }
 }
-
 const rotationPanelConfigs = [
     {
         domId: 'sector-chart',
@@ -1254,35 +1231,27 @@ const rotationPanelConfigs = [
         theme: 'global',
     },
 ];
-
 function initRotationPanels() {
     rotationPanelConfigs.forEach((config, index) => {
         window.setTimeout(() => initTreemapChart(config), index * 350);
     });
 }
-
 async function initTreemapChart(config) {
     const { domId, apiUrl, indicatorId, insightId, successText, theme } = config;
     const chartDom = document.getElementById(domId);
     const panel = document.querySelector(`[data-rotation-panel="${domId}"]`);
     if (!chartDom || !panel) return;
-
     let activePeriod = 'ret_20d';
     let items = [];
-
     chartDom.innerHTML = '<div style="height:100%; display:flex; align-items:center; justify-content:center; color:#2563eb; font-family:var(--font-mono); font-size:0.9rem;">引擎演算中...</div>';
-
     try {
         const payload = await fetchJsonWithRetry(apiUrl, 3, 650);
         if (payload.error) throw new Error(payload.error);
-
         items = normalizeRotationItems(payload);
         if (!items.length) throw new Error('No rotation data returned');
-
         setRotationStatus(indicatorId, successText, 'ok');
         const insight = document.getElementById(insightId);
         if (insight) insight.textContent = payload.insight || buildRotationInsight(items, activePeriod);
-
         bindRotationControls(panel, chartDom, items, theme, activePeriod, nextPeriod => {
             activePeriod = nextPeriod;
             renderRotationPanel(panel, chartDom, items, theme, activePeriod);
@@ -1296,7 +1265,6 @@ async function initTreemapChart(config) {
         console.error(domId + ' failed:', e);
     }
 }
-
 async function fetchJsonWithRetry(url, attempts = 25, delayMs = 1500) {
     let lastError;
     for (let attempt = 1; attempt <= attempts; attempt++) {
@@ -1321,11 +1289,9 @@ async function fetchJsonWithRetry(url, attempts = 25, delayMs = 1500) {
     }
     throw lastError;
 }
-
 function sleep(ms) {
     return new Promise(resolve => window.setTimeout(resolve, ms));
 }
-
 function normalizeRotationItems(payload) {
     const raw = payload.sectors || payload.items || [];
     return raw.map(item => ({
@@ -1337,7 +1303,6 @@ function normalizeRotationItems(payload) {
         ret_60d: Number(item.ret_60d || 0),
     })).filter(item => item.name !== '--');
 }
-
 function bindRotationControls(panel, chart, items, theme, activePeriod, onPeriodChange) {
     const buttons = panel.querySelectorAll('.rotation-controls button[data-period]');
     buttons.forEach(button => {
@@ -1348,7 +1313,6 @@ function bindRotationControls(panel, chart, items, theme, activePeriod, onPeriod
         };
     });
 }
-
 function renderRotationPanel(panel, chartDom, items, theme, periodKey) {
     const ranked = [...items].sort((a, b) => b[periodKey] - a[periodKey]);
     const top = ranked.slice(0, 5);
@@ -1356,7 +1320,6 @@ function renderRotationPanel(panel, chartDom, items, theme, periodKey) {
     const positives = items.filter(item => item[periodKey] > 0).length;
     const breadth = Math.round((positives / Math.max(items.length, 1)) * 100);
     const marketRead = breadth >= 65 ? '强势扩散' : (breadth <= 35 ? '弱势收缩' : '结构分化');
-
     setPanelText(panel, 'market-read', marketRead);
     setPanelText(panel, 'coverage', `${items.length}/${items.length}`);
     setPanelText(panel, 'leader', top[0]?.name || '--');
@@ -1365,13 +1328,11 @@ function renderRotationPanel(panel, chartDom, items, theme, periodKey) {
     renderRankList(panel, 'bottom', bottom, periodKey);
     renderSparklineTable(chartDom, ranked, theme, periodKey);
 }
-
 function setPanelText(panel, suffix, value) {
     const id = `${panel.dataset.rotationPanel}-${suffix}`;
     const el = document.getElementById(id);
     if (el) el.textContent = value;
 }
-
 function renderRankList(panel, suffix, rows, periodKey) {
     const id = `${panel.dataset.rotationPanel}-${suffix}`;
     const el = document.getElementById(id);
@@ -1382,7 +1343,6 @@ function renderRankList(panel, suffix, rows, periodKey) {
         return `<li><span>${item.name}</span><strong class="${cls}">${formatPct(val)}</strong></li>`;
     }).join('');
 }
-
 function renderSparklineTable(chartDom, items, theme, periodKey) {
     const cols = ['ret_5d', 'ret_20d', 'ret_60d'];
     const colLabels = ['5D', '20D', '60D'];
@@ -1432,7 +1392,6 @@ function renderSparklineTable(chartDom, items, theme, periodKey) {
                     <div style="font-size:0.6rem; color:${isTarget?'#e2e8f0':'var(--text-tertiary)'}; position:absolute; bottom:0; font-weight:${isTarget?'800':'600'}; line-height:1;">${colLabels[idx]}</div>
                 </div>`;
             }).join('');
-
             return `<tr style="background:${rowBg}; border-bottom:1px solid rgba(255,255,255,0.03);">
                 <td style="padding-left:16px; font-weight:700; color:var(--text-primary); font-size:0.85rem; letter-spacing:0.5px;">${a.name}</td>
                 <td style="text-align:left;"><span style="background:${arrowBg}; color:${arrowColor}; border: 1px solid ${arrowColor}60; padding:4px 8px; border-radius:4px; font-size:0.65rem; font-weight:800; letter-spacing:1px; box-shadow: 0 0 10px ${arrowBg};">${arrow}</span></td>
@@ -1446,7 +1405,6 @@ function renderSparklineTable(chartDom, items, theme, periodKey) {
         
     chartDom.innerHTML = tableHtml;
 }
-
 function rotationColor(value, theme) {
     const v = Math.max(-12, Math.min(12, Number(value) || 0));
     const intensity = Math.min(1, Math.abs(v) / 8);
@@ -1461,19 +1419,16 @@ function rotationColor(value, theme) {
     const alpha = 0.38 + intensity * 0.52;
     return `rgba(${base[0]}, ${base[1]}, ${base[2]}, ${alpha})`;
 }
-
 function formatPct(value) {
     const n = Number(value) || 0;
     return `${n > 0 ? '+' : ''}${n.toFixed(2)}%`;
 }
-
 function buildRotationInsight(items, periodKey) {
     const ranked = [...items].sort((a, b) => b[periodKey] - a[periodKey]);
     const top = ranked.slice(0, 3).map(item => item.name).join(', ');
     const bottom = ranked.slice(-3).reverse().map(item => item.name).join(', ');
     return `近端领涨: ${top || '--'} | 领跌: ${bottom || '--'}`;
 }
-
 function setRotationStatus(indicatorId, text, status) {
     const el = document.getElementById(indicatorId);
     if (!el) return;
@@ -1481,7 +1436,6 @@ function setRotationStatus(indicatorId, text, status) {
     el.classList.toggle('is-error', status === 'error');
     el.classList.toggle('is-ok', status === 'ok');
 }
-
 async function initChinaMacro() {
     const gd = document.getElementById('china-macro-grid');
     if (!gd) return;
@@ -1510,7 +1464,6 @@ async function initChinaMacro() {
         document.getElementById('cm-insight').innerText=`CPI ${d.cpi?.current}% (${d.cpi?.signal}) | PMI ${d.pmi?.current} (${d.pmi?.signal}) | M2 ${d.m2?.current}% (${d.m2?.signal}) | GDP ${d.gdp?.current}% (${d.gdp?.signal})`;
     }catch(e){console.error('China macro:',e);}
 }
-
 async function initMarketBreadth() {
     const cd = document.getElementById('breadth-chart');
     if (!cd) return;
@@ -1523,12 +1476,10 @@ async function initMarketBreadth() {
         const currentFlow = Number(today.current_flow ?? today.up ?? 0);
         const flow5d = Number(today.flow_5d ?? 0);
         const flow20d = Number(today.flow_20d ?? 0);
-
         setFlowText('mb-current-flow', formatMoneyFlow(currentFlow));
         setFlowText('mb-flow-5d', formatMoneyFlow(flow5d));
         setFlowText('mb-flow-20d', formatMoneyFlow(flow20d));
         setFlowText('mb-flow-signal', d.signal || '--');
-
         const indicator = document.getElementById('mb-indicator');
         if (indicator) {
             indicator.innerText = d.signal || '已更新';
@@ -1536,7 +1487,6 @@ async function initMarketBreadth() {
             indicator.classList.toggle('is-ok', flow.length > 0);
         }
         document.getElementById('mb-insight').innerText = d.insight;
-
         mc.setOption({
             backgroundColor: 'transparent',
             tooltip: {
@@ -1563,22 +1513,18 @@ async function initMarketBreadth() {
         window.addEventListener('resize',()=>mc.resize());
     }catch(e){console.error('Market breadth:',e);}
 }
-
 function setFlowText(id, value) {
     const el = document.getElementById(id);
     if (el) el.textContent = value;
 }
-
 function formatMoneyFlow(value) {
     const n = Number(value) || 0;
     return `${n > 0 ? '+' : ''}${n.toFixed(1)}亿`;
 }
-
 function formatTradeDate(value) {
     const s = String(value || '');
     return s.length === 8 ? `${s.slice(4, 6)}-${s.slice(6, 8)}` : s;
 }
-
 async function initFedProb() {
     const cd=document.getElementById('fed-chart'); if(!cd)return;
     const mc=echarts.init(cd,'dark');
@@ -1600,25 +1546,21 @@ async function initFedProb() {
         window.addEventListener('resize',()=>mc.resize());
     }catch(e){console.error('Fed prob:',e);}
 }
-
 async function initGlobalAssets() {
     const el=document.getElementById('global-assets-table'); if(!el)return;
     try{
         // Global assets takes ~21s to warm cache due to 14 sequential API calls (1.5s rate limit each)
         const d=await fetchJsonWithRetry('/api/macro/global_assets', 20, 1500);
-
         // ── Backend composite sentiment ──
         const sig = d.composite || {};
         document.getElementById('ga-indicator').innerHTML =
             `已更新 ${d.updated} <span style="display:inline-flex;align-items:center;gap:4px;margin-left:8px;padding:2px 10px;background:${sig.color||'#64748b'}20;border:1px solid ${sig.color||'#64748b'}30;border-radius:4px;font-size:0.7rem;font-weight:600;color:${sig.color||'#64748b'};box-shadow: 0 0 8px ${sig.color||'#64748b'}40;">${sig.zone||'--'} ${sig.pct_up||0}%↑</span>`;
-
         if (!d.assets || !d.assets.length) { el.innerHTML='<div style="color:#64748b;padding:12px;">暂无数据</div>'; return; }
         const cols=['daily','weekly','monthly','quarterly','ytd'];
         const colLabels=['1D','1W','1M','1Q','YTD'];
         
         // Calculate global max absolute return for proper cross-asset visual scaling
         const globalMaxAbs = Math.max(...d.assets.flatMap(a => cols.map(k => Math.abs(Number(a[k]||0)))), 0.01);
-
         const tableHtml = `<div style="overflow-y:auto; height:100%; max-height: 480px; border:1px solid rgba(255,255,255,0.08); border-radius:6px; background:rgba(0,0,0,0.2); box-shadow:inset 0 0 20px rgba(0,0,0,0.5);">
             <table class="institutional-table" style="margin:0; width:100%;">
                 <thead style="position:sticky; top:0; z-index:10; background:rgba(15,23,42,0.95); backdrop-filter:blur(8px); border-bottom:1px solid rgba(255,255,255,0.1);">
@@ -1661,7 +1603,6 @@ async function initGlobalAssets() {
                         <div style="font-size:0.6rem; color:var(--text-tertiary); position:absolute; bottom:0; font-weight:600; line-height:1;">${colLabels[idx]}</div>
                     </div>`;
                 }).join('');
-
                 const score = Number(a.score || 0);
                 const rsRating = Number(a.rs_rating || 0);
                 
@@ -1690,13 +1631,11 @@ async function initGlobalAssets() {
         el.innerHTML = tableHtml;
     }catch(e){console.error('Global assets:',e); el.innerHTML='<div style="color:#ef4444;padding:12px;font-family:var(--font-mono);">[SYS_ERR] 数据流断开或触发断路器保护</div>';}
 }
-
 async function initValuation() {
     const gd=document.getElementById('valuation-grid'); if(!gd)return;
     try{
         const d=await fetchJsonWithRetry('/api/macro/valuation');
         document.getElementById('val-indicator').innerText='已更新 '+d.updated;
-
         // ── Composite Zone Indicator ──
         const items = d.indices || [];
         const extreme = items.filter(i => (i.pe_pct||i.price_pct||0) > 95).length;
@@ -1715,7 +1654,6 @@ async function initValuation() {
         }
         document.getElementById('val-insight').innerHTML =
             `${d.insight}<br><span style="display:inline-flex;align-items:center;gap:6px;margin-top:4px;padding:4px 12px;background:${zb};border:1px solid ${zc}30;border-radius:4px;font-size:0.72rem;font-weight:600;color:${zc};">${zt} ${za}</span>`;
-
         gd.innerHTML=items.map(i=>{
             const isExtreme = (i.pe_pct||i.price_pct||0) > 95;
             const extremeBorder = isExtreme ? 'border-color:rgba(239,68,68,0.4)!important;box-shadow:0 0 12px rgba(239,68,68,0.15);' : '';
@@ -1756,7 +1694,6 @@ async function initValuation() {
         }).join('');
     }catch(e){console.error('Valuation:',e);}
 }
-
 async function initAlertCenter() {
     const el = document.getElementById('alert-rules-list');
     if (!el) return;
@@ -1782,7 +1719,6 @@ async function initAlertCenter() {
         console.error('Alert center:', e);
     }
 }
-
 async function initSurpriseIndex() {
     const cd = document.getElementById('surprise-chart');
     if (!cd) return;
@@ -1809,7 +1745,6 @@ async function initSurpriseIndex() {
         window.addEventListener('resize', () => mc.resize());
     } catch (e) { console.error('Surprise index:', e); }
 }
-
 async function initPortfolio() {
     try {
         const d = await fetchJsonWithRetry('/api/portfolio/summary');
@@ -1820,10 +1755,14 @@ async function initPortfolio() {
         pnlEl.textContent = `${d.total_pnl >= 0 ? '+' : ''}¥${d.total_pnl.toLocaleString()} (${d.total_pnl_pct > 0 ? '+' : ''}${d.total_pnl_pct}%)`;
         pnlEl.style.color = d.total_pnl >= 0 ? '#22c55e' : '#ef4444';
         document.getElementById('portfolio-table').innerHTML = `<table class="institutional-table"><thead><tr><th>标的</th><th>持仓</th><th>成本</th><th>现价</th><th>市值</th><th>盈亏</th></tr></thead><tbody>` +
-            d.holdings.map(h => `<tr><td>${h.name||h.symbol}</td><td>${h.qty}</td><td>${h.cost}</td><td>${h.current}</td><td>${h.market_value.toLocaleString()}</td><td style="color:${h.pnl_pct>=0?'#22c55e':'#ef4444'};font-weight:600;">${h.pnl_pct>0?'+':''}${h.pnl_pct}%</td></tr>`).join('') + '</tbody></table>';
+            d.holdings.map(h => {
+                const nameStr = h.name || '--';
+                const symbolStr = h.symbol || '--';
+                const assetCell = `<div style="display:flex; flex-direction:column; gap:2px;"><span style="font-weight:700; color:var(--text-primary); font-size:0.9rem;">${nameStr}</span><span style="font-family:var(--font-mono); font-size:0.7rem; color:var(--text-tertiary);">${symbolStr}</span></div>`;
+                return `<tr><td>${assetCell}</td><td>${h.qty}</td><td>${h.cost}</td><td>${h.current}</td><td>${h.market_value.toLocaleString()}</td><td style="color:${h.pnl_pct>=0?'#22c55e':'#ef4444'};font-weight:600;">${h.pnl_pct>0?'+':''}${h.pnl_pct}%</td></tr>`;
+            }).join('') + '</tbody></table>';
     } catch (e) { console.error('Portfolio:', e); }
 }
-
 async function initMarginMonitor() {
     const cd = document.getElementById('margin-chart');
     if (!cd) return;
@@ -1885,7 +1824,6 @@ async function initMarginMonitor() {
         window.addEventListener('resize', () => mc.resize());
     } catch (e) { console.error('Margin:', e); }
 }
-
 async function initDividendLeaders() {
     const el = document.getElementById('dividend-table');
     if (!el) return;
@@ -1911,7 +1849,6 @@ async function initDividendLeaders() {
                     <span style="color:var(--text-primary);font-weight:700;font-size:0.85rem;letter-spacing:0.5px;">${assetName}</span>
                     <div>${formattedCode}</div>
                 </div>`;
-
                 const yieldPct = Math.min((Number(s.div_yield) / 12) * 100, 100);
                 const barColor = s.div_yield >= 8 ? 'rgba(16,185,129,0.2)' : 'rgba(52,211,153,0.1)';
                 const textColor = s.div_yield >= 8 ? '#10b981' : '#34d399';
@@ -1935,7 +1872,6 @@ async function initDividendLeaders() {
                     : `<span style="color:var(--text-secondary);">${pbVal.toFixed(2)}</span>`;
                 
                 const mvStr = Number(s.mv).toLocaleString('en-US', {minimumFractionDigits: 1, maximumFractionDigits: 1});
-
                 return `<tr style="transition:background 0.2s; cursor:pointer;" onmouseover="this.style.background='rgba(255,255,255,0.02)'" onmouseout="this.style.background='transparent'">
                     <td style="padding-left:16px;">${assetCell}</td>
                     <td style="padding:4px;">${yieldCell}</td>
@@ -1948,12 +1884,10 @@ async function initDividendLeaders() {
         el.innerHTML = tableHtml;
     } catch (e) { console.error('Dividend:', e); }
 }
-
 async function initGenAI() {
     const tw = document.getElementById('ai-text');
     const ind = document.getElementById('ai-indicator');
     if (!tw || !ind) return;
-
     try {
         const data = await fetchJsonWithRetry('/api/macro/ai_insight');
         
@@ -1973,7 +1907,6 @@ async function initGenAI() {
         ind.style.color = "#ef4444";
     }
 }
-
 function escapeHTML(value) {
     return String(value ?? '').replace(/[&<>"']/g, char => ({
         '&': '&amp;',
@@ -1983,21 +1916,17 @@ function escapeHTML(value) {
         "'": '&#39;'
     })[char]);
 }
-
 function renderSafeAIInsight(insight) {
     const markdownHTML = window.marked ? marked.parse(String(insight || '')) : escapeHTML(insight);
     const highlightedHTML = markdownHTML
         .replace(/(清仓|风险|平仓|双杀|警告)/g, '<span class="ai-keyword-risk">$1</span>')
         .replace(/(做多|看涨|买入|正收益)/g, '<span class="ai-keyword-positive">$1</span>')
         .replace(/(VIX|10Y|DXY|SPY|TLT)/g, '<span class="ai-keyword-ticker">$1</span>');
-
     if (!window.DOMPurify) {
         return escapeHTML(insight);
     }
-
     return DOMPurify.sanitize(highlightedHTML);
 }
-
 // ==========================================
 // Phase 25: Backtest Engine Integration
 // ==========================================
@@ -2126,14 +2055,12 @@ async function initBacktest() {
                     timeVisible: true,
                 },
             });
-
             const lineSeries = chart.addLineSeries({
                 color: '#3b82f6',
                 lineWidth: 2,
                 crosshairMarkerVisible: true,
                 crosshairMarkerRadius: 4,
             });
-
             const tvData = data.dates.map((d, i) => ({
                 time: d,
                 value: data.spy_close[i]
@@ -2156,29 +2083,75 @@ async function initBacktest() {
         chartDom.innerHTML = "<div style='color:#ef4444; padding:20px;'>本地时序数据库连接失败。</div>";
     }
 }
-
-
 // --- Terminal UI Controls ---
 function switchView(viewId) {
-    document.querySelectorAll('.view-panel').forEach(p => p.classList.remove('active'));
+    // 兼容和拦截旧的 view-simu / simu 路由，智能重定向到 view-portfolio 的观点试算子 Tab
+    if (viewId === 'view-simu' || viewId === 'simu') {
+        viewId = 'view-portfolio';
+        setTimeout(() => {
+            if (typeof switchSandboxTab === 'function') {
+                switchSandboxTab('tab-rebalance-sandbox');
+            }
+        }, 20);
+    }
+    
+    // 兼容和拦截旧的 view-ai / ai 路由，智能重定向到决策中枢
+    if (viewId === 'view-ai' || viewId === 'ai') {
+        viewId = 'view-hub';
+    }
+    const panel = document.getElementById(viewId);
+    if (!panel) return false;
+    if (window.location.hash !== `#${viewId}` && window.history && window.history.replaceState) {
+        window.history.replaceState(null, '', `#${viewId}`);
+    }
+    document.body.classList.remove('route-hash-active');
+    document.querySelectorAll('.view-panel').forEach(p => {
+        p.classList.remove('active');
+        p.classList.remove('route-active-view');
+        p.style.display = 'none';
+    });
     document.querySelectorAll('.terminal-nav a').forEach(a => a.classList.remove('active'));
-    document.getElementById(viewId).classList.add('active');
-    document.querySelector(`.terminal-nav a[href='#${viewId}']`).classList.add('active');
+    
+    panel.classList.add('active');
+    panel.classList.add('route-active-view');
+    panel.style.display = 'block';
+    document.body.classList.add('route-hash-active');
+    const main = document.querySelector('.terminal-main');
+    const resetScroll = () => {
+        if (main) main.scrollTop = 0;
+        window.scrollTo(0, 0);
+    };
+    resetScroll();
+    requestAnimationFrame(resetScroll);
+    setTimeout(resetScroll, 50);
+    const navLink = document.querySelector(`.terminal-nav a[href='#${viewId}']`);
+    if (navLink) navLink.classList.add('active');
     
     // Resize charts in the active view
     setTimeout(() => {
-        if(window.echarts) {
-            const doms = document.getElementById(viewId).querySelectorAll('.chart-container');
+        if (window.echarts) {
+            const doms = panel.querySelectorAll('.chart-container, [id^="chart-"], [id$="-chart"]');
             doms.forEach(dom => {
                 const chart = echarts.getInstanceByDom(dom);
                 if (chart) chart.resize();
             });
         }
     }, 50);
-
-    if (viewId === 'view-simu') {
-        if (typeof initSimuSandbox === 'function') {
-            initSimuSandbox();
+    if (viewId === 'view-portfolio') {
+        // 进入组合沙盘，强制触发当前激活 Sandbox tab 内的图表自适应 resize
+        setTimeout(() => {
+            const activePanel = document.querySelector('.sandbox-tab-panel:not([style*="display:none"]):not([style*="display: none"])');
+            if (activePanel && window.echarts) {
+                const chartDoms = activePanel.querySelectorAll('.chart-container, [id^="chart-"], [id$="-chart"]');
+                chartDoms.forEach(dom => {
+                    const chart = echarts.getInstanceByDom(dom);
+                    if (chart) chart.resize();
+                });
+            }
+        }, 80);
+        
+        if (typeof initPortfolioLedger === 'function') {
+            initPortfolioLedger();
         }
     } else if (viewId === 'view-risk') {
         if (typeof initFactorRisk === 'function') {
@@ -2189,21 +2162,83 @@ function switchView(viewId) {
             initStressTesting();
         }
     } else if (viewId === 'view-strategy') {
-        initStrategyLab();
+        if (typeof initStrategyLab === 'function') {
+            initStrategyLab();
+        }
     } else if (viewId === 'view-hub') {
-        initDecisionHub();
-    
+        if (typeof initDecisionHub === 'function') {
+            initDecisionHub();
+        }
         if (typeof initStrategyLab === 'function') {
             initStrategyLab();
         }
     }
+    return false;
 }
-
+window.switchView = switchView;
+// --- 组合与试算沙盘子 Tab 控制器 ---
+window.switchSandboxTab = function(tabId) {
+    const targetPanel = document.getElementById(tabId);
+    if (!targetPanel) return;
+    // 隐藏所有的 sandbox-tab-panel
+    document.querySelectorAll('.sandbox-tab-panel').forEach(panel => {
+        panel.style.display = 'none';
+    });
+    
+    // 显示当前的子 Tab 面板
+    targetPanel.style.display = 'block';
+    
+    // 重置并激活对应的 Tab 导航按钮
+    document.querySelectorAll('.sandbox-tab-btn').forEach(btn => {
+        btn.classList.remove('active');
+        btn.style.background = 'transparent';
+        btn.style.color = 'var(--text-secondary)';
+        btn.style.borderColor = 'transparent';
+        btn.style.boxShadow = 'none';
+    });
+    
+    // 寻找匹配 tabId 的按钮并高亮
+    const activeBtn = Array.from(document.querySelectorAll('.sandbox-tab-btn')).find(btn => {
+        return btn.getAttribute('onclick') && btn.getAttribute('onclick').includes(tabId);
+    });
+    if (activeBtn) {
+        activeBtn.classList.add('active');
+        activeBtn.style.background = 'rgba(0, 255, 204, 0.08)';
+        activeBtn.style.color = '#00ffcc';
+        activeBtn.style.borderColor = 'rgba(0, 255, 204, 0.3)';
+        activeBtn.style.boxShadow = '0 0 10px rgba(0, 255, 204, 0.1)';
+    }
+    // 根据子 Tab 自适应重绘 ECharts
+    setTimeout(() => {
+        if (window.echarts) {
+            const chartDoms = targetPanel.querySelectorAll('.chart-container, [id^="chart-"], [id$="-chart"]');
+            chartDoms.forEach(dom => {
+                const chart = echarts.getInstanceByDom(dom);
+                if (chart) chart.resize();
+            });
+        }
+    }, 50);
+    // 按需进行数据重载与刷新
+    if (tabId === 'tab-static-holdings') {
+        if (typeof initPortfolioLedger === 'function') {
+            initPortfolioLedger();
+        }
+    } else if (tabId === 'tab-rebalance-sandbox') {
+        if (typeof initSimuSandbox === 'function') {
+            initSimuSandbox();
+        }
+    } else if (tabId === 'tab-crisis-replication') {
+        if (typeof initHistoricalScenarios === 'function') {
+            initHistoricalScenarios();
+        }
+    }
+};
 window.currentRotationPeriod = 'ret_20d';
-window.setRotationPeriod = function(period) {
+window.setRotationPeriod = function(period, evt) {
     window.currentRotationPeriod = period;
     document.querySelectorAll('#global-rotation-controls button').forEach(btn => btn.classList.remove('is-active'));
-    event.target.classList.add('is-active');
+    const target = evt?.currentTarget || evt?.target || window.event?.target;
+    if (target) target.classList.add('is-active');
     // We assume initRotationPanels or similar handles reading window.currentRotationPeriod
     if(typeof initRotationPanels === 'function') {
         initRotationPanels();
@@ -2211,13 +2246,154 @@ window.setRotationPeriod = function(period) {
         initSectorRotation(); // Fallback
     }
 }
-
-
+function getRoutableViewFromHash() {
+    const initialView = decodeURIComponent(window.location.hash || '').replace(/^#/, '');
+    const panel = initialView ? document.getElementById(initialView) : null;
+    return panel && panel.classList.contains('view-panel') ? initialView : null;
+}
+function activateViewFromHash() {
+    const initialView = getRoutableViewFromHash();
+    if (initialView) switchView(initialView);
+}
+function activateInitialView() {
+    activateViewFromHash();
+}
+window.runCustomShockSimulation = async function() {
+    const sliderIds = {
+        equity_shock: 'slider-shock-equity',
+        rate_shock: 'slider-shock-rate',
+        vol_shock: 'slider-shock-vol',
+        commodity_shock: 'slider-shock-commodity',
+    };
+    const payload = {};
+    for (const [key, id] of Object.entries(sliderIds)) {
+        const el = document.getElementById(id);
+        payload[key] = el ? Number(el.value || 0) : 0;
+    }
+    const lossEl = document.getElementById('custom-shock-loss-display');
+    const statusEl = document.getElementById('custom-shock-status-badge');
+    const commitBtn = document.getElementById('btn-commit-shock');
+    if (lossEl) {
+        lossEl.textContent = '...';
+        lossEl.style.color = '#facc15';
+    }
+    if (statusEl) {
+        statusEl.textContent = 'RUNNING FACTOR SHOCK';
+        statusEl.style.background = 'rgba(250,204,21,0.12)';
+        statusEl.style.color = '#facc15';
+        statusEl.style.borderColor = 'rgba(250,204,21,0.3)';
+    }
+    try {
+        const response = await fetch('/api/institutional/scenarios/custom', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const result = await response.json();
+        const loss = Number(result.custom_loss_pct || 0);
+        const status = String(result.status || 'green').toLowerCase();
+        const color = status === 'red' ? '#ef4444' : status === 'yellow' ? '#facc15' : '#10b981';
+        const label = status === 'red' ? 'HARD STRESS BREACH' : status === 'yellow' ? 'WATCH ZONE' : 'PORTFOLIO SECURE';
+        if (lossEl) {
+            lossEl.textContent = `${loss.toFixed(2)}%`;
+            lossEl.style.color = color;
+            lossEl.style.textShadow = `0 0 15px ${color}55`;
+        }
+        if (statusEl) {
+            statusEl.textContent = label;
+            statusEl.style.background = `${color}20`;
+            statusEl.style.color = color;
+            statusEl.style.borderColor = `${color}55`;
+        }
+        if (commitBtn) commitBtn.style.display = 'inline-block';
+        const chartDom = document.getElementById('custom-shock-asset-chart');
+        if (chartDom && window.echarts) {
+            const rows = (result.asset_contributions || [])
+                .slice()
+                .sort((a, b) => Number(a.loss_contribution_pct || 0) - Number(b.loss_contribution_pct || 0))
+                .slice(0, 8);
+            if (window.customShockChart) window.customShockChart.dispose();
+            window.customShockChart = echarts.init(chartDom, 'dark');
+            window.customShockChart.setOption({
+                backgroundColor: 'transparent',
+                grid: { left: 70, right: 24, top: 10, bottom: 20 },
+                xAxis: {
+                    type: 'value',
+                    axisLabel: { color: '#94a3b8', formatter: '{value}%' },
+                    splitLine: { lineStyle: { color: 'rgba(255,255,255,0.05)' } },
+                },
+                yAxis: {
+                    type: 'category',
+                    data: rows.map(row => row.symbol),
+                    axisLabel: { color: '#cbd5e1' },
+                },
+                tooltip: {
+                    trigger: 'axis',
+                    formatter: params => {
+                        const item = rows[params[0].dataIndex] || {};
+                        return `${item.symbol || '--'}<br/>Contribution: ${Number(item.loss_contribution_pct || 0).toFixed(2)}%<br/>Asset shock: ${Number(item.asset_loss_pct || 0).toFixed(2)}%`;
+                    },
+                },
+                series: [{
+                    type: 'bar',
+                    data: rows.map(row => Number(row.loss_contribution_pct || 0)),
+                    itemStyle: { color: value => Number(value.data || 0) < 0 ? '#ef4444' : '#10b981' },
+                    barWidth: 12,
+                }],
+            });
+        }
+    } catch (error) {
+        console.error('Custom shock simulation failed:', error);
+        if (lossEl) {
+            lossEl.textContent = 'ERR';
+            lossEl.style.color = '#ef4444';
+        }
+        if (statusEl) {
+            statusEl.textContent = 'SCENARIO ENGINE FAILED';
+            statusEl.style.background = 'rgba(239,68,68,0.12)';
+            statusEl.style.color = '#ef4444';
+            statusEl.style.borderColor = 'rgba(239,68,68,0.4)';
+        }
+    }
+};
+window.resetCustomShock = function() {
+    const defaults = [
+        ['slider-shock-equity', 'shock-val-equity', '0%'],
+        ['slider-shock-rate', 'shock-val-rate', '0%'],
+        ['slider-shock-vol', 'shock-val-vol', '0%'],
+        ['slider-shock-commodity', 'shock-val-commodity', '0%'],
+    ];
+    defaults.forEach(([sliderId, labelId, text]) => {
+        const slider = document.getElementById(sliderId);
+        const label = document.getElementById(labelId);
+        if (slider) slider.value = 0;
+        if (label) label.textContent = text;
+    });
+    const lossEl = document.getElementById('custom-shock-loss-display');
+    const statusEl = document.getElementById('custom-shock-status-badge');
+    const commitBtn = document.getElementById('btn-commit-shock');
+    if (lossEl) {
+        lossEl.textContent = '0.00%';
+        lossEl.style.color = '#10b981';
+        lossEl.style.textShadow = '0 0 15px rgba(16,185,129,0.3)';
+    }
+    if (statusEl) {
+        statusEl.textContent = 'PORTFOLIO SECURE';
+        statusEl.style.background = 'rgba(16,185,129,0.15)';
+        statusEl.style.color = '#10b981';
+        statusEl.style.borderColor = 'rgba(16,185,129,0.3)';
+    }
+    if (commitBtn) commitBtn.style.display = 'none';
+    if (window.customShockChart) {
+        window.customShockChart.dispose();
+        window.customShockChart = null;
+    }
+};
 function importTDX() {
     const fileInput = document.getElementById('tdx-file-input');
     if (fileInput) fileInput.click();
 }
-
 async function handleTDXUpload(event) {
     const file = event.target.files[0];
     if (!file) return;
@@ -2278,7 +2454,6 @@ async function handleTDXUpload(event) {
     // Clear input so same file can be selected again if needed
     event.target.value = '';
 }
-
 async function initPortfolioLedger() {
     try {
         const data = await fetchJsonWithRetry('/api/institutional/portfolio_raw');
@@ -2311,7 +2486,6 @@ async function initPortfolioLedger() {
             
             return `<span style="display:inline-block; background:${bgStr}; color:${color}; font-family:var(--font-mono); font-weight:800; text-align:right; padding:4px 8px; border-radius:4px; border-right:${borderStr}; box-sizing:border-box; text-shadow:0 0 8px rgba(${bgRgb},0.4);">${sign}${val.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})} (${sign}${pct.toFixed(2)}%)</span>`;
         };
-
         if (positions.length === 0) {
             rowsHtml = '<tr><td colspan="7" style="text-align:center; padding:20px; color:var(--text-tertiary);">No portfolio data available. Sync TDX to begin.</td></tr>';
         } else {
@@ -2334,12 +2508,17 @@ async function initPortfolioLedger() {
                 const weightPct = totalMv > 0 ? ((pos.market_value || 0) / totalMv * 100).toFixed(1) : 0;
                 const weightBar = `<div style="width:100%; height:2px; background:rgba(255,255,255,0.05); margin-top:4px; border-radius:1px;"><div style="width:${weightPct}%; height:100%; background:var(--accent-primary); border-radius:1px; box-shadow:0 0 4px var(--accent-primary);"></div></div>`;
                 
+                // Extra columns for institutional risk/liquidity metrics
+                const advVal = pos.adv_20d ? pos.adv_20d.toLocaleString(undefined, {maximumFractionDigits:0}) : '--';
+                const dtlVal = pos.days_to_liquidate !== undefined ? pos.days_to_liquidate.toFixed(2) : '--';
+                const mctrVal = pos.mctr !== undefined ? (pos.mctr * 100).toFixed(2) + '%' : '--';
+                const riskPctVal = pos.normalized_risk_contribution !== undefined ? (pos.normalized_risk_contribution * 100).toFixed(2) + '%' : '--';
                 rowsHtml += `
                     <tr class="clickable-row" onclick="openActionModal('${pos.symbol}', '${pos.name || ''}', ${pos.quantity || 0}, ${pos.current_price || 0})">
                         <td style="padding-left:16px;">
                             <div style="display:flex; flex-direction:column; gap:2px;">
-                                <span style="font-family:var(--font-mono); font-weight:700; color:var(--text-primary); font-size:0.85rem;">${pos.symbol}</span>
-                                <span style="font-size:0.7rem; color:var(--text-tertiary);">${pos.name}</span>
+                                <span style="font-weight:700; color:var(--text-primary); font-size:0.95rem;">${pos.name || pos.symbol}</span>
+                                <span style="font-family:var(--font-mono); font-size:0.7rem; color:var(--text-tertiary);">${pos.symbol}</span>
                             </div>
                         </td>
                         <td><span style="font-size:0.65rem; padding:2px 6px; border-radius:3px; background:rgba(255,255,255,0.05); color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.5px;">${pos.asset_class}</span></td>
@@ -2350,6 +2529,10 @@ async function initPortfolioLedger() {
                             <div>${(pos.market_value || 0).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</div>
                             ${weightBar}
                         </td>
+                        <td style="text-align:right; font-family:var(--font-mono); color:var(--text-secondary);">${advVal}</td>
+                        <td style="text-align:right; font-family:var(--font-mono); color:var(--text-secondary);">${dtlVal}</td>
+                        <td style="text-align:right; font-family:var(--font-mono); color:var(--accent-secondary);">${mctrVal}</td>
+                        <td style="text-align:right; font-family:var(--font-mono); color:var(--accent-primary);">${riskPctVal}</td>
                         <td style="text-align:right; padding-right:16px; font-family:var(--font-mono);">
                             ${fmtPnLBadge(pos.float_pnl || 0, pos.pnl_pct || 0)}
                         </td>
@@ -2400,8 +2583,8 @@ async function initPortfolioLedger() {
                     trigger: 'item',
                     formatter: function(params) {
                         const d = params.data;
-                        const zh = d.name_zh ? `<span style="font-size:0.8em; color:var(--text-tertiary); margin-left:8px;">${d.name_zh}</span>` : '';
-                        return `<div class="hud-title" style="border-bottom-color:${params.color};">${d.name}${zh}</div>
+                        const en = d.name_zh ? `<span style="font-size:0.8em; color:var(--text-tertiary); margin-left:8px; font-family:var(--font-mono);">${d.name}</span>` : '';
+                        return `<div class="hud-title" style="border-bottom-color:${params.color};">${d.name_zh || d.name}${en}</div>
                                 <div class="hud-value" style="color:${params.color};">¥${d.value.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})} <span style="font-size:0.5em; opacity:0.8;">(${params.percent}%)</span></div>`;
                     }
                 },
@@ -2486,13 +2669,11 @@ async function initPortfolioLedger() {
         console.error('Failed to init portfolio ledger:', e);
     }
 }
-
 // --- [SIMU] Pre-Trade Sandbox State & Engine ---
 let simuBasePortfolio = [];
 let simuTrades = []; 
 let simuMode = 'qty'; // 'qty' or 'weight'
 let simuFrictionRate = 0.0015; // 15bps per trade
-
 async function initSimuSandbox() {
     try {
         const res = await fetch('/api/institutional/portfolio_raw');
@@ -2504,7 +2685,6 @@ async function initSimuSandbox() {
         console.error('Failed to init sandbox', e);
     }
 }
-
 window.toggleSimuMode = function() {
     const radio = document.querySelector('input[name="simu-mode"]:checked');
     if (radio) {
@@ -2517,12 +2697,10 @@ window.toggleSimuMode = function() {
         }
     }
 };
-
 window.resetSimuSandbox = function() {
     simuTrades = [];
     recomputeSandbox();
 };
-
 window.addSimuTrade = function() {
     const ticker = document.getElementById('simu-ticker').value.toUpperCase().trim();
     const action = document.getElementById('simu-action').value;
@@ -2543,12 +2721,10 @@ window.addSimuTrade = function() {
     
     recomputeSandbox();
 };
-
 window.removeSimuTrade = function(id) {
     simuTrades = simuTrades.filter(t => t.id !== id);
     recomputeSandbox();
 };
-
 window.executeSimuCLI = function() {
     const inputEl = document.getElementById('simu-cli-input');
     const cmd = inputEl.value.trim().toUpperCase();
@@ -2590,7 +2766,6 @@ window.executeSimuCLI = function() {
     inputEl.value = '';
     recomputeSandbox();
 };
-
 window.exportSimuCSV = function() {
     if (simuTrades.length === 0) return;
     let csvContent = "data:text/csv;charset=utf-8,";
@@ -2610,7 +2785,6 @@ window.exportSimuCSV = function() {
     link.click();
     document.body.removeChild(link);
 };
-
 window.injectSimuCashPrompt = function() {
     const amount = prompt("请输入划拨资金数额 (输入正数代表入金，负数代表出金):", "1000000");
     if (amount) {
@@ -2628,7 +2802,6 @@ window.injectSimuCashPrompt = function() {
         }
     }
 };
-
 window.setSimuFrictionPrompt = function() {
     const rate = prompt("请设定双边摩擦系数 (例如 万五请输入 0.0005，千1.5 请输入 0.0015):", simuFrictionRate.toString());
     if (rate) {
@@ -2639,7 +2812,6 @@ window.setSimuFrictionPrompt = function() {
         }
     }
 };
-
 function recomputeSandbox() {
     if(!simuBasePortfolio || simuBasePortfolio.length === 0) return;
     
@@ -2805,8 +2977,8 @@ function recomputeSandbox() {
             <tr class="clickable-row" style="transition: background-color 0.2s ease;" onclick="openActionModal('${p.symbol}', '${p.name || ''}', ${p.quantity || 0}, ${p.current_price || 0})">
                 <td style="padding-left:16px;">
                     <div style="display:flex; flex-direction:column; gap:2px;">
-                        <span style="font-family:var(--font-mono); font-weight:700; color:var(--text-primary); font-size:0.85rem;">${p.symbol}</span>
-                        <span style="font-size:0.7rem; color:var(--text-tertiary);">${p.name || '-'}</span>
+                        <span style="font-weight:700; color:var(--text-primary); font-size:0.95rem;">${p.name || p.symbol}</span>
+                        <span style="font-family:var(--font-mono); font-size:0.7rem; color:var(--text-tertiary);">${p.symbol}</span>
                     </div>
                 </td>
                 <td style="text-align:right; font-family:var(--font-mono); color:var(--text-tertiary);">${baseQty.toLocaleString(undefined, {maximumFractionDigits:0})}</td>
@@ -2828,8 +3000,47 @@ function recomputeSandbox() {
     document.getElementById('simu-ledger-body').innerHTML = lHtml;
     
     renderSimuChart(simuBasePortfolio, proj);
+    
+    // Friction cost audit bar & radar integration
+    const targetWeights = {};
+    proj.forEach(p => {
+        targetWeights[p.symbol] = p._projWt;
+    });
+    
+    fetch('/api/institutional/sandbox/friction', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ target_weights: targetWeights })
+    })
+    .then(r => r.json())
+    .then(dataFric => {
+        if (dataFric && !dataFric.error) {
+            const commEl = document.getElementById('simu-audit-commission');
+            const impEl = document.getElementById('simu-audit-impact');
+            const totEl = document.getElementById('simu-audit-total-cost');
+            const netAumEl = document.getElementById('simu-audit-net-aum');
+            
+            if (commEl) commEl.textContent = '¥' + dataFric.commission_cost.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+            if (impEl) impEl.textContent = '¥' + dataFric.market_impact_cost.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+            if (totEl) totEl.textContent = `¥${dataFric.total_friction_cost.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})} (${dataFric.total_cost_bps.toFixed(2)} bps)`;
+            if (netAumEl) netAumEl.textContent = '¥' + dataFric.net_projected_aum.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+            
+            // Warn about participation limits if any
+            const radar = document.getElementById('simu-liquidity-radar');
+            const radarContent = document.getElementById('simu-radar-content');
+            if (radar && radarContent) {
+                const warnings = dataFric.details.filter(d => d.warning_level === 'RED' || d.warning_level === 'YELLOW');
+                if (warnings.length > 0) {
+                    radar.style.display = 'block';
+                    radarContent.innerHTML = warnings.map(w => `<div>⚠️ <strong>${w.symbol}</strong>: 交易量达 ADV 的 ${(w.participation_rate * 100).toFixed(2)}%。${w.warning_msg}</div>`).join('');
+                } else {
+                    radar.style.display = 'none';
+                }
+            }
+        }
+    })
+    .catch(e => console.error('Failed to calculate simulated transaction costs', e));
 }
-
 function renderSimuChart(baseArr, projArr) {
     const chartDom = document.getElementById('chart-simu-allocation');
     if (!chartDom || !window.echarts) return;
@@ -2873,10 +3084,8 @@ function renderSimuChart(baseArr, projArr) {
         ]
     });
 }
-
 // --- Interactive Order Routing Modal ---
 let currentActionContext = null;
-
 window.openActionModal = function(ticker, name, qty, price) {
     currentActionContext = { ticker, name, qty, price };
     
@@ -2891,12 +3100,10 @@ window.openActionModal = function(ticker, name, qty, price) {
         document.getElementById('modal-input-qty').focus();
     }, 50);
 };
-
 window.closeActionModal = function() {
     document.getElementById('quick-action-modal').style.display = 'none';
     currentActionContext = null;
 };
-
 async function injectTradeFromModal(action, qty) {
     if (!currentActionContext || qty <= 0) return;
     
@@ -2905,7 +3112,6 @@ async function injectTradeFromModal(action, qty) {
     btns.forEach(b => b.disabled = true);
     const originalText = btns[0].innerText;
     btns[0].innerText = 'EXECUTING...';
-
     try {
         const response = await fetch('/api/execute', {
             method: 'POST',
@@ -2929,26 +3135,36 @@ async function injectTradeFromModal(action, qty) {
         btns.forEach(b => b.disabled = false);
         btns[0].innerText = originalText;
         closeActionModal();
-        if (!document.getElementById('view-simu').classList.contains('active')) {
-            switchView('simu');
+        const viewPort = document.getElementById('view-portfolio');
+        if (viewPort && !viewPort.classList.contains('active')) {
+            switchView('view-portfolio');
+            setTimeout(() => {
+                if (typeof switchSandboxTab === 'function') {
+                    switchSandboxTab('tab-rebalance-sandbox');
+                }
+            }, 50);
+        } else {
+            const activeSubTab = document.getElementById('tab-rebalance-sandbox');
+            if (activeSubTab && activeSubTab.style.display === 'none') {
+                if (typeof switchSandboxTab === 'function') {
+                    switchSandboxTab('tab-rebalance-sandbox');
+                }
+            }
         }
     }
 }
-
 window.executeActionModalBuy = function() {
     const val = parseFloat(document.getElementById('modal-input-qty').value);
     if (!isNaN(val) && val > 0) {
         injectTradeFromModal('BUY', val);
     }
 };
-
 window.executeActionModalSell = function() {
     const val = parseFloat(document.getElementById('modal-input-qty').value);
     if (!isNaN(val) && val > 0) {
         injectTradeFromModal('SELL', val);
     }
 };
-
 window.executeActionModalTP = function() {
     if (!currentActionContext || currentActionContext.qty <= 0) return;
     const sellQty = Math.floor(currentActionContext.qty * 0.5); // Sell 50%
@@ -2956,21 +3172,16 @@ window.executeActionModalTP = function() {
         injectTradeFromModal('SELL', sellQty);
     }
 };
-
 window.executeActionModalSL = function() {
     if (!currentActionContext || currentActionContext.qty <= 0) return;
     injectTradeFromModal('SELL', currentActionContext.qty); // Sell 100%
 };
-
-
 // ==========================================
 // MODULE 2: BARRA FACTOR RISK ATTRIBUTION
 // ==========================================
-
 window.factorRiskData = null;
 let factorRadarChart = null;
 let factorStyleChart = null;
-
 window.initFactorRisk = async function() {
     document.getElementById('factor-ledger-body').innerHTML = `<tr><td colspan="6" style="text-align:center; padding:20px; color:var(--text-tertiary);">Computing multi-factor matrix...</td></tr>`;
     
@@ -2987,7 +3198,6 @@ window.initFactorRisk = async function() {
         document.getElementById('factor-engine-status').style.color = 'var(--danger)';
     }
 };
-
 function renderFactorRisk(data) {
     if (!data || !data.factor_groups) return;
     
@@ -3032,7 +3242,6 @@ function renderFactorRisk(data) {
         hhiEl.style.color = 'var(--success)';
         hhiCard.classList.add('glow-pass');
     }
-
     // --- L2: ECharts ---
     renderFactorRadar(data.factor_groups.macro || {});
     renderFactorStyleBar(data.factor_groups.strategy || {}, data.factor_groups.theme || {});
@@ -3040,7 +3249,6 @@ function renderFactorRisk(data) {
     // --- L3: Asset Ledger ---
     renderFactorLedger(data.positions);
 }
-
 function renderFactorRadar(macro) {
     if (!factorRadarChart) {
         factorRadarChart = echarts.init(document.getElementById('factor-radar-chart'));
@@ -3061,7 +3269,6 @@ function renderFactorRadar(macro) {
         macro['rate_sensitivity'] || 0,
         macro['inflation_sensitivity'] || 0
     ];
-
     const option = {
         tooltip: {
             confine: true,
@@ -3105,7 +3312,6 @@ function renderFactorRadar(macro) {
     };
     factorRadarChart.setOption(option);
 }
-
 function renderFactorStyleBar(strategy, theme) {
     if (!factorStyleChart) {
         factorStyleChart = echarts.init(document.getElementById('factor-style-chart'));
@@ -3119,7 +3325,6 @@ function renderFactorStyleBar(strategy, theme) {
     
     const names = items.map(i => i.name.toUpperCase());
     const values = items.map(i => i.val);
-
     const option = {
         tooltip: {
             trigger: 'axis',
@@ -3161,7 +3366,6 @@ function renderFactorStyleBar(strategy, theme) {
     };
     factorStyleChart.setOption(option);
 }
-
 function renderFactorLedger(positions) {
     const tbody = document.getElementById('factor-ledger-body');
     if (!positions || positions.length === 0) {
@@ -3186,7 +3390,6 @@ function renderFactorLedger(positions) {
         
         return `<span style="display:inline-block; width:100%; height:100%; background:${bgStr}; color:${color}; font-family:var(--font-mono); font-weight:800; text-align:right; padding:6px 10px; border-radius:4px; border-right:${borderStr}; box-sizing:border-box; text-shadow:0 0 8px rgba(${bgRgb},0.4);">${sign}${val.toFixed(3)}</span>`;
     };
-
     positions.forEach(pos => {
         if (!pos.mapped) return; // Skip unmapped for now to keep matrix clean
         
@@ -3216,8 +3419,8 @@ function renderFactorLedger(positions) {
             <tr class="clickable-row" style="transition: background-color 0.2s ease;" onclick="openActionModal('${pos.symbol}', '${name}', ${qty}, ${price})">
                 <td style="padding-left:16px;">
                     <div style="display:flex; flex-direction:column; gap:2px;">
-                        <span style="font-family:var(--font-mono); font-weight:700; color:var(--text-primary); font-size:0.85rem;">${pos.symbol}</span>
-                        <span style="font-size:0.7rem; color:var(--text-tertiary);">${name}</span>
+                        <span style="font-weight:700; color:var(--text-primary); font-size:0.95rem;">${name || pos.symbol}</span>
+                        <span style="font-family:var(--font-mono); font-size:0.7rem; color:var(--text-tertiary);">${pos.symbol}</span>
                     </div>
                 </td>
                 <td style="padding:4px;">${fmtExposure(expMap['equity_beta'] || 0)}</td>
@@ -3231,10 +3434,7 @@ function renderFactorLedger(positions) {
     
     tbody.innerHTML = html;
 }
-
-
 // --- [STRE] Historical Scenario Stress Testing ---
-
 async function initStressTesting() {
     try {
         const statusEl = document.getElementById('stress-engine-status');
@@ -3242,14 +3442,12 @@ async function initStressTesting() {
             statusEl.innerText = 'CALCULATING VAR...';
             statusEl.style.background = 'rgba(239,68,68,0.1)';
         }
-
         const res = await fetchJsonWithRetry('/api/institutional/scenarios');
         
         if(statusEl) {
             statusEl.innerText = 'STRESS ENGINE ONLINE';
             statusEl.style.background = 'rgba(239,68,68,0.2)';
         }
-
         renderStressTesting(res);
     } catch (e) {
         console.error('Failed to init stress testing:', e);
@@ -3261,24 +3459,19 @@ async function initStressTesting() {
         }
     }
 }
-
 function renderStressTesting(data) {
     if (!data || !data.scenarios) return;
-
     const worst = data.worst_scenario || {};
     const lossPct = worst.portfolio_loss_pct || 0;
-
     // --- L1 KPIs ---
     const worstNameEl = document.getElementById('stress-worst-name');
     const drawdownEl = document.getElementById('stress-max-drawdown');
     const resiliencyEl = document.getElementById('stress-resiliency-grade');
-
     if (worstNameEl) {
-        const zh = worst.name_zh ? `<span style="font-size:0.65em; color:var(--text-tertiary); letter-spacing:1px; margin-left:8px;">${worst.name_zh}</span>` : '';
-        worstNameEl.innerHTML = `${worst.name ? worst.name.toUpperCase() : '--'}${zh}`;
+        const zh = worst.name_zh ? `<span style="font-size:0.65em; color:var(--text-tertiary); letter-spacing:1px; margin-left:8px; font-family:var(--font-mono);">${worst.name.toUpperCase()}</span>` : '';
+        worstNameEl.innerHTML = `${worst.name_zh || (worst.name ? worst.name.toUpperCase() : '--')}${zh}`;
     }
     if (drawdownEl) drawdownEl.innerText = lossPct.toFixed(2) + '%';
-
     if (resiliencyEl) {
         let grade = 'D';
         let color = '#ef4444';
@@ -3290,16 +3483,13 @@ function renderStressTesting(data) {
         resiliencyEl.style.color = color;
         resiliencyEl.style.textShadow = `0 0 15px ${color}`;
     }
-
     // --- L2 ECharts Impact Distribution ---
     const impactChartDom = document.getElementById('stress-impact-chart');
     if (impactChartDom && window.echarts) {
         let impactChart = echarts.getInstanceByDom(impactChartDom);
         if (!impactChart) impactChart = echarts.init(impactChartDom);
-
         // Sort ascending (worst drop at the bottom, so it shows up at the top in Echarts horizontal bar)
         const sortedScenarios = [...data.scenarios].sort((a,b) => a.portfolio_loss_pct - b.portfolio_loss_pct);
-
         impactChart.setOption({
             tooltip: { 
                 className: 'terminal-hud-tooltip', 
@@ -3309,7 +3499,7 @@ function renderStressTesting(data) {
                     const p = params[0];
                     // Find the original scenario to get name_zh
                     const scenario = sortedScenarios.find(s => (s.name + ' | ' + s.name_zh) === p.name || s.name === p.name);
-                    const title = scenario ? (scenario.name.toUpperCase() + ' <span style="font-size:0.8em; color:var(--text-tertiary); margin-left:8px;">' + (scenario.name_zh || '') + '</span>') : p.name;
+                    const title = scenario ? ((scenario.name_zh || scenario.name) + ' <span style="font-size:0.8em; color:var(--text-tertiary); margin-left:8px; font-family:var(--font-mono);">' + scenario.name.toUpperCase() + '</span>') : p.name;
                     return `<div class="hud-title">${title}</div><div class="hud-value">${p.value > 0 ? '+' : ''}${p.value}%</div>`;
                 }
             },
@@ -3322,7 +3512,7 @@ function renderStressTesting(data) {
             },
             yAxis: { 
                 type: 'category', 
-                data: sortedScenarios.map(s => s.name_zh ? `${s.name} | ${s.name_zh}` : s.name), 
+                data: sortedScenarios.map(s => s.name_zh ? `${s.name_zh} | ${s.name}` : s.name), 
                 axisLabel: { color: '#e2e8f0', fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 'bold' },
                 axisLine: { show: false },
                 axisTick: { show: false },
@@ -3360,11 +3550,9 @@ function renderStressTesting(data) {
             }]
         });
     }
-
     // --- L3 Shock Propagation Ledger ---
     const tbody = document.getElementById('stress-ledger-body');
     if (!tbody) return;
-
     const fmtShockBadge = (val, maxShock = 20) => {
         if (val === 0 || !val) return `<span style="color:var(--text-tertiary);">-</span>`;
         // Convert to percentage display
@@ -3378,10 +3566,8 @@ function renderStressTesting(data) {
         
         return `<span style="display:inline-block; background:${bgStr}; color:${color}; font-family:var(--font-mono); font-weight:800; text-align:right; padding:4px 8px; border-radius:4px; border-right:${borderStr}; box-sizing:border-box; text-shadow:0 0 8px rgba(${bgRgb},0.4);">${sign}${valPct.toFixed(1)}%</span>`;
     };
-
     let html = '';
     const displayScenarios = [...data.scenarios].sort((a,b) => a.portfolio_loss_pct - b.portfolio_loss_pct);
-
     displayScenarios.forEach(s => {
         const eqShock = s.shocks?.equity || 0;
         const bdShock = s.shocks?.bond || 0;
@@ -3402,11 +3588,9 @@ function renderStressTesting(data) {
         let extraBadge = extraStr.length > 0 
             ? `<span style="font-size:0.7rem; color:var(--text-secondary); background:rgba(255,255,255,0.05); padding:2px 6px; border-radius:4px;">${extraStr.join(' | ')}</span>`
             : `<span style="color:var(--text-tertiary);">-</span>`;
-
         const pnlPct = s.portfolio_loss_pct;
         const pColor = pnlPct > 0 ? '#10b981' : '#f43f5e';
         const pSign = pnlPct > 0 ? '+' : '';
-
         const isWorst = (s.id === worst.id);
         const rowClass = isWorst ? 'clickable-row pulsing-danger-row' : 'clickable-row';
         
@@ -3414,8 +3598,8 @@ function renderStressTesting(data) {
             <tr class="${rowClass}" style="transition: background-color 0.2s ease;">
                 <td style="padding-left:16px;">
                     <div style="display:flex; flex-direction:column; gap:2px;">
-                        <span style="font-family:var(--font-mono); font-weight:700; color:var(--text-primary); font-size:0.85rem; text-transform:uppercase;">${s.name}</span>
-                        <span style="font-size:0.75rem; color:var(--text-tertiary); letter-spacing:1px;">${s.name_zh || ''}</span>
+                        <span style="font-weight:700; color:var(--text-primary); font-size:0.95rem;">${s.name_zh || s.name}</span>
+                        <span style="font-family:var(--font-mono); font-size:0.7rem; color:var(--text-tertiary); text-transform:uppercase; letter-spacing:0.5px;">${s.name}</span>
                     </div>
                 </td>
                 <td style="text-align:right; font-family:var(--font-mono); font-weight:800; color:${pColor}; font-size:1.1rem; text-shadow:0 0 10px ${pColor}55;">
@@ -3431,44 +3615,163 @@ function renderStressTesting(data) {
     
     tbody.innerHTML = html;
 }
-
 // --- [STRA] Strategy Lab ---
+function hasStrategyBacktestSeries(backtest) {
+    return Boolean(
+        backtest &&
+        !backtest.error &&
+        backtest.metrics &&
+        Array.isArray(backtest.dates) &&
+        Array.isArray(backtest.strategy_returns) &&
+        Array.isArray(backtest.benchmark_returns) &&
+        backtest.dates.length > 0
+    );
+}
+function safeStrategyColor(value, fallback) {
+    const color = String(value || '');
+    return /^#[0-9a-fA-F]{3,8}$/.test(color) ? color : fallback;
+}
+function renderStrategyBacktestUnavailable(metricsContainer, chartDom, message) {
+    const safeMessage = escapeHTML(message || 'Backtest unavailable');
+    if (metricsContainer) {
+        metricsContainer.innerHTML = `
+            <div class="metric-cell" style="grid-column:1/-1; align-items:flex-start; gap:4px;">
+                <span style="font-family:var(--font-mono); color:#f59e0b;">BACKTEST UNAVAILABLE</span>
+                <strong style="font-size:0.85rem; color:var(--text-secondary);">${safeMessage}</strong>
+            </div>
+        `;
+    }
+    if (chartDom && window.echarts) {
+        let eqChart = echarts.getInstanceByDom(chartDom);
+        if (!eqChart) eqChart = echarts.init(chartDom);
+        eqChart.clear();
+        eqChart.setOption({
+            title: {
+                text: 'BACKTEST UNAVAILABLE',
+                subtext: safeMessage,
+                left: 'center',
+                top: 'middle',
+                textStyle: { color: '#f59e0b', fontFamily: 'var(--font-mono)', fontSize: 14 },
+                subtextStyle: { color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }
+            },
+            xAxis: { show: false },
+            yAxis: { show: false },
+            series: []
+        });
+    } else if (chartDom) {
+        chartDom.innerHTML = `<div style="height:100%; display:flex; align-items:center; justify-content:center; color:#f59e0b; font-family:var(--font-mono);">${safeMessage}</div>`;
+    }
+}
 async function initStrategyLab() {
     const view = document.getElementById('view-strategy');
     if (!view || !view.classList.contains('active')) return;
-
     // Time
     const timeEl = document.getElementById('strategy-time');
     if(timeEl) {
         timeEl.innerText = new Date().toLocaleTimeString('en-US', {hour12:false}) + '.' + new Date().getMilliseconds().toString().padStart(3,'0');
     }
-
     try {
         const res = await fetch('/api/institutional/strategies');
         const data = await res.json();
         
         // 1. Render Engines
         const engContainer = document.getElementById('strategy-engines-container');
-        if (engContainer && data.engines) {
-            engContainer.innerHTML = data.engines.map(eng => {
-                const badgeColor = eng.status === 'active' ? '#10b981' : (eng.status === 'standby' ? '#f59e0b' : '#ef4444');
-                const signalColor = eng.color || '#38bdf8';
+        const engines = Array.isArray(data.engines) ? data.engines : [];
+        if (engContainer) {
+            if (!engines.length) {
+                engContainer.innerHTML = `<div class="glass-card" style="color:var(--text-tertiary); font-family:var(--font-mono);">NO STRATEGY ENGINES AVAILABLE</div>`;
+            } else {
+                engContainer.innerHTML = engines.map(eng => {
+                const status = String(eng.status || 'unknown');
+                const statusMap = { 'active': '运行中', 'standby': '就绪/待命', 'inactive': '未激活', 'degraded': '降级运行' };
+                const modeMap = { 'live': '实盘模拟', 'policy_static': '静态决策', 'placeholder': '暂未激活', 'live_with_placeholder_theme': '混合运行' };
+                const signalMap = {
+                    'OVERWEIGHT A-SHARE': '超配 A股资产',
+                    'OVERWEIGHT OVERSEAS': '超配 海外宽基',
+                    'DEFENSIVE TILT': '偏向防御性资产',
+                    'A-SHARE CAUTION': 'A股谨慎对冲触发',
+                    'A-SHARE BULLISH': 'A股多头趋势确立',
+                    'PLACEHOLDER - NOT TRADEABLE': '等候接入 (不可交易)',
+                    'BULLISH ON GOLD': '避险触发 (看多黄金)',
+                    'NEUTRAL ON GOLD': '常规避险 (中性持有)',
+                    'NO_SIGNAL': '暂无信号'
+                };
+                const descMap = {
+                    'Volatility-inverse allocation across global broad indices.': '基于波动率倒数的全球宽基指数风险平价动态配置策略。',
+                    'Policy barbell allocation using configured broad, dividend, and 15th FYP theme weights.': '宽基核心资产底仓与十五五主题卫星资产哑铃式均衡配置。',
+                    '200-day SMA trend filter. Liquidates assets in structural bear markets.': '追踪200日SMA长期均线趋势，在结构性熊市中自动清仓避险。',
+                    'Shorts Broad A-share ETF to isolate pure policy alpha of 15th FYP.': '利用股指期货等对冲宽基指数，深度榨取十五五板块超额Alpha收益。',
+                    'Monitors systemic panic (VIX) and monetary cycles to dynamically allocate to Gold.': '实时监控VIX恐慌波动率与核心货币周期，黄金避险资产动态分配。'
+                };
+                const labelMap = {
+                    'A-Share Vol (30d)': 'A股30日波动率',
+                    'US-Share Vol (30d)': '美股30日波动率',
+                    'Target Weight A-Share': 'A股目标权重',
+                    'Target Weight US/JP': '美/日目标权重',
+                    'Core Allocation': '核心资产底仓比例',
+                    'Satellite Allocation': '卫星板块偏度比例',
+                    'Dividend Yield (Core)': '红利资产股息率 (核心)',
+                    'Theme Beta (Satellite)': '卫星主题行业Beta敏感度',
+                    'CSI 300 Trend': '沪深300指数长期趋势',
+                    'SP500 Trend': '标普500指数长期趋势',
+                    'AI Theme Trend': 'AI主题板块趋势',
+                    'Circuit Breaker': '多空防御熔断开关',
+                    'Systemic Risk Level': '系统性风险度等级',
+                    'Thematic Beta': '主题行业弹性Beta值',
+                    'Hedge Ratio': '对冲空头仓位比率',
+                    'Alpha Capture': '阿尔法超额捕捉状态',
+                    'VIX Panic Index': 'VIX恐慌波幅指数',
+                    'Gold Trend (60MA)': '黄金60日均线多空趋势',
+                    'Systemic Hedge Need': '系统性对冲避险级别',
+                    'Allocation Target': '黄金底仓预设比率'
+                };
+                const actionMap = { 'BUY': '买入/加仓', 'HOLD': '继续持有', 'LIQUIDATE': '清仓/卖出', 'NEUTRAL': '中性' };
+                const badgeColor = status === 'active' ? '#10b981' : (status === 'standby' ? '#f59e0b' : '#ef4444');
+                const signalColor = safeStrategyColor(eng.color, '#38bdf8');
+                const details = Array.isArray(eng.details) ? eng.details : [];
+                const holdings = Array.isArray(eng.holdings) ? eng.holdings : [];
+                const dataQuality = eng.data_quality || {};
+                const isDegraded = dataQuality.status && dataQuality.status !== 'ok';
+                const isTradeable = eng.tradeable !== false;
+                const modeLabel = eng.model_mode ? escapeHTML(eng.model_mode) : 'live';
+                const translatedMode = modeMap[eng.model_mode] || modeLabel;
+                const translatedStatus = statusMap[status] || status;
+                const translatedSignal = signalMap[eng.signal] || eng.signal || '暂无信号';
+                const translatedDesc = descMap[eng.description] || eng.description || '';
+                const qualityHtml = (isDegraded || !isTradeable) ? `
+                    <div style="padding-left:8px; display:flex; gap:6px; flex-wrap:wrap; font-size:0.65rem; font-family:var(--font-mono);">
+                        <span style="padding:2px 6px; border:1px solid #f59e0b; color:#f59e0b; border-radius:4px;">${isTradeable ? '降级运行' : '禁止交易'}</span>
+                        <span style="color:var(--text-tertiary);">模式: ${escapeHTML(translatedMode)}</span>
+                        ${dataQuality.degraded_reason ? `<span style="color:var(--text-tertiary);">原因: ${escapeHTML(dataQuality.degraded_reason)}</span>` : ''}
+                    </div>
+                ` : '';
                 
-                const detailsHtml = eng.details.map(d => 
-                    `<div style="display:flex; justify-content:space-between; font-size:0.75rem; border-bottom:1px solid rgba(255,255,255,0.05); padding-bottom:4px;">
-                        <span style="color:var(--text-tertiary);">${d.label}</span>
-                        <span style="font-family:var(--font-mono); color:${d.color || '#e2e8f0'}">${d.value}</span>
-                    </div>`
-                ).join('');
-                
-                const holdingsHtml = eng.holdings.map(h => {
-                    const actColor = h.action === 'BUY' ? '#10b981' : (h.action === 'LIQUIDATE' ? '#ef4444' : '#64748b');
-                    return `<div style="display:flex; justify-content:space-between; font-size:0.7rem; font-family:var(--font-mono);">
-                        <span><span style="color:var(--text-tertiary);">${h.symbol}</span> ${h.name}</span>
-                        <span><span style="color:${actColor}; margin-right:8px;">[${h.action}]</span> <span style="color:var(--text-secondary);">${h.weight}</span></span>
+                const detailsHtml = details.map(d => {
+                    const labelZH = labelMap[d.label] || d.label;
+                    let valZH = String(d.value || '');
+                    valZH = valZH.replace('BULLISH', '多头向上').replace('BEARISH', '空头下行')
+                                 .replace('SAFE', '运行良好').replace('TRIGGERED', '已触发平仓')
+                                 .replace('PLACEHOLDER (model inactive)', '未激活(常态等待)')
+                                 .replace('PLACEHOLDER', '未激活')
+                                 .replace('NOT LIVE', '未部署')
+                                 .replace('HIGH', '强烈避险需求').replace('LOW', '避险需求偏低');
+                    return `<div style="display:flex; justify-content:space-between; font-size:0.75rem; border-bottom:1px solid rgba(255,255,255,0.05); padding-bottom:4px;">
+                        <span style="color:var(--text-tertiary);">${escapeHTML(labelZH)}</span>
+                        <span style="font-family:var(--font-mono); color:${safeStrategyColor(d.color, '#e2e8f0')}">${escapeHTML(valZH)}</span>
                     </div>`;
                 }).join('');
-
+                
+                const holdingsHtml = holdings.map(h => {
+                    const actColor = h.action === 'BUY' ? '#10b981' : (h.action === 'LIQUIDATE' ? '#ef4444' : '#64748b');
+                    const actZH = actionMap[h.action] || h.action;
+                    return `<div style="display:flex; justify-content:space-between; font-size:0.75rem; align-items:center; margin-bottom: 6px;">
+                        <div style="display:flex; flex-direction:column; gap:2px;">
+                            <span style="font-weight:700; color:var(--text-primary); font-size:0.85rem;">${escapeHTML(h.name)}</span>
+                            <span style="font-family:var(--font-mono); font-size:0.65rem; color:var(--text-tertiary);">${escapeHTML(h.symbol)}</span>
+                        </div>
+                        <span><span style="color:${actColor}; margin-right:8px; font-weight:700; font-size:0.75rem;">[${escapeHTML(actZH)}]</span> <span style="color:var(--text-secondary); font-weight:700;">${escapeHTML(h.weight)}</span></span>
+                    </div>`;
+                }).join('');
                 return `
                 <div class="glass-card" style="position:relative; overflow:hidden; display:flex; flex-direction:column; gap:12px;">
                     <!-- Accent Line -->
@@ -3476,46 +3779,49 @@ async function initStrategyLab() {
                     
                     <div style="padding-left:8px; display:flex; justify-content:space-between; align-items:flex-start;">
                         <div>
-                            <div style="font-size:1.1rem; font-weight:700; color:var(--text-primary); margin-bottom:2px;">${eng.name_en}</div>
-                            <div style="font-size:0.7rem; color:var(--text-tertiary); letter-spacing:1px;">${eng.name}</div>
+                            <div style="font-size:1.15rem; font-weight:700; color:var(--text-primary); margin-bottom:2px;">${escapeHTML(eng.name)}</div>
+                            <div style="font-size:0.7rem; color:var(--text-tertiary); letter-spacing:1px; font-family:var(--font-mono); text-transform:uppercase;">${escapeHTML(eng.name_en)}</div>
                         </div>
                         <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px;">
-                            <span style="font-size:0.6rem; font-family:var(--font-mono); padding:2px 6px; border-radius:4px; border:1px solid ${badgeColor}; color:${badgeColor}; background:${badgeColor}22;">STATUS: ${eng.status.toUpperCase()}</span>
-                            <span style="font-size:0.8rem; font-family:var(--font-mono); color:${signalColor}; font-weight:bold;">> ${eng.signal}</span>
+                            <span style="font-size:0.6rem; padding:2px 6px; border-radius:4px; border:1px solid ${badgeColor}; color:${badgeColor}; background:${badgeColor}22; font-weight:700;">状态: ${escapeHTML(translatedStatus)}</span>
+                            <span style="font-size:0.8rem; font-family:var(--font-mono); color:${signalColor}; font-weight:bold;">&gt; ${escapeHTML(translatedSignal)}</span>
                         </div>
                     </div>
                     
                     <div style="padding-left:8px; font-size:0.8rem; color:var(--text-secondary); line-height:1.4;">
-                        ${eng.description}
+                        ${escapeHTML(translatedDesc)}
                     </div>
+                    ${qualityHtml}
                     
                     <div style="padding-left:8px; display:flex; flex-direction:column; gap:8px; margin-top:8px;">
                         ${detailsHtml}
                     </div>
                     
                     <div style="padding-left:8px; margin-top:8px; background:rgba(0,0,0,0.2); padding:8px; border-radius:4px;">
-                        <div style="font-size:0.65rem; color:var(--text-tertiary); margin-bottom:6px;">TARGET ALLOCATION:</div>
+                        <div style="font-size:0.65rem; color:var(--text-tertiary); margin-bottom:6px;">目标配置比例 (TARGET ALLOCATION):</div>
                         ${holdingsHtml}
                     </div>
                 </div>`;
             }).join('');
+            }
         }
-
         // 2. Render Metrics Container
         const metricsContainer = document.getElementById('strategy-metrics-container');
-        if (metricsContainer && data.backtest) {
+        const eqChartDom = document.getElementById('chart-strategy-equity');
+        const backtestReady = hasStrategyBacktestSeries(data.backtest);
+        if (!backtestReady) {
+            renderStrategyBacktestUnavailable(metricsContainer, eqChartDom, data.backtest && data.backtest.error);
+        } else if (metricsContainer) {
             const m = data.backtest.metrics;
             metricsContainer.innerHTML = `
-                <div class="metric-cell"><span style="display:flex; flex-direction:column; line-height:1.3;">Strategy YTD <small style="font-size:0.85em; color:var(--text-tertiary);">策略本年收益</small></span><strong style="color:#10b981;">${m.strategy_ytd}</strong></div>
-                <div class="metric-cell"><span style="display:flex; flex-direction:column; line-height:1.3;">Benchmark YTD <small style="font-size:0.85em; color:var(--text-tertiary);">基准本年收益</small></span><strong style="color:var(--text-primary);">${m.benchmark_ytd}</strong></div>
-                <div class="metric-cell"><span style="display:flex; flex-direction:column; line-height:1.3;">Max Drawdown <small style="font-size:0.85em; color:var(--text-tertiary);">最大回撤</small></span><strong style="color:#ef4444;">${m.max_drawdown}</strong></div>
-                <div class="metric-cell"><span style="display:flex; flex-direction:column; line-height:1.3;">Sharpe Ratio <small style="font-size:0.85em; color:var(--text-tertiary);">夏普比率</small></span><strong style="color:#38bdf8;">${m.sharpe_ratio}</strong></div>
+                <div class="metric-cell"><span style="display:flex; flex-direction:column; line-height:1.3;">策略本年收益 <small style="font-size:0.75em; color:var(--text-tertiary); font-weight:400; letter-spacing:0.5px; text-transform:uppercase; margin-top:2px;">Strategy YTD</small></span><strong style="color:#10b981;">${m.strategy_ytd}</strong></div>
+                <div class="metric-cell"><span style="display:flex; flex-direction:column; line-height:1.3;">基准本年收益 <small style="font-size:0.75em; color:var(--text-tertiary); font-weight:400; letter-spacing:0.5px; text-transform:uppercase; margin-top:2px;">Benchmark YTD</small></span><strong style="color:var(--text-primary);">${m.benchmark_ytd}</strong></div>
+                <div class="metric-cell"><span style="display:flex; flex-direction:column; line-height:1.3;">最大回撤 <small style="font-size:0.75em; color:var(--text-tertiary); font-weight:400; letter-spacing:0.5px; text-transform:uppercase; margin-top:2px;">Max Drawdown</small></span><strong style="color:#ef4444;">${m.max_drawdown}</strong></div>
+                <div class="metric-cell"><span style="display:flex; flex-direction:column; line-height:1.3;">夏普比率 <small style="font-size:0.75em; color:var(--text-tertiary); font-weight:400; letter-spacing:0.5px; text-transform:uppercase; margin-top:2px;">Sharpe Ratio</small></span><strong style="color:#38bdf8;">${m.sharpe_ratio}</strong></div>
             `;
         }
-
         // 3. Render Equity Curve
-        const eqChartDom = document.getElementById('chart-strategy-equity');
-        if (eqChartDom && window.echarts && data.backtest) {
+        if (backtestReady && eqChartDom && window.echarts) {
             let eqChart = echarts.getInstanceByDom(eqChartDom);
             if (!eqChart) eqChart = echarts.init(eqChartDom);
             
@@ -3571,7 +3877,6 @@ async function initStrategyLab() {
                 ]
             });
         }
-
         // 4. Render Universe
         const univContainer = document.getElementById('strategy-universe-container');
         if (univContainer && data.universe) {
@@ -3583,13 +3888,13 @@ async function initStrategyLab() {
                 if(category.includes('THEME')) catColor = '#a855f7';
                 
                 uHtml += `<div style="flex: 1 1 200px; background:rgba(0,0,0,0.2); padding:12px; border-radius:4px; border-top:2px solid ${catColor};">
-                    <div style="font-size:0.7rem; color:var(--text-tertiary); margin-bottom:8px; font-weight:bold;">${category.replace('_',' ')}</div>
+                    <div style="font-size:0.7rem; color:var(--text-tertiary); margin-bottom:8px; font-weight:bold;">${escapeHTML(category.replace('_',' '))}</div>
                     <div style="display:flex; flex-direction:column; gap:6px;">`;
                 
-                assets.forEach(a => {
+                (Array.isArray(assets) ? assets : []).forEach(a => {
                     uHtml += `<div style="display:flex; justify-content:space-between; font-size:0.75rem; font-family:var(--font-mono);">
-                        <span style="color:var(--text-secondary);">${a.name}</span>
-                        <span style="color:var(--text-tertiary);">${a.symbol}</span>
+                        <span style="color:var(--text-secondary);">${escapeHTML(a.name)}</span>
+                        <span style="color:var(--text-tertiary);">${escapeHTML(a.symbol)}</span>
                     </div>`;
                 });
                 
@@ -3597,13 +3902,10 @@ async function initStrategyLab() {
             }
             univContainer.innerHTML = uHtml;
         }
-
     } catch (e) {
         console.error('Failed to init Strategy Lab:', e);
     }
 }
-
-
 // ==========================================
 // [HUB] DECISION HUB LOGIC
 // ==========================================
@@ -3674,16 +3976,16 @@ async function initDecisionHub() {
         </div>
         
         <!-- Bottom Row: L5 AI Synthesis -->
-        <div class="glass-card" id="hub-l5-card" style="border-left:4px solid #10b981;">
-            <div class="card-header">
-                <h3 class="zh-primary">智能投研裁决 <span class="en-sub">L5 AI-CIO SYNTHESIS</span></h3>
+        <div class="glass-card" id="hub-l5-card" style="border-left:4px solid #10b981; display:flex; flex-direction:column;">
+            <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
+                <h3 class="zh-primary">投委会最终裁决与智能投研 <span class="en-sub">L5 AI-CIO SYNTHESIS & NARRATIVE</span></h3>
+                <span id="ai-indicator" class="status-indicator" style="font-size:0.75rem;"></span>
             </div>
-            <div id="hub-l5-content" style="font-size:0.95rem; line-height:1.7; color:var(--text-secondary); min-height:80px; padding:8px 0;">
+            <div id="hub-l5-content" style="font-size:0.95rem; line-height:1.7; color:var(--text-secondary); min-height:120px; display:flex; flex-direction:column; gap:16px; padding:8px 0;">
                 <div class="loading-spinner"></div>
             </div>
         </div>
     `;
-
     // Fetch data and populate
     fetch('/api/institutional/decision_hub')
       .then(r => r.json())
@@ -3746,22 +4048,63 @@ async function initDecisionHub() {
         if (l2) {
             const sigs = data.l2_signals || [];
             let html = '';
+            
+            const signalZHMap = {
+                'BULLISH': '多头看涨',
+                'BEARISH': '空头看跌',
+                'DEFENSIVE TILT': '防御倾向',
+                'A-SHARE CAUTION': 'A股谨慎对冲',
+                'HEDGE ACTIVE': '对冲激活',
+                'HEDGE INACTIVE': '未对冲',
+                'OVERWEIGHT OVERSEAS': '超配海外宽基',
+                'OVERWEIGHT A-SHARE': '超配A股资产',
+                'PLACEHOLDER - NOT TRADEABLE': '等候接入 (不可交易)',
+                'BULLISH ON GOLD': '看多黄金',
+                'NEUTRAL ON GOLD': '常规避险 (中性持有)',
+                'NO_SIGNAL': '暂无信号'
+            };
+
             sigs.forEach(s => {
                 const k = s.source || 'Unknown';
                 const valColor = s.signal > 0.5 ? '#22c55e' : (s.signal < -0.5 ? '#ef4444' : '#94a3b8');
                 const valText = s.signal > 0.5 ? (k.toLowerCase().includes('parity') ? 'OVERWEIGHT OVERSEAS' : 'BULLISH') : 
                                (s.signal < -0.5 ? (k.toLowerCase().includes('hedge') ? 'HEDGE ACTIVE' : 'BEARISH') : 
                                (k.toLowerCase().includes('hedge') ? 'HEDGE INACTIVE' : (k.toLowerCase().includes('barbell') ? 'DEFENSIVE TILT' : 'A-SHARE CAUTION')));
+                
+                const rawSig = s.raw_text || valText;
+                const sigZH = signalZHMap[rawSig] || rawSig;
+                const sigEN = rawSig;
+                
+                let targetName = '--';
+                let targetSymbol = '';
+
+                if (s.top_holding) {
+                    if (typeof s.top_holding === 'object') {
+                        targetName = s.top_holding.name || '--';
+                        targetSymbol = s.top_holding.symbol || '';
+                    } else {
+                        targetSymbol = s.top_holding;
+                        const cleanSymbol = targetSymbol.split('.')[0];
+                        const symNames = (data.l3_routing && data.l3_routing.symbol_names) || window.symbolNamesCache || {};
+                        targetName = symNames[targetSymbol] || symNames[cleanSymbol] || targetSymbol;
+                    }
+                }
+
                 html += `
-                    <div style="background:rgba(255,255,255,0.02); border:1px solid var(--row-border); border-radius:6px; padding:12px; display:flex; flex-direction:column; justify-content:space-between;">
-                        <div style="font-size:0.8rem; font-weight:bold; color:var(--text-primary); margin-bottom:8px; letter-spacing:1px;">${k.replace(/_/g, ' ').toUpperCase()}</div>
+                    <div style="background:rgba(255,255,255,0.02); border:1px solid var(--row-border); border-radius:6px; padding:12px; display:flex; flex-direction:column; justify-content:space-between; min-height:125px;">
+                        <div style="display:flex; flex-direction:column; margin-bottom:8px; gap:2px;">
+                            <span style="font-size:0.95rem; font-weight:700; color:var(--text-primary);">${s.source_zh || s.source}</span>
+                            ${s.source_zh ? `<span style="font-size:0.65rem; color:var(--text-tertiary); font-family:var(--font-mono); text-transform:uppercase; letter-spacing:0.5px; font-weight:400;">${s.source}</span>` : ''}
+                        </div>
                         <div style="display:flex; justify-content:space-between; align-items:flex-end;">
-                            <div style="font-size:0.7rem; color:var(--text-tertiary); font-family:var(--font-mono);">
-                                顶配锚定<br>
-                                <span style="color:var(--text-secondary);">${s.top_holding ? (typeof s.top_holding === 'object' ? (s.top_holding.symbol || s.top_holding.name || JSON.stringify(s.top_holding)) : s.top_holding) : '--'}</span>
+                            <div style="font-size:0.75rem; color:var(--text-tertiary); line-height:1.3; display:flex; flex-direction:column; gap:2px;">
+                                <span>顶配锚定 <small style="font-size:0.8em; color:var(--text-tertiary); font-family:var(--font-mono);">TOP HOLDING</small></span>
+                                <span style="font-weight:700; color:var(--text-primary); font-size:0.85rem; margin-top:2px;">${targetName}</span>
+                                <span style="color:var(--text-tertiary); font-family:var(--font-mono); font-size:0.65rem;">${targetSymbol}</span>
                             </div>
-                            <div style="font-family:var(--font-mono); font-weight:900; font-size:0.9rem; color:${valColor}; text-shadow:0 0 10px ${valColor}40;">
-                                ${valText}
+                            <div style="font-family:var(--font-sans); font-weight:900; font-size:1rem; color:${valColor}; text-shadow:0 0 10px ${valColor}40; text-align:right; line-height:1.2;">
+                                ${sigZH}
+                                <small style="display:block; font-size:0.65rem; font-family:var(--font-mono); color:var(--text-tertiary); font-weight:400; text-transform:uppercase; margin-top:2px;">${sigEN}</small>
                             </div>
                         </div>
                     </div>
@@ -4021,15 +4364,34 @@ async function initDecisionHub() {
               }
               
               l5.innerHTML = `
-                  <div style="background:${bg}; padding:12px; border-radius:4px; border:1px solid rgba(255,255,255,0.05);">
-                      <div style="font-weight:bold; color:var(--text-primary); margin-bottom:8px; font-size:1.05rem; letter-spacing:1px;">
-                          ${memo.headline}
+                  <div style="background:${bg}; padding:16px; border-radius:6px; border:1px solid rgba(255,255,255,0.05); box-shadow:0 2px 8px rgba(0,0,0,0.3);">
+                      <div style="font-weight:bold; color:var(--text-primary); margin-bottom:8px; font-size:1.05rem; letter-spacing:1px; font-family:var(--font-sans);">
+                          📢 投委会签批意向: ${memo.headline}
                       </div>
-                      <div style="font-family:var(--font-sans);">
+                      <div style="font-family:var(--font-sans); color:var(--text-secondary); line-height:1.6; font-size:0.92rem;">
                           ${memo.memo}
                       </div>
                   </div>
+                  
+                  <div style="background:rgba(0,0,0,0.25); border:1px solid rgba(255,255,255,0.04); border-radius:6px; padding:16px; flex:1; display:flex; flex-direction:column; box-shadow: inset 0 2px 10px rgba(0,0,0,0.5);">
+                      <div style="font-weight:700; color:var(--accent-primary); margin-bottom:8px; font-size:0.8rem; letter-spacing:1px; font-family:var(--font-mono);">
+                          💡 实时合成与市场叙事 (REAL-TIME SYNTHESIS & MARKET NARRATIVE)
+                      </div>
+                      <div id="ai-typewriter" style="font-family:var(--font-mono); color:var(--text-primary); font-size:0.92rem; line-height:1.8; overflow-y:auto; min-height:150px;">
+                          <div id="ai-text">正在唤醒智能智算中心，拉取宏观实时画像与因子穿透叙事...</div>
+                      </div>
+                  </div>
               `;
+              
+              setTimeout(() => {
+                  if (typeof initGenAI === 'function') {
+                      initGenAI();
+                  }
+              }, 100);
+              
+              if (window.renderL6Blotter) {
+                  window.renderL6Blotter(data);
+              }
           }
       })
       .catch(err => {
@@ -4037,13 +4399,9 @@ async function initDecisionHub() {
           document.getElementById('hub-l1-content').innerHTML = `<div class="error-msg">决策引擎连接失败 (Connection Failed)</div>`;
       });
 }
-
-
-
 // ==========================================
 // L6 EXECUTION GATEWAY & POLLING
 // ==========================================
-
 function renderExecutionHistory(recentExecutions) {
     const historyCard = document.getElementById('hub-execution-history-card');
     const historyContent = document.getElementById('hub-execution-history-content');
@@ -4100,7 +4458,6 @@ function renderExecutionHistory(recentExecutions) {
     historyHTML += `</tbody></table>`;
     historyContent.innerHTML = historyHTML;
 }
-
 window.refreshAuditTrail = function() {
     fetch('/api/audit_trail')
     .then(r => r.json())
@@ -4110,6 +4467,981 @@ window.refreshAuditTrail = function() {
         }
     }).catch(e => console.error('Audit trail poll failed', e));
 };
-
 // Start polling every 3 seconds
 setInterval(window.refreshAuditTrail, 3000);
+// ============================================================================
+// L3.5 INSTITUTIONAL QUANT WORKSPACES (Black-Litterman / Risk Parity / Crisis)
+// ============================================================================
+// --- 1. Black-Litterman Bayesian Optimizer ---
+async function loadBlackLittermanAssets() {
+    const container = document.getElementById('bl-views-container');
+    if (!container) return;
+    
+    try {
+        const res = await fetch('/api/institutional/portfolio_raw');
+        const data = await res.json();
+        
+        if (!data.positions || data.positions.length === 0) {
+            container.innerHTML = `<div style="text-align:center; padding:20px; color:var(--text-tertiary);">组合为空，请同步持仓账本。</div>`;
+            return;
+        }
+        
+        const nonCash = data.positions.filter(p => p.symbol !== 'CASH');
+        if (nonCash.length === 0) {
+            container.innerHTML = `<div style="text-align:center; padding:20px; color:var(--text-tertiary);">组合仅有现金，无需观点输入。</div>`;
+            return;
+        }
+        
+        let html = '';
+        nonCash.forEach(p => {
+            html += `
+                <div style="display:grid; grid-template-columns: 80px 1fr 100px 150px; gap:16px; align-items:center; background:rgba(255,255,255,0.02); padding:8px 12px; border-radius:4px; border:1px solid rgba(255,255,255,0.05);">
+                    <div style="font-family:var(--font-mono); font-weight:700; color:#fff;">${p.symbol}</div>
+                    <div style="font-size:0.75rem; color:var(--text-secondary); text-overflow:ellipsis; overflow:hidden; white-space:nowrap;">${p.name || ''}</div>
+                    <div style="display:flex; align-items:center; gap:4px;">
+                        <input type="number" class="bl-view-input" data-symbol="${p.symbol}" step="0.1" value="0.0" style="width:70px; background:#000; color:var(--accent-primary); border:1px solid rgba(255,255,255,0.15); border-radius:4px; padding:4px; font-family:var(--font-mono); text-align:right;">
+                        <span style="font-size:0.75rem; color:var(--text-tertiary);">%</span>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <input type="range" class="bl-confidence-slider" data-symbol="${p.symbol}" min="0" max="100" value="50" style="flex:1; accent-color:var(--accent-primary);" oninput="this.nextElementSibling.innerText = this.value + '%'">
+                        <span style="font-family:var(--font-mono); font-size:0.75rem; color:var(--accent-primary); min-width:35px;">50%</span>
+                    </div>
+                </div>
+            `;
+        });
+        container.innerHTML = html;
+    } catch (e) {
+        console.error('Failed to load Black-Litterman assets', e);
+        container.innerHTML = `<div style="text-align:center; padding:20px; color:var(--danger);">加载持仓清单失败</div>`;
+    }
+}
+async function runBlackLittermanOptimization() {
+    const inputs = document.querySelectorAll('.bl-view-input');
+    const views = {};
+    const confidences = {};
+    
+    let hasViews = false;
+    inputs.forEach(input => {
+        const val = parseFloat(input.value);
+        const sym = input.getAttribute('data-symbol');
+        if (!isNaN(val) && val !== 0) {
+            views[sym] = val / 100.0;
+            hasViews = true;
+        }
+    });
+    
+    if (!hasViews) {
+        alert('请至少为一个资产注入非0的主观观点 shock (e.g. +2.5% 或 -1.0%)！');
+        return;
+    }
+    
+    const sliders = document.querySelectorAll('.bl-confidence-slider');
+    sliders.forEach(slider => {
+        const sym = slider.getAttribute('data-symbol');
+        if (views[sym] !== undefined) {
+            confidences[sym] = parseFloat(slider.value) / 100.0;
+        }
+    });
+    
+    const chartDom = document.getElementById('chart-bl-comparison');
+    if (!chartDom) return;
+    let myChart = echarts.getInstanceByDom(chartDom);
+    if (!myChart) myChart = echarts.init(chartDom, 'dark');
+    
+    myChart.showLoading({
+        text: '求解贝叶斯优化均衡权重...',
+        color: '#38bdf8',
+        textColor: '#fff',
+        maskColor: 'rgba(20,20,25,0.8)'
+    });
+    
+    try {
+        const response = await fetch('/api/institutional/portfolio_opt/black_litterman', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ views, confidences })
+        });
+        const data = await response.json();
+        myChart.hideLoading();
+        
+        if (data && !data.error) {
+            const symbols = data.symbols;
+            const originalWeights = symbols.map(s => (data.original_weights[s] * 100).toFixed(2));
+            const benchmarkWeights = symbols.map(s => (data.benchmark_weights[s] * 100).toFixed(2));
+            const posteriorWeights = symbols.map(s => (data.optimized_weights[s] * 100).toFixed(2));
+            
+            const option = {
+                backgroundColor: 'transparent',
+                tooltip: {
+                    trigger: 'axis',
+                    axisPointer: { type: 'shadow' },
+                    backgroundColor: 'rgba(0,0,0,0.85)',
+                    borderColor: 'rgba(255,255,255,0.1)',
+                    textStyle: { color: '#fff' }
+                },
+                legend: {
+                    data: ['业绩基准先验 (Benchmark)', '原仓实际比例 (Original)', '贝叶斯后验优化 (Posterior)'],
+                    textStyle: { color: 'var(--text-secondary)' },
+                    bottom: 0
+                },
+                grid: {
+                    left: '3%',
+                    right: '4%',
+                    top: '10%',
+                    bottom: '15%',
+                    containLabel: true
+                },
+                xAxis: {
+                    type: 'value',
+                    axisLine: { lineStyle: { color: 'rgba(255,255,255,0.1)' } },
+                    axisLabel: { color: 'var(--text-tertiary)', formatter: '{value}%' },
+                    splitLine: { lineStyle: { color: 'rgba(255,255,255,0.03)' } }
+                },
+                yAxis: {
+                    type: 'category',
+                    data: symbols,
+                    axisLine: { lineStyle: { color: 'rgba(255,255,255,0.1)' } },
+                    axisLabel: { color: '#fff', fontWeight: 'bold' }
+                },
+                series: [
+                    {
+                        name: '业绩基准先验 (Benchmark)',
+                        type: 'bar',
+                        data: benchmarkWeights,
+                        itemStyle: { color: '#9ca3af' }
+                    },
+                    {
+                        name: '原仓实际比例 (Original)',
+                        type: 'bar',
+                        data: originalWeights,
+                        itemStyle: { color: '#f59e0b' }
+                    },
+                    {
+                        name: '贝叶斯后验优化 (Posterior)',
+                        type: 'bar',
+                        data: posteriorWeights,
+                        itemStyle: { color: '#38bdf8' }
+                    }
+                ]
+            };
+            
+            myChart.setOption(option);
+            
+            const metricsEl = document.getElementById('bl-active-risk-metrics');
+            if (metricsEl) {
+                metricsEl.textContent = `主动跟踪误差(TE): ${(data.active_risk * 100).toFixed(2)}% | 主动份额(Active Share): ${(data.active_share * 100).toFixed(1)}%`;
+            }
+            
+            const btnCommit = document.getElementById('btn-commit-bl');
+            if (btnCommit) btnCommit.style.display = 'block';
+            
+            const responseFric = await fetch('/api/institutional/sandbox/friction', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ target_weights: data.optimized_weights })
+            });
+            const dataFric = await responseFric.json();
+            if (dataFric && !dataFric.error) {
+                const commEl = document.getElementById('simu-audit-commission');
+                const impEl = document.getElementById('simu-audit-impact');
+                const totEl = document.getElementById('simu-audit-total-cost');
+                const netAumEl = document.getElementById('simu-audit-net-aum');
+                
+                if (commEl) commEl.textContent = '¥' + dataFric.commission_cost.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+                if (impEl) impEl.textContent = '¥' + dataFric.market_impact_cost.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+                if (totEl) totEl.textContent = `¥${dataFric.total_friction_cost.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})} (${dataFric.total_cost_bps.toFixed(2)} bps)`;
+                if (netAumEl) netAumEl.textContent = '¥' + dataFric.net_projected_aum.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+                
+                const radar = document.getElementById('simu-liquidity-radar');
+                const radarContent = document.getElementById('simu-radar-content');
+                if (radar && radarContent) {
+                    const warnings = dataFric.details.filter(d => d.warning_level === 'RED' || d.warning_level === 'YELLOW');
+                    if (warnings.length > 0) {
+                        radar.style.display = 'block';
+                        radarContent.innerHTML = warnings.map(w => `<div>⚠️ <strong>${w.symbol}</strong>: 交易量达 ADV 的 ${(w.participation_rate * 100).toFixed(2)}%。${w.warning_msg}</div>`).join('');
+                    } else {
+                        radar.style.display = 'none';
+                    }
+                }
+            }
+        } else {
+            alert('贝叶斯优化失败: ' + (data.error || '未知错误'));
+        }
+    } catch (e) {
+        console.error('Failed to run Black-Litterman optimization', e);
+        myChart.hideLoading();
+        alert('系统错误: 求解器异常。');
+    }
+}
+function resetBlackLittermanViews() {
+    const inputs = document.querySelectorAll('.bl-view-input');
+    inputs.forEach(input => input.value = "0.0");
+    const sliders = document.querySelectorAll('.bl-confidence-slider');
+    sliders.forEach(slider => {
+        slider.value = "50";
+        slider.nextElementSibling.innerText = "50%";
+    });
+    const btnCommit = document.getElementById('btn-commit-bl');
+    if (btnCommit) btnCommit.style.display = 'none';
+}
+// --- 2. Risk Parity All-Weather Allocator ---
+async function loadRiskParityAssets() {
+    const container = document.getElementById('rp-budgets-container');
+    if (!container) return;
+    
+    try {
+        const res = await fetch('/api/institutional/portfolio_raw');
+        const data = await res.json();
+        
+        if (!data.positions || data.positions.length === 0) {
+            container.innerHTML = `<div style="text-align:center; padding:20px; color:var(--text-tertiary);">组合为空，请同步持仓账本。</div>`;
+            return;
+        }
+        
+        const nonCash = data.positions.filter(p => p.symbol !== 'CASH');
+        if (nonCash.length === 0) {
+            container.innerHTML = `<div style="text-align:center; padding:20px; color:var(--text-tertiary);">组合仅有现金，无需进行风险平价配置。</div>`;
+            return;
+        }
+        
+        const N = nonCash.length;
+        const equalBudget = (100 / N).toFixed(1);
+        
+        let html = '';
+        nonCash.forEach(p => {
+            html += `
+                <div style="display:grid; grid-template-columns: 80px 1fr 180px; gap:16px; align-items:center; background:rgba(255,255,255,0.02); padding:8px 12px; border-radius:4px; border:1px solid rgba(255,255,255,0.05);">
+                    <div style="font-family:var(--font-mono); font-weight:700; color:#fff;">${p.symbol}</div>
+                    <div style="font-size:0.75rem; color:var(--text-secondary); text-overflow:ellipsis; overflow:hidden; white-space:nowrap;">${p.name || ''}</div>
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <input type="range" class="rp-budget-slider" data-symbol="${p.symbol}" min="0" max="100" value="${equalBudget}" step="0.1" style="flex:1; accent-color:var(--accent-primary);" oninput="scaleRiskParitySliders('${p.symbol}')">
+                        <span style="font-family:var(--font-mono); font-size:0.75rem; color:var(--accent-primary); min-width:45px; text-align:right;">${equalBudget}%</span>
+                    </div>
+                </div>
+            `;
+        });
+        container.innerHTML = html;
+    } catch (e) {
+        console.error('Failed to load Risk Parity assets', e);
+        container.innerHTML = `<div style="text-align:center; padding:20px; color:var(--danger);">加载持仓清单失败</div>`;
+    }
+}
+function scaleRiskParitySliders(changedSym) {
+    const sliders = document.querySelectorAll('.rp-budget-slider');
+    if (sliders.length <= 1) return;
+    
+    const changedSlider = Array.from(sliders).find(s => s.getAttribute('data-symbol') === changedSym);
+    if (!changedSlider) return;
+    
+    const newVal = parseFloat(changedSlider.value);
+    changedSlider.nextElementSibling.innerText = newVal + '%';
+    
+    let otherSum = 0;
+    const others = [];
+    sliders.forEach(s => {
+        const sym = s.getAttribute('data-symbol');
+        if (sym !== changedSym) {
+            others.push(s);
+            otherSum += parseFloat(s.value);
+        }
+    });
+    
+    const remaining = 100.0 - newVal;
+    if (otherSum > 0) {
+        others.forEach(s => {
+            const prevVal = parseFloat(s.value);
+            const scaled = (prevVal / otherSum) * remaining;
+            s.value = scaled.toFixed(1);
+            s.nextElementSibling.innerText = s.value + '%';
+        });
+    } else {
+        others.forEach(s => {
+            s.value = (remaining / others.length).toFixed(1);
+            s.nextElementSibling.innerText = s.value + '%';
+        });
+    }
+}
+async function runRiskParityOptimization() {
+    const sliders = document.querySelectorAll('.rp-budget-slider');
+    const budgets = {};
+    
+    sliders.forEach(slider => {
+        const sym = slider.getAttribute('data-symbol');
+        budgets[sym] = parseFloat(slider.value) / 100.0;
+    });
+    
+    const chartDom = document.getElementById('chart-rp-comparison');
+    if (!chartDom) return;
+    let myChart = echarts.getInstanceByDom(chartDom);
+    if (!myChart) myChart = echarts.init(chartDom, 'dark');
+    
+    myChart.showLoading({
+        text: '求解对数障碍凹凸风险平价优化权重...',
+        color: '#10b981',
+        textColor: '#fff',
+        maskColor: 'rgba(20,20,25,0.8)'
+    });
+    
+    try {
+        const response = await fetch('/api/institutional/portfolio_opt/risk_parity', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ budgets })
+        });
+        const data = await response.json();
+        myChart.hideLoading();
+        
+        if (data && !data.error) {
+            const symbols = data.symbols;
+            const originalWeights = symbols.map(s => (data.original_weights[s] * 100).toFixed(2));
+            const optimizedWeights = symbols.map(s => (data.optimized_weights[s] * 100).toFixed(2));
+            const actualRiskContributions = symbols.map(s => (data.actr_after[s] * 100).toFixed(2));
+            
+            const option = {
+                backgroundColor: 'transparent',
+                tooltip: {
+                    trigger: 'axis',
+                    axisPointer: { type: 'shadow' },
+                    backgroundColor: 'rgba(0,0,0,0.85)',
+                    borderColor: 'rgba(255,255,255,0.1)',
+                    textStyle: { color: '#fff' }
+                },
+                legend: {
+                    data: ['当前持仓比例 (Original)', '风险平价优化 (Optimized)', '优化后风险贡献 (ACTR)'],
+                    textStyle: { color: 'var(--text-secondary)' },
+                    bottom: 0
+                },
+                grid: {
+                    left: '3%',
+                    right: '4%',
+                    top: '10%',
+                    bottom: '15%',
+                    containLabel: true
+                },
+                xAxis: {
+                    type: 'value',
+                    axisLine: { lineStyle: { color: 'rgba(255,255,255,0.1)' } },
+                    axisLabel: { color: 'var(--text-tertiary)', formatter: '{value}%' },
+                    splitLine: { lineStyle: { color: 'rgba(255,255,255,0.03)' } }
+                },
+                yAxis: {
+                    type: 'category',
+                    data: symbols,
+                    axisLine: { lineStyle: { color: 'rgba(255,255,255,0.1)' } },
+                    axisLabel: { color: '#fff', fontWeight: 'bold' }
+                },
+                series: [
+                    {
+                        name: '当前持仓比例 (Original)',
+                        type: 'bar',
+                        data: originalWeights,
+                        itemStyle: { color: '#f59e0b' }
+                    },
+                    {
+                        name: '风险平价优化 (Optimized)',
+                        type: 'bar',
+                        data: optimizedWeights,
+                        itemStyle: { color: '#10b981' }
+                    },
+                    {
+                        name: '优化后风险贡献 (ACTR)',
+                        type: 'bar',
+                        data: actualRiskContributions,
+                        itemStyle: { color: '#a78bfa' }
+                    }
+                ]
+            };
+            
+            myChart.setOption(option);
+            
+            const metricsEl = document.getElementById('rp-volatility-metrics');
+            if (metricsEl) {
+                metricsEl.textContent = `原组合波动率: ${(data.volatility_before * 100).toFixed(2)}% → 优化后组合波动率: ${(data.volatility_after * 100).toFixed(2)}%`;
+            }
+            
+            const btnCommit = document.getElementById('btn-commit-rp');
+            if (btnCommit) btnCommit.style.display = 'block';
+            
+            const responseFric = await fetch('/api/institutional/sandbox/friction', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ target_weights: data.optimized_weights })
+            });
+            const dataFric = await responseFric.json();
+            if (dataFric && !dataFric.error) {
+                const commEl = document.getElementById('simu-audit-commission');
+                const impEl = document.getElementById('simu-audit-impact');
+                const totEl = document.getElementById('simu-audit-total-cost');
+                const netAumEl = document.getElementById('simu-audit-net-aum');
+                
+                if (commEl) commEl.textContent = '¥' + dataFric.commission_cost.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+                if (impEl) impEl.textContent = '¥' + dataFric.market_impact_cost.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+                if (totEl) totEl.textContent = `¥${dataFric.total_friction_cost.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})} (${dataFric.total_cost_bps.toFixed(2)} bps)`;
+                if (netAumEl) netAumEl.textContent = '¥' + dataFric.net_projected_aum.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+                
+                const radar = document.getElementById('simu-liquidity-radar');
+                const radarContent = document.getElementById('simu-radar-content');
+                if (radar && radarContent) {
+                    const warnings = dataFric.details.filter(d => d.warning_level === 'RED' || d.warning_level === 'YELLOW');
+                    if (warnings.length > 0) {
+                        radar.style.display = 'block';
+                        radarContent.innerHTML = warnings.map(w => `<div>⚠️ <strong>${w.symbol}</strong>: 交易量达 ADV 的 ${(w.participation_rate * 100).toFixed(2)}%。${w.warning_msg}</div>`).join('');
+                    } else {
+                        radar.style.display = 'none';
+                    }
+                }
+            }
+        } else {
+            alert('风险平价优化失败: ' + (data.error || '未知错误'));
+        }
+    } catch (e) {
+        console.error('Failed to run Risk Parity optimization', e);
+        myChart.hideLoading();
+        alert('系统错误: 凸凹优化求解器异常。');
+    }
+}
+function resetRiskParityBudgets() {
+    const sliders = document.querySelectorAll('.rp-budget-slider');
+    const N = sliders.length;
+    if (N === 0) return;
+    const equalVal = (100 / N).toFixed(1);
+    sliders.forEach(s => {
+        s.value = equalVal;
+        s.nextElementSibling.innerText = equalVal + '%';
+    });
+    const btnCommit = document.getElementById('btn-commit-rp');
+    if (btnCommit) btnCommit.style.display = 'none';
+}
+// --- 3. Historical Black Swan Stress Replicator ---
+window.historicalCrisisCache = null;
+async function initHistoricalScenarios() {
+    const chartDom = document.getElementById('chart-historical-drawdown');
+    if (!chartDom) return;
+    
+    let myChart = echarts.getInstanceByDom(chartDom);
+    if (!myChart) myChart = echarts.init(chartDom, 'dark');
+    
+    myChart.showLoading({
+        text: '重现历史危机时空序列...',
+        color: '#38bdf8',
+        textColor: '#fff',
+        maskColor: 'rgba(20,20,25,0.8)'
+    });
+    
+    try {
+        const response = await fetch('/api/institutional/scenarios/historical');
+        const data = await response.json();
+        window.historicalCrisisCache = data;
+        
+        myChart.hideLoading();
+        
+        const selector = document.getElementById('historical-crisis-selector');
+        const val = selector ? selector.value : 'lehman_2008';
+        switchHistoricalCrisisScenario(val);
+    } catch (e) {
+        console.error('Failed to load historical scenarios', e);
+        myChart.hideLoading();
+    }
+}
+function switchHistoricalCrisisScenario(scenarioId) {
+    if (!window.historicalCrisisCache || !window.historicalCrisisCache[scenarioId]) return;
+    const data = window.historicalCrisisCache[scenarioId];
+    
+    const narrativeEl = document.getElementById('historical-crisis-narrative');
+    if (narrativeEl) {
+        narrativeEl.innerHTML = `
+            <div style="font-weight: 700; color:#fff; font-size:0.95rem; border-bottom:1px solid rgba(255,255,255,0.05); padding-bottom:6px; margin-bottom:6px;">
+                ${data.name_zh} <span style="font-size:0.75em; color:var(--text-tertiary); font-weight:400; font-family:var(--font-mono); margin-left:6px; text-transform:uppercase;">${data.name_en}</span>
+            </div>
+            <div style="color:var(--text-secondary);">${data.narrative_zh}</div>
+        `;
+    }
+    
+    const mddPort = document.getElementById('rp-maxdd-portfolio');
+    const mddBench = document.getElementById('rp-maxdd-benchmark');
+    const mddRP = document.getElementById('rp-maxdd-riskparity');
+    const reduction = document.getElementById('rp-maxdd-reduction');
+    
+    if (mddPort) mddPort.textContent = `${data.max_drawdowns.portfolio_pct.toFixed(2)}%`;
+    if (mddBench) mddBench.textContent = `${data.max_drawdowns.benchmark_pct.toFixed(2)}%`;
+    if (mddRP) mddRP.textContent = `${data.max_drawdowns.risk_parity_pct.toFixed(2)}%`;
+    if (reduction) {
+        const val = data.max_drawdowns.drawdown_reduction_alpha_pct;
+        reduction.textContent = `${val >= 0 ? '+' : ''}${val.toFixed(2)}%`;
+        reduction.style.color = val >= 0 ? '#10b981' : '#ef4444';
+    }
+    
+    const chartDom = document.getElementById('chart-historical-drawdown');
+    if (!chartDom) return;
+    let myChart = echarts.getInstanceByDom(chartDom);
+    if (!myChart) myChart = echarts.init(chartDom, 'dark');
+    
+    const option = {
+        backgroundColor: 'transparent',
+        tooltip: {
+            trigger: 'axis',
+            backgroundColor: 'rgba(0,0,0,0.85)',
+            borderColor: 'rgba(255,255,255,0.1)',
+            textStyle: { color: '#fff' }
+        },
+        legend: {
+            data: ['当前持仓原仓 (Current)', '业绩基准组合 (Benchmark)', '等风险平价再平衡 (Risk Parity)'],
+            textStyle: { color: 'var(--text-secondary)' },
+            bottom: 0
+        },
+        grid: {
+            left: '3%',
+            right: '4%',
+            top: '10%',
+            bottom: '15%',
+            containLabel: true
+        },
+        xAxis: {
+            type: 'category',
+            data: data.dates,
+            axisLine: { lineStyle: { color: 'rgba(255,255,255,0.1)' } },
+            axisLabel: { color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }
+        },
+        yAxis: {
+            type: 'value',
+            min: function (value) { return (value.min - 0.02).toFixed(2); },
+            max: 1.05,
+            axisLine: { lineStyle: { color: 'rgba(255,255,255,0.1)' } },
+            axisLabel: { color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' },
+            splitLine: { lineStyle: { color: 'rgba(255,255,255,0.03)' } }
+        },
+        series: [
+            {
+                name: '当前持仓原仓 (Current)',
+                type: 'line',
+                data: data.portfolio_nav,
+                lineStyle: { color: '#f59e0b', width: 2 },
+                itemStyle: { color: '#f59e0b' },
+                showSymbol: false
+            },
+            {
+                name: '业绩基准组合 (Benchmark)',
+                type: 'line',
+                data: data.benchmark_nav,
+                lineStyle: { color: '#9ca3af', width: 1.5, type: 'dashed' },
+                itemStyle: { color: '#9ca3af' },
+                showSymbol: false
+            },
+            {
+                name: '等风险平价再平衡 (Risk Parity)',
+                type: 'line',
+                data: data.risk_parity_nav,
+                lineStyle: { color: '#10b981', width: 3 },
+                itemStyle: { color: '#10b981' },
+                showSymbol: false
+            }
+        ]
+    };
+    
+    myChart.setOption(option);
+}
+// --- 4. Custom Decision Archival / Committer ---
+async function commitCustomDecision(source) {
+    const payload = {
+        source: source,
+        portfolio: null
+    };
+    
+    if (source === 'bayesian_rebalance') {
+        const views = {};
+        const confidences = {};
+        
+        const inputs = document.querySelectorAll('.bl-view-input');
+        inputs.forEach(input => {
+            const val = parseFloat(input.value);
+            const sym = input.getAttribute('data-symbol');
+            if (!isNaN(val) && val !== 0) {
+                views[sym] = val / 100.0;
+            }
+        });
+        
+        const sliders = document.querySelectorAll('.bl-confidence-slider');
+        sliders.forEach(slider => {
+            const sym = slider.getAttribute('data-symbol');
+            if (views[sym] !== undefined) {
+                confidences[sym] = parseFloat(slider.value) / 100.0;
+            }
+        });
+        
+        payload.views = views;
+        payload.confidences = confidences;
+    } else if (source === 'risk_parity_rebalance') {
+        const budgets = {};
+        const sliders = document.querySelectorAll('.rp-budget-slider');
+        sliders.forEach(slider => {
+            const sym = slider.getAttribute('data-symbol');
+            budgets[sym] = parseFloat(slider.value) / 100.0;
+        });
+        payload.budgets = budgets;
+    } else if (source === 'macro_shock_sandbox') {
+        const shocks = {
+            equity_shock: parseFloat(document.getElementById('slider-shock-equity').value) / 100.0,
+            rate_shock: parseFloat(document.getElementById('slider-shock-rate').value) / 100.0,
+            vol_shock: parseFloat(document.getElementById('slider-shock-vol').value) / 100.0,
+            commodity_shock: parseFloat(document.getElementById('slider-shock-commodity').value) / 100.0
+        };
+        payload.shocks = shocks;
+    }
+    
+    try {
+        const response = await fetch('/api/institutional/audit/commit_custom', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+        const result = await response.json();
+        
+        if (result && result.ticket_id) {
+            alert(`签署并存证存留成功! \n审计票号(Ticket ID): ${result.ticket_id}\n合规评估(Compliance): ${result.compliance_status.toUpperCase()}\n决策综合评分: ${result.score}`);
+            if (window.initInstitutionalDecision) window.initInstitutionalDecision();
+        } else {
+            alert('签署决策存证失败: ' + (result.error || '未知内部错误'));
+        }
+    } catch(e) {
+        console.error('Commit custom decision failed', e);
+        alert('无法连接至审计链网络。');
+    }
+}
+// ============================================================================
+// L6 INSTITUTIONAL ALGORITHMIC COUNTER (TWAP / DIRECT SIGN-OFF & SLIPPAGE AUDIT)
+// ============================================================================
+window.renderL6Blotter = function(data) {
+    const l6Card = document.getElementById('hub-l6-card');
+    const l6Content = document.getElementById('hub-l6-content');
+    if (!l6Card || !l6Content) return;
+    
+    l6Card.style.display = 'block';
+    
+    const proposed = data.proposed_orders || [];
+    const symNames = data.l3_routing.symbol_names || {};
+    
+    let html = '';
+    
+    // 1. Proposed Orders section (拟调仓建议签发柜台)
+    html += `
+        <div style="background:rgba(0,0,0,0.25); border:1px solid rgba(255,255,255,0.05); border-radius:6px; padding:16px; margin-bottom:20px; box-shadow:inset 0 2px 10px rgba(0,0,0,0.5);">
+            <div style="font-weight:700; color:var(--accent-primary); margin-bottom:12px; font-size:0.85rem; letter-spacing:1px; display:flex; justify-content:space-between; align-items:center;">
+                <span>💡 投委会调仓发单签发台 (PROPOSED ORDERS SIGN-OFF BLOTTER)</span>
+                <span style="font-size:0.75rem; font-weight:400; color:var(--text-tertiary);">* 根据 Barra 组合风险与换手约束自动生成</span>
+            </div>
+    `;
+    
+    if (proposed.length === 0) {
+        html += `
+            <div style="text-align:center; padding:30px; color:var(--text-tertiary); font-family:var(--font-mono); font-size:0.85rem; letter-spacing:1px;">
+                组合仓位偏离极小，无需任何调仓发单建议。 (PORTFOLIO BALANCED)
+            </div>
+        `;
+    } else {
+        html += `
+            <table class="institutional-table" style="width:100%; font-family:var(--font-sans); font-size:0.85rem; border-collapse:collapse; margin-bottom:16px;">
+                <thead>
+                    <tr style="border-bottom:1px solid rgba(255,255,255,0.1); color:var(--text-tertiary); font-family:var(--font-mono); font-size:0.75rem;">
+                        <th style="padding:10px 8px; text-align:left;">资产标的</th>
+                        <th style="padding:10px 8px; text-align:left;">方向</th>
+                        <th style="padding:10px 8px; text-align:right;">拟调额度</th>
+                        <th style="padding:10px 8px; text-align:right;">估算股数</th>
+                        <th style="padding:10px 8px; text-align:right;">限价保护</th>
+                        <th style="padding:10px 8px; text-align:center; width:160px;">执行算法 (ALGO)</th>
+                        <th style="padding:10px 8px; text-align:center; width:100px;">签发</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+        
+        proposed.forEach((order, idx) => {
+            const sName = symNames[order.symbol] || order.symbol;
+            const actionColor = order.side === 'BUY' ? '#22c55e' : '#ef4444';
+            const actionBg = order.side === 'BUY' ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)';
+            const estVal = order.estimated_value || 0;
+            
+            html += `
+                <tr class="proposed-order-row" data-symbol="${order.symbol}" data-side="${order.side}" data-qty="${order.quantity}" data-price="${order.limit_price}" style="border-bottom:1px solid rgba(255,255,255,0.03); transition:background 0.2s;">
+                    <td style="padding:10px 8px;">
+                        <strong style="color:#fff; font-size:0.95rem;">${sName}</strong>
+                        <span style="display:block; font-family:var(--font-mono); font-size:0.7rem; color:var(--text-tertiary); margin-top:2px;">${order.symbol}</span>
+                    </td>
+                    <td style="padding:10px 8px;">
+                        <span style="color:${actionColor}; background:${actionBg}; border:1px solid ${actionColor}30; padding:2px 6px; border-radius:3px; font-weight:700; font-family:var(--font-mono); font-size:0.75rem;">${order.side}</span>
+                    </td>
+                    <td style="padding:10px 8px; text-align:right; font-family:var(--font-mono); color:var(--text-secondary);">
+                        ¥${estVal.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}
+                    </td>
+                    <td style="padding:10px 8px; text-align:right; font-family:var(--font-mono); font-weight:700; color:var(--text-primary);">
+                        ${parseInt(order.quantity).toLocaleString()} 股
+                    </td>
+                    <td style="padding:10px 8px; text-align:right; font-family:var(--font-mono); color:var(--text-secondary);">
+                        ${parseFloat(order.limit_price).toFixed(3)}
+                    </td>
+                    <td style="padding:10px 8px; text-align:center;">
+                        <select class="proposed-algo-select" style="background:#090d16; color:var(--accent-primary); border:1px solid rgba(255,255,255,0.15); border-radius:4px; padding:4px 8px; font-family:var(--font-mono); font-size:0.8rem; cursor:pointer; width:100%; outline:none;">
+                            <option value="TWAP">TWAP (智能均速拆单)</option>
+                            <option value="DIRECT">DIRECT (单次直接发单)</option>
+                        </select>
+                    </td>
+                    <td style="padding:10px 8px; text-align:center;">
+                        <button onclick="signOffSingleOrder(${idx})" class="btn-action-primary" style="padding:4px 10px; font-size:0.75rem; border-radius:4px; font-weight:bold; width:100%; letter-spacing:1px;">签发</button>
+                    </td>
+                </tr>
+            `;
+        });
+        
+        html += `
+                </tbody>
+            </table>
+            <div style="display:flex; justify-content:flex-end;">
+                <button onclick="signOffAllOrders()" class="btn-action-secondary" style="padding:8px 20px; font-size:0.85rem; font-weight:bold; letter-spacing:1px; border:1px solid var(--accent-primary); box-shadow:0 0 15px rgba(59,130,246,0.3);">
+                    ⚡ 一键全量授权签发到网关
+                </button>
+            </div>
+        `;
+    }
+    
+    html += `</div>`;
+    
+    // 2. Real-time Algorithmic Execution Monitor (实时拆单执行监视器)
+    html += `
+        <div style="background:rgba(0,0,0,0.25); border:1px solid rgba(255,255,255,0.05); border-radius:6px; padding:16px; box-shadow:inset 0 2px 10px rgba(0,0,0,0.5);">
+            <div style="font-weight:700; color:var(--accent-secondary); margin-bottom:12px; font-size:0.85rem; letter-spacing:1px; display:flex; justify-content:space-between; align-items:center;">
+                <span>🛡️ 实盘拆单与实时滑点监视器 (ALGORITHMIC EXECUTION & SLIPPAGE AUDIT)</span>
+                <span id="gateway-status-badge-monitor" style="font-family:var(--font-mono); font-size:0.7rem; color:var(--text-tertiary);">AUTO-POLLING SYNC</span>
+            </div>
+            <div id="algo-executions-container">
+                <div class="loading-spinner" style="margin:20px auto;"></div>
+            </div>
+        </div>
+    `;
+    
+    l6Content.innerHTML = html;
+    
+    // Save proposed orders mapping on window for action handlers
+    window.proposedOrdersData = proposed;
+    
+    // Immediately pull the audit trail to populate the monitor
+    window.syncExecutionMonitor();
+};
+window.syncExecutionMonitor = function() {
+    const container = document.getElementById('algo-executions-container');
+    if (!container) return;
+    
+    fetch('/api/audit_trail?limit=15')
+    .then(r => r.json())
+    .then(data => {
+        if (!data || !data.trades) {
+            container.innerHTML = `<div style="text-align:center; padding:20px; color:var(--text-tertiary);">同步执行状态失败。</div>`;
+            return;
+        }
+        
+        const trades = data.trades;
+        
+        // Filter and display trades
+        let executionsHTML = '';
+        
+        const activeAlgos = trades.filter(t => t.execution_algo === 'TWAP' || t.status === 'PENDING' || t.status === 'EXECUTING');
+        
+        if (activeAlgos.length === 0) {
+            executionsHTML = `
+                <div style="text-align:center; padding:30px; color:var(--text-tertiary); font-family:var(--font-mono); font-size:0.85rem; letter-spacing:1px;">
+                    没有活跃执行中的算法指令。 (NO ACTIVE ALGORITHMIC TRADES)
+                </div>
+            `;
+        } else {
+            activeAlgos.forEach(tx => {
+                const qty = parseInt(tx.quantity);
+                const executed = parseInt(tx.executed_qty || 0);
+                const progress = qty > 0 ? (executed / qty) * 100 : 0;
+                
+                const sideColor = tx.side === 'BUY' ? '#22c55e' : '#ef4444';
+                const sideBg = tx.side === 'BUY' ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)';
+                
+                // Slippage styling
+                const slip = parseFloat(tx.slippage_bps || 0);
+                let slipText = slip.toFixed(1) + ' Bps';
+                let slipColor = '#94a3b8';
+                
+                if (slip < 0) {
+                    slipText = `▼ ${Math.abs(slip).toFixed(1)} Bps (节省)`;
+                    slipColor = '#22c55e';
+                } else if (slip > 0) {
+                    slipText = `▲ ${slip.toFixed(1)} Bps (滑点)`;
+                    slipColor = '#f43f5e';
+                }
+                
+                let statusBadge = '';
+                let progressColor = 'linear-gradient(90deg, #3b82f6, #00ffcc)';
+                let rowStyle = '';
+                
+                if (tx.status === 'PENDING') {
+                    statusBadge = `<span style="background:rgba(245,158,11,0.15); color:#f59e0b; border:1px solid rgba(245,158,11,0.3); padding:2px 6px; border-radius:3px; font-size:0.7rem; font-weight:700;">WAITING GATEWAY</span>`;
+                    progressColor = 'rgba(255,255,255,0.1)';
+                } else if (tx.status === 'EXECUTING') {
+                    statusBadge = `<span class="executing-pulsate" style="background:rgba(0,255,204,0.15); color:#00ffcc; border:1px solid rgba(0,255,204,0.3); padding:2px 6px; border-radius:3px; font-size:0.7rem; font-weight:700; box-shadow:0 0 10px rgba(0,255,204,0.2);">EXECUTING TWAP</span>`;
+                    rowStyle = 'background:rgba(59,130,246,0.03); border-left:3px solid #00ffcc;';
+                } else {
+                    statusBadge = `<span style="background:rgba(34,197,94,0.15); color:#22c55e; border:1px solid rgba(34,197,94,0.3); padding:2px 6px; border-radius:3px; font-size:0.7rem; font-weight:700;">FILLED</span>`;
+                    progressColor = '#22c55e';
+                }
+                
+                executionsHTML += `
+                    <div style="border-bottom:1px solid rgba(255,255,255,0.05); padding:14px 8px; display:flex; flex-direction:column; gap:8px; ${rowStyle} transition:background 0.2s;">
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <div style="display:flex; align-items:center; gap:10px;">
+                                <strong style="font-family:var(--font-mono); color:#fff; font-size:0.9rem;">${tx.symbol}</strong>
+                                <span style="color:${sideColor}; background:${sideBg}; padding:2px 6px; border-radius:3px; font-weight:700; font-size:0.7rem;">${tx.side}</span>
+                                <span style="font-family:var(--font-mono); font-size:0.75rem; color:var(--text-tertiary);">${tx.execution_algo}</span>
+                            </div>
+                            <div style="display:flex; align-items:center; gap:16px;">
+                                <div style="text-align:right;">
+                                    <span style="font-size:0.65rem; color:var(--text-tertiary); display:block;">当前滑点漂移</span>
+                                    <strong style="font-family:var(--font-mono); font-size:0.85rem; color:${slipColor};">${slipText}</strong>
+                                </div>
+                                <div style="text-align:right;">
+                                    <span style="font-size:0.65rem; color:var(--text-tertiary); display:block;">成交均价</span>
+                                    <strong style="font-family:var(--font-mono); font-size:0.85rem; color:var(--text-primary);">${parseFloat(tx.avg_executed_price || tx.limit_price).toFixed(3)}</strong>
+                                </div>
+                                ${statusBadge}
+                            </div>
+                        </div>
+                        
+                        <div style="display:flex; align-items:center; gap:12px;">
+                            <div style="flex:1; height:6px; background:rgba(255,255,255,0.03); border-radius:3px; overflow:hidden;">
+                                <div style="height:100%; width:${progress}%; background:${progressColor}; transition:width 0.4s ease-out; box-shadow:0 0 10px rgba(59,130,246,0.5);"></div>
+                            </div>
+                            <span style="font-family:var(--font-mono); font-size:0.75rem; color:var(--text-secondary); min-width:130px; text-align:right;">
+                                ${progress.toFixed(0)}% (${executed.toLocaleString()} / ${qty.toLocaleString()} 股)
+                            </span>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+        
+        container.innerHTML = executionsHTML;
+    }).catch(e => {
+        console.error("Execution monitor sync failed", e);
+    });
+};
+window.signOffSingleOrder = async function(idx) {
+    if (!window.proposedOrdersData || !window.proposedOrdersData[idx]) return;
+    
+    const row = document.querySelectorAll('.proposed-order-row')[idx];
+    const select = row.querySelector('.proposed-algo-select');
+    const algo = select.value;
+    
+    const order = window.proposedOrdersData[idx];
+    
+    const btn = row.querySelector('button');
+    btn.disabled = true;
+    btn.innerText = '签发中...';
+    
+    try {
+        const response = await fetch('/api/institutional/sign_off_orders', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                orders: [{
+                    symbol: order.symbol,
+                    side: order.side,
+                    quantity: parseInt(order.quantity),
+                    price: parseFloat(order.limit_price),
+                    execution_algo: algo
+                }]
+            })
+        });
+        
+        const res = await response.json();
+        if (res.status === 'success') {
+            if (window.initInstitutionalDecision) window.initInstitutionalDecision();
+            if (window.refreshAuditTrail) window.refreshAuditTrail();
+        } else {
+            alert('[SYS_ERROR] 签发指令失败: ' + (res.error || '未知错误'));
+            btn.disabled = false;
+            btn.innerText = '签发';
+        }
+    } catch(e) {
+        alert('[SYS_ERROR] 后端网络异常，无法签发订单。');
+        btn.disabled = false;
+        btn.innerText = '签发';
+    }
+};
+window.signOffAllOrders = async function() {
+    if (!window.proposedOrdersData || window.proposedOrdersData.length === 0) return;
+    
+    const btn = document.querySelector('button[onclick="signOffAllOrders()"]');
+    btn.disabled = true;
+    btn.innerText = '⚡ 正在全量授权签发中...';
+    
+    const orders = [];
+    const rows = document.querySelectorAll('.proposed-order-row');
+    
+    window.proposedOrdersData.forEach((order, idx) => {
+        const select = rows[idx].querySelector('.proposed-algo-select');
+        orders.push({
+            symbol: order.symbol,
+            side: order.side,
+            quantity: parseInt(order.quantity),
+            price: parseFloat(order.limit_price),
+            execution_algo: select.value
+        });
+    });
+    
+    try {
+        const response = await fetch('/api/institutional/sign_off_orders', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ orders })
+        });
+        
+        const res = await response.json();
+        if (res.status === 'success') {
+            if (window.initInstitutionalDecision) window.initInstitutionalDecision();
+            if (window.refreshAuditTrail) window.refreshAuditTrail();
+        } else {
+            alert('[SYS_ERROR] 一键全量签发失败: ' + (res.error || '未知错误'));
+            btn.disabled = false;
+            btn.innerText = '⚡ 一键全量授权签发到网关';
+        }
+    } catch(e) {
+        alert('[SYS_ERROR] 后端网络异常，无法签发订单。');
+        btn.disabled = false;
+        btn.innerText = '⚡ 一键全量授权签发到网关';
+    }
+};
+window.pollGatewayHeartbeat = function() {
+    const indicator = document.getElementById('gateway-heartbeat-indicator');
+    const text = document.getElementById('gateway-status-text');
+    if (!indicator || !text) return;
+    
+    const dot = indicator.querySelector('.heartbeat-dot');
+    
+    fetch('/api/gateway/status')
+    .then(r => r.json())
+    .then(data => {
+        if (data.status === 'ONLINE') {
+            text.textContent = `ONLINE (${data.dry_run ? 'DRY-RUN' : 'LIVE'})`;
+            dot.style.background = '#00ffcc';
+            dot.style.boxShadow = '0 0 8px #00ffcc';
+            indicator.style.border = '1px solid rgba(0, 255, 204, 0.2)';
+            indicator.style.background = 'rgba(0, 255, 204, 0.03)';
+        } else {
+            text.textContent = 'OFFLINE';
+            dot.style.background = '#94a3b8';
+            dot.style.boxShadow = 'none';
+            indicator.style.border = '1px solid rgba(255, 255, 255, 0.05)';
+            indicator.style.background = 'rgba(0,0,0,0.3)';
+        }
+    })
+    .catch(() => {
+        text.textContent = 'OFFLINE';
+        dot.style.background = '#94a3b8';
+        dot.style.boxShadow = 'none';
+    });
+};
+// Start custom heartbeat and monitor polling on startup
+setInterval(window.pollGatewayHeartbeat, 3000);
+setInterval(window.syncExecutionMonitor, 2000);

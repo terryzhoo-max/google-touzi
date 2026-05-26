@@ -91,7 +91,7 @@ def get_l2_quant_signals():
             "raw_text": raw_sig,
             "top_holding": eng.get("holdings", [None])[0] if eng.get("holdings") else None
         }
-    return signals
+    return list(signals.values())
 
 def run_l3_allocator(l1_macro, portfolio, data_quality):
     """L3 Allocator: Real allocation model"""
@@ -230,6 +230,44 @@ def compute_decision_matrix(portfolio=None, data_quality=None):
     # If blocked, enforce risk: freeze target weights back to current
     if has_hard_block:
         l3_weights = before_weights.copy()
+        
+    # Fetch PENDING orders from SQLite to expose to QMT gateway
+    pending_broker_orders = []
+    try:
+        import sqlite3
+        from core.db_layer import DB_PATH
+        conn = sqlite3.connect(DB_PATH, timeout=5.0)
+        cursor = conn.cursor()
+        # Enforce schema check in case table not initialized yet
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS trade_journal (
+                order_id TEXT PRIMARY KEY,
+                symbol TEXT,
+                side TEXT,
+                quantity INTEGER,
+                price REAL,
+                status TEXT,
+                timestamp REAL
+            )
+        ''')
+        cursor.execute('''
+            SELECT order_id, symbol, side, quantity, price, execution_algo
+            FROM trade_journal
+            WHERE status = 'PENDING'
+        ''')
+        rows = cursor.fetchall()
+        conn.close()
+        for r in rows:
+            pending_broker_orders.append({
+                "order_id": r[0].split('_', 1)[1] if '_' in r[0] else r[0],
+                "symbol": r[1],
+                "side": r[2],
+                "quantity": int(r[3]),
+                "limit_price": float(r[4]),
+                "execution_algo": r[5]
+            })
+    except Exception as e:
+        print(f"[Decision Hub] Failed to query pending orders: {e}")
     
     try:
         from core.db_layer import get_recent_trades
@@ -242,7 +280,8 @@ def compute_decision_matrix(portfolio=None, data_quality=None):
         "global_status": l4["gate_status"],
         "drift_monitor": {"total_gap_pct": sum(abs(v - before_weights.get(k, 0)) for k, v in l3_weights.items()) * 100},
         "execution_plan": execution_plan,
-        "broker_orders": broker_orders,
+        "broker_orders": pending_broker_orders,
+        "proposed_orders": broker_orders,
         "recent_executions": recent_executions,
         "l1_macro": l1,
         "l2_signals": l2,

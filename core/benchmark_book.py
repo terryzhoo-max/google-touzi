@@ -113,3 +113,16 @@ def build_active_risk_snapshot(portfolio_snapshot: dict, benchmark: BenchmarkBoo
             if symbol not in book.positions
         ],
     }
+
+
+def get_portfolio_benchmark(portfolio: str | None = None) -> BenchmarkBook:
+    from core.portfolio_book import get_portfolio_metadata
+    meta = get_portfolio_metadata(portfolio)
+    benchmark_data = meta.get("benchmark")
+    if benchmark_data and isinstance(benchmark_data, dict) and "positions" in benchmark_data:
+        return BenchmarkBook(
+            benchmark_id=benchmark_data.get("benchmark_id", "custom_portfolio_benchmark"),
+            version=benchmark_data.get("version", "benchmark_v1"),
+            positions=_normalize(benchmark_data["positions"]),
+        )
+    return build_default_benchmark()

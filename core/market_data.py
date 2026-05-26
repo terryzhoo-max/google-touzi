@@ -256,10 +256,10 @@ async def background_data_fetcher():
     while not shutdown_event.is_set():
         try:
             print("[Background Daemon] Syncing multi-source institutional macro pipelines...")
-            fetch_fred_10y()
-            fetch_macro_indicator("^VIX", "vix")
-            fetch_macro_indicator("DX-Y.NYB", "dxy")
-            fetch_tushare_csi300()
+            await asyncio.to_thread(fetch_fred_10y)
+            await asyncio.to_thread(fetch_macro_indicator, "^VIX", "vix")
+            await asyncio.to_thread(fetch_macro_indicator, "DX-Y.NYB", "dxy")
+            await asyncio.to_thread(fetch_tushare_csi300)
             # selectively invalidate only routes whose source data was refreshed
             for rk in ("erp", "spread", "yield_curve", "decision", "signals", "allocation"):
                 invalidate(rk)

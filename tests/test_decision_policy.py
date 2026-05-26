@@ -10,8 +10,8 @@ def test_default_decision_policy_has_auditable_version_and_thresholds():
     assert policy["thresholds"]["data_quality_min_score"] == 60
     assert policy["thresholds"]["scenario_loss_limit_pct"] == -8.0
     assert policy["thresholds"]["scenario_loss_watch_pct"] == -6.0
-    assert policy["thresholds"]["allow_min_score"] == 80
-    assert policy["thresholds"]["limited_min_score"] == 60
+    assert policy["thresholds"]["allow_min_score"] == 70
+    assert policy["thresholds"]["limited_min_score"] == 50
 
 
 def test_decision_policy_hash_changes_when_thresholds_change():

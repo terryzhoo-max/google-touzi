@@ -153,3 +153,307 @@ def run_efficient_frontier() -> dict:
         "assets": TICKERS,
         "insight": insight,
     }
+
+
+def get_structured_covariance(symbols: list[str]) -> tuple[np.ndarray, np.ndarray]:
+    from core.factor_risk import FACTOR_REGISTRY
+    
+    # 5 Factors
+    factors = [
+        "equity_beta",
+        "liquidity_sensitivity",
+        "dollar_sensitivity",
+        "rate_sensitivity",
+        "inflation_sensitivity"
+    ]
+    
+    vol = np.array([0.16, 0.60, 0.08, 0.15, 0.05])
+    corr = np.eye(5)
+    
+    # SPY vs VIX
+    corr[0, 1] = corr[1, 0] = -0.7
+    # SPY vs DXY
+    corr[0, 2] = corr[2, 0] = -0.2
+    # SPY vs TNX
+    corr[0, 3] = corr[3, 0] = 0.1
+    # SPY vs Inflation
+    corr[0, 4] = corr[4, 0] = 0.2
+    
+    phi = np.zeros((5, 5))
+    for i in range(5):
+        for j in range(5):
+            phi[i, j] = corr[i, j] * vol[i] * vol[j]
+            
+    n = len(symbols)
+    B = np.zeros((n, 5))
+    for idx, sym in enumerate(symbols):
+        registry = FACTOR_REGISTRY.get(sym, {})
+        macro = registry.get("macro", {})
+        for f_idx, f in enumerate(factors):
+            B[idx, f_idx] = macro.get(f, 0.0)
+            
+    cov_macro = np.dot(B, np.dot(phi, B.T))
+    cov = cov_macro + np.eye(n) * (0.08 ** 2)
+    return cov, B
+
+
+def calculate_black_litterman(
+    portfolio_snapshot: dict,
+    benchmark_weights: dict[str, float],
+    views: dict[str, float],
+    confidences: dict[str, float],
+    risk_aversion: float = 2.5,
+    tau: float = 0.025
+) -> dict:
+    positions = portfolio_snapshot.get("positions", [])
+    symbols = [p["symbol"] for p in positions if p["symbol"] != "CASH"]
+    cash_pos = [p for p in positions if p["symbol"] == "CASH"]
+    cash_weight = sum(float(p["weight"]) for p in cash_pos)
+    
+    n = len(symbols)
+    if n == 0:
+        # Return fallback with original weights
+        original = {p["symbol"]: float(p["weight"]) for p in positions}
+        return {
+            "original_weights": original,
+            "benchmark_weights": original,
+            "optimized_weights": original,
+            "posterior_returns": {},
+            "prior_returns": {}
+        }
+        
+    cov, B = get_structured_covariance(symbols)
+    
+    # Standard Equilibrium Excess Returns (Pi)
+    w_eq = np.zeros(n)
+    for idx, sym in enumerate(symbols):
+        w_eq[idx] = benchmark_weights.get(sym, 0.0)
+    if w_eq.sum() <= 0:
+        w_eq = np.ones(n) / n
+    else:
+        w_eq = w_eq / w_eq.sum()
+        
+    Pi = risk_aversion * np.dot(cov, w_eq)
+    
+    valid_views = []
+    for sym, val in views.items():
+        if sym in symbols:
+            valid_views.append((sym, val, confidences.get(sym, 0.5)))
+            
+    k = len(valid_views)
+    if k == 0:
+        posterior_ret = Pi
+    else:
+        P = np.zeros((k, n))
+        Q = np.zeros(k)
+        omega_diag = np.zeros(k)
+        
+        for v_idx, (sym, val, conf) in enumerate(valid_views):
+            a_idx = symbols.index(sym)
+            P[v_idx, a_idx] = 1.0
+            Q[v_idx] = val
+            p_cov_p = cov[a_idx, a_idx]
+            c = max(0.01, min(0.99, conf))
+            omega_diag[v_idx] = max(1e-6, p_cov_p * (1.0 - c) / c)
+            
+        Omega = np.diag(omega_diag)
+        
+        inv_tau_sigma = np.linalg.inv(tau * cov)
+        inv_omega = np.linalg.inv(Omega)
+        
+        posterior_cov_inv = inv_tau_sigma + np.dot(P.T, np.dot(inv_omega, P))
+        posterior_cov = np.linalg.inv(posterior_cov_inv)
+        
+        posterior_ret = np.dot(posterior_cov, np.dot(inv_tau_sigma, Pi) + np.dot(P.T, np.dot(inv_omega, Q)))
+        
+    def obj(w):
+        return -np.dot(w, posterior_ret) + (risk_aversion / 2.0) * np.dot(w.T, np.dot(cov, w))
+        
+    constraints = {"type": "eq", "fun": lambda w: np.sum(w) - 1.0}
+    bounds = tuple((0.0, 1.0) for _ in range(n))
+    x0 = np.ones(n) / n
+    
+    res = minimize(obj, x0, bounds=bounds, constraints=constraints)
+    w_opt = res.x
+    
+    # Scale back including Cash
+    remaining_weight = 1.0 - cash_weight
+    optimized_weights = {}
+    for idx, sym in enumerate(symbols):
+        optimized_weights[sym] = round(w_opt[idx] * remaining_weight, 6)
+    for p in cash_pos:
+        optimized_weights[p["symbol"]] = round(p["weight"], 6)
+        
+    original_weights = {p["symbol"]: float(p["weight"]) for p in positions}
+    
+    # Align benchmark weights back including CASH (set cash benchmark weight to its current weight)
+    bench_weights_final = {}
+    for idx, sym in enumerate(symbols):
+        bench_weights_final[sym] = round(w_eq[idx] * remaining_weight, 6)
+    for p in cash_pos:
+        bench_weights_final[p["symbol"]] = round(p["weight"], 6)
+        
+    w_orig_noncash = np.zeros(n)
+    for idx, sym in enumerate(symbols):
+        w_orig_noncash[idx] = original_weights.get(sym, 0.0)
+    if w_orig_noncash.sum() > 0:
+        w_orig_noncash = w_orig_noncash / w_orig_noncash.sum()
+    else:
+        w_orig_noncash = np.ones(n) / n
+        
+    w_diff_orig = w_orig_noncash - w_eq
+    w_diff_opt = w_opt - w_eq
+    
+    active_risk_orig = np.sqrt(np.dot(w_diff_orig.T, np.dot(cov, w_diff_orig)))
+    active_risk_opt = np.sqrt(np.dot(w_diff_opt.T, np.dot(cov, w_diff_opt)))
+    
+    active_return_opt = np.dot(w_opt, posterior_ret) - np.dot(w_eq, posterior_ret)
+    
+    if active_risk_opt > 1e-6:
+        projected_ir = active_return_opt / active_risk_opt
+    else:
+        projected_ir = 0.0
+        
+    return {
+        "original_weights": original_weights,
+        "benchmark_weights": bench_weights_final,
+        "optimized_weights": optimized_weights,
+        "posterior_returns": {sym: round(float(posterior_ret[i]) * 100, 4) for i, sym in enumerate(symbols)},
+        "prior_returns": {sym: round(float(Pi[i]) * 100, 4) for i, sym in enumerate(symbols)},
+        "active_risk_metrics": {
+            "original_active_risk_pct": round(float(active_risk_orig) * 100, 4),
+            "optimized_active_risk_pct": round(float(active_risk_opt) * 100, 4),
+            "projected_information_ratio": round(float(projected_ir), 4)
+        }
+    }
+
+
+def solve_risk_parity(cov: np.ndarray, budgets: np.ndarray) -> np.ndarray:
+    """
+    Solve the risk parity optimization using the strictly convex formulation:
+    min_x 0.5 * x^T * Cov * x - sum(b_i * ln(x_i))
+    
+    The optimal x is then normalized to sum to 1.0.
+    """
+    n = len(budgets)
+    
+    def obj(x):
+        if np.any(x <= 0):
+            return 1e10
+        val = 0.5 * np.dot(x.T, np.dot(cov, x)) - np.sum(budgets * np.log(x))
+        return val
+        
+    def grad(x):
+        return np.dot(cov, x) - budgets / x
+        
+    x0 = np.ones(n) / n
+    bounds = tuple((1e-8, None) for _ in range(n))
+    
+    res = minimize(obj, x0, jac=grad, method="L-BFGS-B", bounds=bounds)
+    if not res.success:
+        res = minimize(obj, x0, method="Nelder-Mead", bounds=bounds)
+        
+    x_opt = res.x
+    w_opt = x_opt / np.sum(x_opt)
+    return w_opt
+
+
+def calculate_risk_parity_allocation(
+    portfolio_snapshot: dict,
+    benchmark_weights: dict[str, float],
+    budgets: dict[str, float] | None = None
+) -> dict:
+    """
+    Given a portfolio snapshot and benchmark weights, calculate the optimal weights
+    that satisfy the specified risk budgets (or Equal Risk Parity by default).
+    
+    CASH is excluded from the risk parity optimization (as its variance and covariance is 0),
+    and its weight remains anchored to its current level. The remaining portfolio weight is
+    distributed among risky assets according to the optimized risk parity weights.
+    """
+    positions = portfolio_snapshot.get("positions", [])
+    symbols = [p["symbol"] for p in positions if p["symbol"] != "CASH"]
+    cash_pos = [p for p in positions if p["symbol"] == "CASH"]
+    cash_weight = sum(float(p["weight"]) for p in cash_pos)
+    
+    n = len(symbols)
+    original = {p["symbol"]: float(p["weight"]) for p in positions}
+    
+    if n == 0:
+        return {
+            "original_weights": original,
+            "benchmark_weights": original,
+            "optimized_weights": original,
+            "risk_parity_details": {},
+            "portfolio_volatility_pct": 0.0
+        }
+        
+    # Get structured covariance
+    cov, B = get_structured_covariance(symbols)
+    
+    # Standardize budgets
+    b_vec = np.zeros(n)
+    for idx, sym in enumerate(symbols):
+        if budgets and sym in budgets:
+            b_vec[idx] = max(0.0, float(budgets[sym]))
+        else:
+            b_vec[idx] = 1.0 / n
+            
+    if b_vec.sum() <= 0:
+        b_vec = np.ones(n) / n
+    else:
+        b_vec = b_vec / b_vec.sum()
+        
+    # Run convex solver
+    w_opt_risky = solve_risk_parity(cov, b_vec)
+    
+    # Scale back including Cash
+    remaining_weight = 1.0 - cash_weight
+    optimized_weights = {}
+    for idx, sym in enumerate(symbols):
+        optimized_weights[sym] = round(w_opt_risky[idx] * remaining_weight, 6)
+    for p in cash_pos:
+        optimized_weights[p["symbol"]] = round(p["weight"], 6)
+        
+    # Standardize benchmark weights including CASH
+    bench_weights_final = {}
+    w_eq = np.zeros(n)
+    for idx, sym in enumerate(symbols):
+        w_eq[idx] = benchmark_weights.get(sym, 0.0)
+    if w_eq.sum() <= 0:
+        w_eq = np.ones(n) / n
+    else:
+        w_eq = w_eq / w_eq.sum()
+        
+    for idx, sym in enumerate(symbols):
+        bench_weights_final[sym] = round(w_eq[idx] * remaining_weight, 6)
+    for p in cash_pos:
+        bench_weights_final[p["symbol"]] = round(p["weight"], 6)
+        
+    # Calculate ACTR & Risk metrics under Optimized weights
+    port_vol = np.sqrt(np.dot(w_opt_risky.T, np.dot(cov, w_opt_risky)))
+    
+    mctr = np.dot(cov, w_opt_risky) / port_vol if port_vol > 0 else np.zeros(n)
+    actr = w_opt_risky * mctr
+    
+    sum_actr = actr.sum()
+    actr_pct = actr / sum_actr if sum_actr > 0 else np.ones(n) / n
+    
+    risk_parity_details = {}
+    for idx, sym in enumerate(symbols):
+        risk_parity_details[sym] = {
+            "risk_budget_pct": round(float(b_vec[idx]) * 100, 2),
+            "actual_risk_contribution_pct": round(float(actr_pct[idx]) * 100, 2),
+            "mctr_pct": round(float(mctr[idx]) * 100, 4),
+            "actr": round(float(actr[idx]), 6),
+            "asset_volatility_pct": round(np.sqrt(cov[idx, idx]) * 100, 2)
+        }
+        
+    return {
+        "original_weights": original,
+        "benchmark_weights": bench_weights_final,
+        "optimized_weights": optimized_weights,
+        "risk_parity_details": risk_parity_details,
+        "portfolio_volatility_pct": round(float(port_vol) * 100, 4)
+    }
+

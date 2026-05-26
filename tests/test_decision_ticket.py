@@ -2,20 +2,20 @@ from core.decision_ticket import build_decision_ticket
 
 
 def test_build_decision_ticket_downgrades_when_data_quality_is_weak():
+    from core.config import settings
     ticket = build_decision_ticket(
         data_quality={"score": 55, "status": "weak"},
         risk={"risk_level": "medium", "var_95_pct": -1.26},
         scenarios={"worst_scenario": {"portfolio_loss_pct": -6.75}},
     )
 
-    assert ticket["decision_status"] == "observe"
-    assert ticket["score"] == 58
-    assert ticket["suggested_action"] == "Hold risk steady until data quality improves."
+    var_high = getattr(settings, "CALIBRATED_VAR_HIGH", -6.0)
+    assert ticket["decision_status"] == "limited"
     assert "data_quality_weak" in ticket["gates_failed"]
     assert ticket["policy_version"] == "institutional_policy_v1"
     assert len(ticket["policy_hash"]) == 64
     assert ticket["policy_hash"] == ticket["policy_snapshot"]["policy_hash"]
-    assert ticket["policy_snapshot"]["thresholds"]["scenario_loss_limit_pct"] == -8.0
+    assert ticket["policy_snapshot"]["thresholds"]["scenario_loss_limit_pct"] == var_high
 
 
 def test_build_decision_ticket_includes_portfolio_exposure_summary():

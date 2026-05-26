@@ -143,6 +143,55 @@ def generate_portfolio_compliance_insight(compliance_status, tracking_error, var
         return {"insight": local}
 
 
+def generate_red_team_advisory(compliance_status, tracking_error, var_95, top_factor, concentration, worst_scenario_name="未知冲击", worst_loss=0.0):
+    """Generates a critical, adversarial CRO response focusing on tail-risks and crowded factors."""
+    try:
+        prompt = f"""你是一个极其苛刻、挑剔、冰冷且完全理性的对冲基金独立红队风控官 (Red Team CRO)。
+你的唯一职责是向投资委员会的偏见与乐观情绪“泼冷水”，一针见血指出当前资产配置的最致命死穴。
+请基于以下数据，生成一段 150 字以内的【红队风控质询意见】。语气必须极其冷酷、一针见血，绝无任何废话。
+
+当前组合风控及压测快照：
+- 合规绿灯状态: {compliance_status.upper()}
+- 跟踪误差 (Tracking Error): {tracking_error}%
+- 95% 在险价值 (VaR): {var_95}%
+- 最大风险溢价因子: {top_factor}
+- 集中度水位: {concentration}
+- 最恶劣情景压测 (Scenario Stress): 「{worst_scenario_name}」，预期最大回撤 {worst_loss}%
+"""
+        url = "https://api.deepseek.com/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {settings.DEEPSEEK_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "model": "deepseek-chat",
+            "messages": [
+                {"role": "system", "content": "You are a highly skeptical and aggressive Red Team Risk Officer at a global macro hedge fund. Your goal is to highlight blind spots and challenge the portfolio managers."},
+                {"role": "user", "content": prompt}
+            ],
+            "temperature": 0.4,
+            "max_tokens": 300
+        }
+        
+        req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
+        with urllib.request.urlopen(req, timeout=10) as response:
+            result = json.loads(response.read().decode("utf-8"))
+            content = result["choices"][0]["message"]["content"]
+            return {"insight": content}
+    except Exception as e:
+        print(f"LLM API Error in Red Team Advisory: {e}")
+        
+        # Highly realistic deterministic local fallback based on factor exposures and worst loss
+        if worst_loss < -8.0 or compliance_status.lower() in ['block', 'fail']:
+            local = f"⚠️ 红队严厉质询：最坏场景「{worst_scenario_name}」预期损失达 {worst_loss}% 已击穿风险预算底线。强配 {top_factor} 因子属于严重的认知偏差，完全低估了流动性踩踏风险。建议立即否决本期投资建议，削减敞口。"
+        else:
+            local = f"⚠️ 红队风险警示：当前合规状态虽显示为 {compliance_status.upper()}，但组合在 {top_factor} 因子上的拥挤暴露是不容忽视的隐患。在极端流动性逆风下，其相关性通常会迅速飙升，导致 VaR 模型瞬间失效。建议维持高度警惕，增配现金。"
+            
+        return {"insight": local}
+
+
+
 def generate_morning_brief(decision_matrix: dict, scenarios: dict, factor_risk: dict, macro_data: dict) -> dict:
     try:
         # Extract macro data

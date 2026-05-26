@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;700&family=Inter:wght@300;400;600;700&family=Outfit:wght@400;600;800&display=swap');
+
 /* CSS Custom Properties / Design Tokens */
 :root {
     --bg-color: #030406;
@@ -19,10 +21,10 @@
     --row-border: rgba(255, 255, 255, 0.04);
     --row-hover: rgba(255, 255, 255, 0.02);
 
-    --font-sans: -apple-system, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Inter', sans-serif;
-    --font-display: -apple-system, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Inter', sans-serif;
-    --font-mono: 'JetBrains Mono', 'Roboto Mono', monospace;
-    --font-tabular: 'JetBrains Mono', 'Roboto Mono', monospace;
+    --font-sans: 'Inter', -apple-system, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+    --font-display: 'Outfit', -apple-system, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+    --font-mono: 'Fira Code', 'JetBrains Mono', 'Roboto Mono', monospace;
+    --font-tabular: 'Fira Code', monospace;
     --font-size-xs: 0.65rem;
     --font-size-sm: 0.75rem;
     --font-size-base: 0.85rem;
@@ -120,6 +122,15 @@ a {
 
 .view-panel.active {
     display: block;
+}
+
+body.route-hash-active .view-panel {
+    display: none !important;
+}
+
+body.route-hash-active .view-panel.route-active-view {
+    display: block !important;
+    min-height: calc(100vh - 32px);
 }
 
 /* Hardcore Utilities */
@@ -224,6 +235,7 @@ a {
     flex-direction: column;
     padding: 0;
     flex-shrink: 0;
+    min-height: 0;
     z-index: 10;
 }
 
@@ -246,6 +258,9 @@ a {
     flex-direction: column;
     padding: 20px 0;
     flex-grow: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
 }
 
 .terminal-nav a {

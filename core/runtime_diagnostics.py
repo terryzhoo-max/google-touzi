@@ -93,6 +93,68 @@ def _git_diagnostics(cwd: Path | None) -> dict:
         return {"status": "unknown", "error": str(exc)}
 
 
+def check_qmt_portfolio_drift(portfolio_positions: list[dict]) -> dict:
+    """Compare local portfolio positions with the last QMT export file to detect drifts."""
+    drift_report = {"drift_detected": False, "mismatches": []}
+    export_file = os.path.join(os.path.dirname(__file__), "..", "20260513资金股份查询.txt")
+    if not os.path.exists(export_file):
+        return drift_report
+        
+    try:
+        content = ""
+        for encoding in ("gbk", "utf-8", "utf-16"):
+            try:
+                with open(export_file, "r", encoding=encoding) as f:
+                    content = f.read()
+                break
+            except Exception:
+                continue
+                
+        if not content:
+            return drift_report
+            
+        lines = content.splitlines()
+        qmt_positions = {}
+        for line in lines:
+            tokens = [t.strip() for t in line.split() if t.strip()]
+            if not tokens or len(tokens) < 3:
+                continue
+            code = tokens[0]
+            if len(code) == 6 and code.isdigit():
+                balance = 0
+                for tok in tokens[2:]:
+                    try:
+                        clean_tok = tok.replace(",", "")
+                        if clean_tok.isdigit():
+                            balance = int(clean_tok)
+                            break
+                        elif "." in clean_tok:
+                            balance = int(float(clean_tok))
+                            break
+                    except ValueError:
+                        continue
+                qmt_positions[code] = balance
+                
+        for pos in portfolio_positions:
+            symbol = pos["symbol"].split(".")[0]
+            if not symbol.isdigit():
+                continue
+            local_qty = int(pos.get("quantity", 0))
+            qmt_qty = qmt_positions.get(symbol, 0)
+            if local_qty != qmt_qty:
+                drift_report["drift_detected"] = True
+                drift_report["mismatches"].append({
+                    "symbol": pos["symbol"],
+                    "local_qty": local_qty,
+                    "qmt_qty": qmt_qty,
+                    "diff": local_qty - qmt_qty
+                })
+    except Exception as exc:
+        print(f"[runtime_diagnostics] Failed to parse QMT query file: {exc}")
+        
+    return drift_report
+
+
 def build_runtime_diagnostics(settings, cwd: str | Path | None = None) -> dict:
     base = Path(cwd) if cwd is not None else Path.cwd()
     config = _config_diagnostics(settings)
@@ -100,6 +162,19 @@ def build_runtime_diagnostics(settings, cwd: str | Path | None = None) -> dict:
     portfolio = _portfolio_diagnostics(getattr(settings, "PORTFOLIO_BOOK_PATH", ""))
     audit_db = _audit_db_diagnostics(base)
     git = _git_diagnostics(base)
+
+    # Heartbeat check for QMT Gateway
+    qmt_status = "OFFLINE"
+    status_file = base / "qmt_heartbeat.json"
+    import time
+    if status_file.exists():
+        try:
+            with open(status_file, "r", encoding="utf-8") as f:
+                heartbeat = json.load(f)
+            if time.time() - heartbeat.get("timestamp", 0) < 30.0:
+                qmt_status = "ONLINE"
+        except Exception:
+            pass
 
     if config["status"] == "misconfigured" or portfolio["status"] in {"missing", "unreadable"}:
         status = "misconfigured"
@@ -115,4 +190,8 @@ def build_runtime_diagnostics(settings, cwd: str | Path | None = None) -> dict:
         "portfolio": portfolio,
         "audit_db": audit_db,
         "git": git,
+        "qmt_gateway": {
+            "status": qmt_status,
+        }
     }
+

@@ -26,7 +26,8 @@ def test_attribution_snapshot_splits_allocation_selection_currency_and_decision_
     assert attribution["portfolio_return"] == 0.016
     assert attribution["benchmark_return"] == 0.0135
     assert attribution["allocation_effect"] == 0.0003
-    assert attribution["selection_effect"] == 0.0022
+    assert attribution["selection_effect"] == 0.0015
+    assert attribution["interaction_effect"] == 0.0007
     assert attribution["currency_effect"] == -0.001
     assert attribution["decision_effect"] == 0.0025
     assert attribution["by_symbol"][0]["symbol"] == "CSI300_ETF"
