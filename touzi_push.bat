@@ -58,9 +58,8 @@ if errorlevel 1 (
 echo.
 
 echo [3/6] Integrity: Scanning for large file protection (>50MB)...
-python -c "import os, sys, subprocess; status = subprocess.check_output(['git', 'status', '--porcelain'], text=True); large = []; limit = 50*1024*1024; [large.append((line[3:].strip('\"'), os.path.getsize(line[3:].strip('\"')))) for line in status.splitlines() if line.strip() and os.path.exists(line[3:].strip('\"')) and os.path.isfile(line[3:].strip('\"')) and os.path.getsize(line[3:].strip('\"')) > limit]; sys.exit(1 if large else 0) if not large else [print(f'      [ALERT] Large file: {p} ({s/1024/1024:.1f} MB)') for p, s in large]"
+python scratch\check_large_files.py
 if errorlevel 1 (
-    echo.
     echo [WARNING] Local repository contains files larger than 50MB.
     echo           Pushing large files to GitHub may fail or violate size policies.
     choice /M "Are you sure you want to proceed with staging these files?"
