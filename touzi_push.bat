@@ -57,7 +57,7 @@ if errorlevel 1 (
 )
 echo.
 
-echo [3/6] Integrity: Scanning for large file protection (>50MB)...
+echo [3/6] Integrity: Scanning for large file protection (^>50MB)...
 python scratch\check_large_files.py
 if errorlevel 1 (
     echo [WARNING] Local repository contains files larger than 50MB.
