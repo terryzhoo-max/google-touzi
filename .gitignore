@@ -1,6 +1,43 @@
+# ==========================================
+#  AlphaCore Production Git Ignore Rules
+# ==========================================
+
+# 1. Python runtime & compilation
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+htmlcov/
+
+# 2. Local Environment & Databases
 .env
-alphacore.db
-alphacore_audit.db
-subscribers.db
+.env.*
+*.db
+*.sqlite
+*.sqlite3
+!data/institutional_portfolio.json  # Keep specific seeded config databases if needed
+!data/tactical_hedged_portfolio.json
+
+# 3. Web UI / Browser Automation Scratch & Profiles
+scratch/chrome-profile/
+scratch/edge-profile*/
+scratch/*.png
+scratch/*.jpg
+scratch/*.jpeg
+scratch/diff_output.txt
+
+# 4. Runtime Dumps, Logs & Heartbeats
+*.log
+qmt_heartbeat.json
+opt_result.txt
+20260513资金股份查询.txt
+
+# 5. OS & IDE Metadata
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
