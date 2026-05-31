@@ -136,6 +136,11 @@ def _retry_akshare(func, *args, **kwargs):
 
 # ── low-level fetchers ──────────────────────────────────────────
 
+def _akshare_fallback_enabled() -> bool:
+    """Return whether unstable AKShare fallbacks are allowed in automatic paths."""
+    return bool(getattr(settings, "ENABLE_AKSHARE_FALLBACK", False))
+
+
 def _http_get(url: str, timeout: float = 10.0, retries: int = 3) -> bytes:
     """HTTP GET with exponential backoff retry."""
     last_err = None
@@ -388,6 +393,14 @@ def get_vix_history(days: int = 30) -> pd.Series:
     except Exception as e:
         print(f"[data_providers] FRED VIXCLS failed: {e}")
 
+    if not _akshare_fallback_enabled():
+        print("[data_providers] AKShare VIX fallback disabled; using SQLite failover")
+        s_fail = _sqlite_failover_series("VIXCLS", limit=days)
+        if len(s_fail) > 0:
+            _fallback_active["VIX"] = True
+            return s_fail
+        return pd.Series(dtype=float)
+
     # fallback: AKShare VIX (try both known function names)
     print("[data_providers] Falling back to AKShare for VIX …")
     try:
@@ -529,6 +542,15 @@ def get_us_etf_history(symbol: str, months: int = 6) -> pd.Series:
         except Exception as e:
             print(f"[data_providers] Tushare QDII {ts_code} failed for {symbol}: {e}")
 
+    if not _akshare_fallback_enabled():
+        print(f"[data_providers] AKShare fallback disabled for {symbol}; using SQLite failover")
+        s_fail = _sqlite_failover_series(ts_code if ts_code else symbol, limit=days)
+        if len(s_fail) > 0:
+            _fallback_active[symbol] = True
+            return s_fail
+        print(f"[data_providers] all sources exhausted for {symbol}")
+        return pd.Series(dtype=float)
+
     try:
         s = _akshare_us_etf(symbol, days_back=days)
         if len(s) > 0:
@@ -581,6 +603,14 @@ def get_us_etf_history_long(symbol: str, years: int = 5) -> pd.Series:
         except Exception as e:
             print(f"[data_providers] Tushare QDII long failed for {symbol}: {e}")
 
+    if not _akshare_fallback_enabled():
+        print(f"[data_providers] AKShare long fallback disabled for {symbol}; using SQLite failover")
+        s_fail = _sqlite_failover_series(ts_code if ts_code else symbol, limit=days)
+        if len(s_fail) > 0:
+            _fallback_active[symbol] = True
+            return s_fail
+        return pd.Series(dtype=float)
+
     try:
         s = _akshare_us_etf(symbol, days_back=days)
         if len(s) > 0:
@@ -624,6 +654,14 @@ def get_global_index_history_long(symbol: str, years: int = 10) -> pd.Series:
             return s
     except Exception as e:
         print(f"[data_providers] Tushare {api_name} failed for {symbol}: {e}")
+
+    if api_name == "index_global" and not _akshare_fallback_enabled():
+        print(f"[data_providers] AKShare native fallback disabled for {symbol}; using SQLite failover")
+        s_fail = _sqlite_failover_series(symbol, limit=days)
+        if len(s_fail) > 0:
+            _fallback_active[symbol] = True
+            return s_fail
+        return pd.Series(dtype=float)
 
     # Fallback to AKShare
     if api_name == "index_global":
@@ -677,6 +715,14 @@ def get_china_etf_history_long(symbol: str, years: int = 5) -> pd.Series:
             return s
     except Exception as e:
         print(f"[data_providers] Tushare {ts_api} failed for {symbol}: {e}")
+
+    if not _akshare_fallback_enabled():
+        print(f"[data_providers] AKShare China fallback disabled for {symbol}; using SQLite failover")
+        s_fail = _sqlite_failover_series(ts_code, limit=365 * years)
+        if len(s_fail) > 0:
+            _fallback_active[symbol] = True
+            return s_fail
+        return pd.Series(dtype=float)
 
     # Fallback: AKShare with qfq (Forward-Adjusted)
     try:

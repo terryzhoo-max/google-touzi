@@ -27,6 +27,38 @@ def test_health_endpoint_includes_production_diagnostics_without_secrets(monkeyp
     assert "secret-value-should-not-leak" not in str(payload)
 
 
+def test_health_endpoint_does_not_degrade_unused_provider_without_circuit(monkeypatch):
+    import app.routes.health as health_routes
+
+    monkeypatch.setattr(
+        health_routes,
+        "get_provider_stats",
+        lambda: {
+            "akshare": {
+                "calls": 0,
+                "hit_ratio": 0.0,
+                "error_rate": 0.0,
+                "last_ok_secs_ago": None,
+                "last_error": None,
+                "avg_ms": 0.0,
+            }
+        },
+    )
+    monkeypatch.setattr(health_routes, "get_circuit_state", lambda: {})
+    monkeypatch.setattr(
+        health_routes,
+        "build_runtime_diagnostics",
+        lambda settings, cwd: {"status": "healthy"},
+    )
+
+    response = client.get("/api/health")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "healthy"
+    assert payload["degraded_sources"] == []
+
+
 def test_institutional_decision_endpoint_returns_ticket():
     response = client.get("/api/institutional/decision")
 
@@ -221,6 +253,59 @@ def test_institutional_attribution_endpoint_respects_period_parameter():
 
     assert t1["period"] == "T+1"
     assert t5["period"] == "T+5"
+
+
+def test_historical_scenarios_endpoint_uses_market_data_vix(monkeypatch):
+    import core.market_data
+
+    def fake_fetch_yfinance_data(ticker_symbol, cache_key):
+        assert ticker_symbol == "^VIX"
+        assert cache_key == "vix"
+        return {"data": [21.5]}
+
+    monkeypatch.setattr(core.market_data, "fetch_yfinance_data", fake_fetch_yfinance_data)
+
+    response = client.get(
+        "/api/institutional/scenarios/historical"
+        "?defense_trigger_drawdown=0.05"
+        "&defense_risk_cut_ratio=0.5"
+        "&stabilization_days=10"
+        "&portfolio=institutional_portfolio"
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert "lehman_2008" in payload
+    assert "portfolio_nav" in payload["lehman_2008"]
+
+
+def test_institutional_scenarios_return_readable_chinese_labels():
+    response = client.get("/api/institutional/scenarios?portfolio=institutional_portfolio")
+
+    assert response.status_code == 200
+    payload = response.json()
+    names = [row["name_zh"] for row in payload["scenarios"]]
+    assert "权益流动性冲击" in names
+    assert "利率快速上行" in names
+    assert all("?" not in name for name in names)
+    assert "?" not in payload["worst_scenario"]["name_zh"]
+
+
+def test_historical_scenarios_return_readable_chinese_narratives():
+    response = client.get(
+        "/api/institutional/scenarios/historical"
+        "?defense_trigger_drawdown=0.05"
+        "&defense_risk_cut_ratio=0.5"
+        "&stabilization_days=10"
+        "&portfolio=institutional_portfolio"
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["lehman_2008"]["name_zh"] == "2008 雷曼破产危机"
+    assert "全球流动性" in payload["lehman_2008"]["narrative_zh"]
+    assert "?" not in payload["lehman_2008"]["name_zh"]
+    assert "?" not in payload["lehman_2008"]["narrative_zh"]
 
 
 def test_institutional_data_quality_marks_missing_portfolio_file_as_fallback(monkeypatch, tmp_path):

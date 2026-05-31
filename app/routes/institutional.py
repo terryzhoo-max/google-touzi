@@ -23,7 +23,7 @@ from core.allocation_policy import allocation_policy_to_dict, get_default_alloca
 from core.attribution_engine import build_attribution_snapshot
 from core.audit_log import get_audit_store
 from core.benchmark_book import benchmark_to_dict, build_active_risk_snapshot
-from core.cache_store import ROUTE_TTL, cached, invalidate
+from core.cache_store import ROUTE_TTL, cached, cached_async, invalidate
 from core.compliance_engine import evaluate_pre_trade_compliance
 from core.decision_explainer import build_decision_explanation
 from core.decision_policy import get_default_decision_policy
@@ -156,6 +156,7 @@ def register_institutional_core_routes(
         return build_active_risk_snapshot(portfolio_snapshot, get_portfolio_benchmark(portfolio))
 
     @router.get("/api/institutional/attribution")
+    @cached_async(ttl=ROUTE_TTL["institutional_attribution"], key="institutional_attribution")
     async def api_institutional_attribution(period: str = "T-1", portfolio: str | None = None):
         from core.benchmark_book import get_portfolio_benchmark
         from core.data_providers import get_attribution_returns
@@ -244,7 +245,7 @@ def register_institutional_core_routes(
             concentration = portfolio.get("concentration_level", "low")
             var_95 = payload.get("risk", {}).get("var_95_pct", 0.0)
             worst_scenario = payload.get("scenarios", {}).get("worst_scenario", {})
-            worst_scenario_name = worst_scenario.get("name_zh", "鏈煡鍐插嚮")
+            worst_scenario_name = worst_scenario.get("name_zh", "未知冲击")
             worst_loss = worst_scenario.get("portfolio_loss_pct", 0.0)
             cro_review = generate_portfolio_compliance_insight(
                 comp_status,
@@ -523,7 +524,7 @@ def _run_historical_crisis_replication_internal(
 ):
     try:
         from core.benchmark_book import get_portfolio_benchmark
-        from core.data_providers import fetch_yfinance_data
+        from core.market_data import fetch_yfinance_data
         from core.portfolio_opt import calculate_risk_parity_allocation
         from core.scenario_engine import run_historical_replication_analysis
 
@@ -580,7 +581,7 @@ def _build_custom_decision_payload(
             scenarios=scenarios,
             portfolio=portfolio_snapshot,
             what_if={"compliance": compliance, "before": {"portfolio": portfolio_snapshot}, "after": {"portfolio": simulated_portfolio}},
-            recommended_action={"status": "executed", "action_en": "Rebalance via Bayesian Opt", "action_zh": "鎵ц璐濆彾鏂啀骞宠　"},
+            recommended_action={"status": "executed", "action_en": "Rebalance via Bayesian Opt", "action_zh": "执行贝叶斯再平衡"},
             policy=policy,
         )
     elif request.source == "risk_parity_rebalance":
@@ -603,7 +604,7 @@ def _build_custom_decision_payload(
             scenarios=scenarios,
             portfolio=portfolio_snapshot,
             what_if={"compliance": compliance, "before": {"portfolio": portfolio_snapshot}, "after": {"portfolio": simulated_portfolio}},
-            recommended_action={"status": "executed", "action_en": "Rebalance via Risk Parity", "action_zh": "?????????"},
+            recommended_action={"status": "executed", "action_en": "Rebalance via Risk Parity", "action_zh": "执行风险平价再平衡"},
             policy=policy,
         )
     else:
@@ -617,9 +618,9 @@ def _build_custom_decision_payload(
             "repair_suggestions": ["Rebalance portfolio or purchase options to hedge risk."] if shock_res["status"] != "green" else [],
         }
         explanation = {
-            "verdict_zh": f"鑷畾涔夊洜瀛愬帇娴嬭Е鍙戣瘎浼帮拷锟介浼帮拷锟芥崯锟? {shock_res['custom_loss_pct']}%",
+            "verdict_zh": f"自定义因子压测已归档，预计组合损益 {shock_res['custom_loss_pct']}%",
             "verdict_en": f"Custom factor stress test triggered. Estimated portfolio loss: {shock_res['custom_loss_pct']}%",
-            "primary_driver": {"code": "custom_stress_testing", "desc_zh": "?????????", "desc_en": "Custom Shock Sandbox"},
+            "primary_driver": {"code": "custom_stress_testing", "desc_zh": "自定义冲击沙盘", "desc_en": "Custom Shock Sandbox"},
         }
 
     ticket = {
@@ -639,7 +640,7 @@ def _build_custom_decision_payload(
         "compliance": compliance,
         "decision_ticket": ticket,
         "decision_explanation": explanation,
-        "recommended_action": {"status": "executed", "action_en": "Custom Sandbox Archiving", "action_zh": "???????"},
+        "recommended_action": {"status": "executed", "action_en": "Custom Sandbox Archiving", "action_zh": "归档自定义压测"},
         "views": request.views,
         "confidences": request.confidences,
         "shocks": request.shocks,

@@ -11,7 +11,7 @@ function switchHistoricalCrisisScenario(scenarioId) {
     if (narrativeEl) {
         narrativeEl.innerHTML = `
             <div style="font-weight: 700; color:#fff; font-size:0.95rem; border-bottom:1px solid rgba(255,255,255,0.05); padding-bottom:6px; margin-bottom:6px;">
-                ${data.name_zh} <span style="font-size:0.75em; color:var(--text-tertiary); font-weight:400; font-family:var(--font-mono); margin-left:6px; text-transform:uppercase;">${data.name_en}</span>
+                历史危机复盘：${data.name_zh}
             </div>
             <div style="color:var(--text-secondary);">${data.narrative_zh}</div>
         `;
@@ -54,7 +54,7 @@ function switchHistoricalCrisisScenario(scenarioId) {
             textStyle: { color: '#fff' }
         },
                 legend: {
-            data: ['当前持仓原仓 (Current)', '业绩基准组合 (Benchmark)', '等风险平价再平衡 (Risk Parity)', 'AI 蓝军防御对冲 (AI Shield)'],
+            data: ['当前组合原仓', '基准组合', '风险平价', '蓝军防御'],
             textStyle: { color: 'var(--text-secondary)' },
             bottom: 0
         },
@@ -81,7 +81,7 @@ function switchHistoricalCrisisScenario(scenarioId) {
         },
         series: [
             {
-                name: '当前持仓原仓 (Current)',
+                name: '当前组合原仓',
                 type: 'line',
                 data: data.portfolio_nav,
                 lineStyle: { color: '#f59e0b', width: 2 },
@@ -89,7 +89,7 @@ function switchHistoricalCrisisScenario(scenarioId) {
                 showSymbol: false
             },
             {
-                name: '业绩基准组合 (Benchmark)',
+                name: '基准组合',
                 type: 'line',
                 data: data.benchmark_nav,
                 lineStyle: { color: '#9ca3af', width: 1.5, type: 'dashed' },
@@ -97,7 +97,7 @@ function switchHistoricalCrisisScenario(scenarioId) {
                 showSymbol: false
             },
             {
-                name: '等风险平价再平衡 (Risk Parity)',
+                name: '风险平价',
                 type: 'line',
                 data: data.risk_parity_nav,
                 lineStyle: { color: '#10b981', width: 3 },
@@ -105,7 +105,7 @@ function switchHistoricalCrisisScenario(scenarioId) {
                 showSymbol: false
             },
             {
-                name: 'AI 蓝军防御对冲 (AI Shield)',
+                name: '蓝军防御',
                 type: 'line',
                 data: data.blue_team_defense_nav,
                 lineStyle: { color: '#a78bfa', width: 3 },

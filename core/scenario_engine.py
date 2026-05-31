@@ -4,7 +4,7 @@ SCENARIO_SHOCKS = [
     {
         "id": "equity_liquidity_shock",
         "name": "Equity liquidity shock",
-        "name_zh": "???????",
+        "name_zh": "权益流动性冲击",
         "macro_shocks": {"equity_beta": -0.15, "liquidity_sensitivity": -0.10},
         "theme_shocks": {},
         "region_shocks": {},
@@ -12,7 +12,7 @@ SCENARIO_SHOCKS = [
     {
         "id": "rate_shock",
         "name": "Rate shock",
-        "name_zh": "??????",
+        "name_zh": "利率快速上行",
         "macro_shocks": {"rate_sensitivity": -0.30, "equity_beta": -0.08, "dollar_sensitivity": 0.10},
         "theme_shocks": {},
         "region_shocks": {},
@@ -20,7 +20,7 @@ SCENARIO_SHOCKS = [
     {
         "id": "risk_on",
         "name": "Risk-on recovery",
-        "name_zh": "??????",
+        "name_zh": "风险偏好修复",
         "macro_shocks": {"equity_beta": 0.10, "liquidity_sensitivity": 0.05, "dollar_sensitivity": -0.05},
         "theme_shocks": {},
         "region_shocks": {},
@@ -28,7 +28,7 @@ SCENARIO_SHOCKS = [
     {
         "id": "china_equity_shock",
         "name": "China equity shock",
-        "name_zh": "??????",
+        "name_zh": "中国权益冲击",
         "macro_shocks": {},
         "theme_shocks": {"China equity": -0.15},
         "region_shocks": {"China": -0.12, "HongKong": -0.10},
@@ -36,7 +36,7 @@ SCENARIO_SHOCKS = [
     {
         "id": "us_tech_shock",
         "name": "US technology shock",
-        "name_zh": "???????",
+        "name_zh": "美股科技冲击",
         "macro_shocks": {"equity_beta": -0.05},
         "theme_shocks": {"US technology": -0.25},
         "region_shocks": {"US": -0.10},
@@ -44,7 +44,7 @@ SCENARIO_SHOCKS = [
     {
         "id": "technology_drawdown",
         "name": "Technology drawdown",
-        "name_zh": "????????",
+        "name_zh": "科技成长回撤",
         "macro_shocks": {},
         "theme_shocks": {"semiconductor": -0.20, "China technology": -0.15, "US technology": -0.15},
         "region_shocks": {},
@@ -251,27 +251,27 @@ def run_historical_replication_analysis(
 
     crises = {
         "lehman_2008": {
-            "name_zh": "2008 ????????",
+            "name_zh": "2008 雷曼破产危机",
             "name_en": "2008 Lehman Brothers Bankruptcy",
-            "narrative_zh": "?????????????????????????????????????",
+            "narrative_zh": "雷曼兄弟破产触发全球流动性冻结，权益资产快速下跌，波动率飙升，美元避险走强，利率下行与商品通缩压力同步出现。",
             "narrative_en": "Lehman bankruptcy in Sept 2008 triggered global liquidity shock. Equities collapsed, VIX hit historic highs, flight-to-safety boosted USD, global rate cuts triggered bond rallies, and commodities plunged into deflation."
         },
         "covid_2020": {
-            "name_zh": "2020 ???????",
+            "name_zh": "2020 新冠流动性危机",
             "name_en": "2020 COVID Liquidity Cash Freeze",
-            "narrative_zh": "??????????????????????????????????????",
+            "narrative_zh": "新冠疫情初期引发全球现金挤兑，风险资产与黄金一度同步遭抛售，美元流动性紧张，波动率极端上行，债券收益率剧烈波动。",
             "narrative_en": "COVID pandemic in March 2020 sparked a global cash crunch. Volatility spikes triggered indiscriminate liquidation of all assets (including gold), USD surged, VIX hit record swings, and bond yields fluctuated wildly."
         },
         "taper_2013": {
-            "name_zh": "2013 ??????",
+            "name_zh": "2013 缩减恐慌冲击",
             "name_en": "2013 QE Taper Tantrum Shock",
-            "narrative_zh": "????????????????????????????",
+            "narrative_zh": "美联储暗示缩减量化宽松后，美债收益率快速上行，新兴市场资产承压，美元走强，黄金出现大幅回撤。",
             "narrative_en": "Fed hinting at tapering QE in May 2013 triggered a bond selloff. 10Y yields spiked, emerging markets assets plunged, USD strengthened, and gold suffered a severe correction."
         },
         "stagflation_1970": {
-            "name_zh": "1970s ??????",
+            "name_zh": "1970年代全球滞胀危机",
             "name_en": "1970s Global Stagflation Crisis",
-            "narrative_zh": "??????????????????????????????",
+            "narrative_zh": "石油冲击推动通胀中枢上移，经济停滞压制权益估值，商品和黄金走强，固定收益资产的实际购买力受到侵蚀。",
             "narrative_en": "Oil shocks in the 1970s triggered stagflation. Commodities and gold skyrocketed, economic stagnation weighed on equities, and fixed income purchasing power was severely eroded."
         }
     }

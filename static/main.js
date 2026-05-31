@@ -29,19 +29,27 @@ async function initDashboard() {
         }
         // Allocation bars
         const ab = document.getElementById('alloc-bars');
+        const allocationLabels = [
+            { key: 'spy', label: '权益资产', className: 'bar-spy' },
+            { key: 'tlt', label: '固收资产', className: 'bar-tlt' },
+            { key: 'gld', label: '黄金', className: 'bar-gld' },
+            { key: 'cash', label: '现金', className: 'bar-cash' },
+        ];
         if (ab) {
             const w = d.regime_alloc || { spy: 60, tlt: 30, gld: 10, cash: 0 };
-            ab.innerHTML = `
-                <div class="bar bar-spy" style="width:${w.spy}%"></div>
-                <div class="bar bar-tlt" style="width:${w.tlt}%"></div>
-                <div class="bar bar-gld" style="width:${w.gld}%"></div>
-                <div class="bar bar-cash" style="width:${w.cash}%"></div>
-            `;
+            ab.innerHTML = allocationLabels.map(item => {
+                const value = Number(w[item.key] || 0);
+                const label = `${item.label} ${value}%`;
+                return `<div class="bar ${item.className}" style="width:${value}%" title="${label}"><span>${label}</span></div>`;
+            }).join('');
         }
         const ad = document.getElementById('alloc-detail');
         if (ad) {
             const w = d.regime_alloc || { spy: 60, tlt: 30, gld: 10, cash: 0 };
-            ad.textContent = `EQ ${w.spy}% / FI ${w.tlt}% / GLD ${w.gld}% / CASH ${w.cash}%`;
+            ad.innerHTML = allocationLabels.map(item => {
+                const value = Number(w[item.key] || 0);
+                return `<span class="alloc-chip ${item.className}">${item.label} ${value}%</span>`;
+            }).join('');
         }
         // Alert banner
         const banner = document.getElementById('alert-banner');
@@ -866,7 +874,11 @@ const rotationPanelConfigs = [
         indicatorId: 'sr-indicator',
         insightId: 'sr-insight',
         successText: '行业轮动已加载',
-        theme: 'default',
+        theme: 'sector',
+        tableNameLabel: '行业 / 板块',
+        tableSignalLabel: '配置信号',
+        tableTrendLabel: '趋势剖面（5日 / 20日 / 60日）',
+        insightPrefix: 'A股行业',
     },
     {
         domId: 'theme-chart',
@@ -875,6 +887,10 @@ const rotationPanelConfigs = [
         insightId: 'tr-insight',
         successText: '政策主题已加载',
         theme: 'policy',
+        tableNameLabel: '政策主题',
+        tableSignalLabel: '主题信号',
+        tableTrendLabel: '趋势剖面（5日 / 20日 / 60日）',
+        insightPrefix: '政策主题',
     },
     {
         domId: 'domestic-etf-chart',
@@ -882,7 +898,11 @@ const rotationPanelConfigs = [
         indicatorId: 'de-indicator',
         insightId: 'de-insight',
         successText: 'A股宽基已加载',
-        theme: 'etf',
+        theme: 'domestic',
+        tableNameLabel: '境内ETF',
+        tableSignalLabel: '资金承接',
+        tableTrendLabel: '趋势剖面（5日 / 20日 / 60日）',
+        insightPrefix: '境内ETF',
     },
     {
         domId: 'global-etf-chart',
@@ -891,6 +911,10 @@ const rotationPanelConfigs = [
         insightId: 'ge-insight',
         successText: '全球ETF已加载',
         theme: 'global',
+        tableNameLabel: '全球ETF',
+        tableSignalLabel: '风险偏好',
+        tableTrendLabel: '趋势剖面（5日 / 20日 / 60日）',
+        insightPrefix: '全球ETF',
     },
 ];
 function initRotationPanels() {
@@ -899,7 +923,7 @@ function initRotationPanels() {
     });
 }
 async function initTreemapChart(config) {
-    const { domId, apiUrl, indicatorId, insightId, successText, theme } = config;
+    const { domId, apiUrl, indicatorId, insightId, successText } = config;
     const chartDom = document.getElementById(domId);
     const panel = document.querySelector(`[data-rotation-panel="${domId}"]`);
     if (!chartDom || !panel) return;
@@ -913,12 +937,12 @@ async function initTreemapChart(config) {
         if (!items.length) throw new Error('No rotation data returned');
         setRotationStatus(indicatorId, successText, 'ok');
         const insight = document.getElementById(insightId);
-        if (insight) insight.textContent = payload.insight || buildRotationInsight(items, activePeriod);
-        bindRotationControls(panel, chartDom, items, theme, activePeriod, nextPeriod => {
+        if (insight) insight.textContent = payload.insight || buildRotationInsight(items, activePeriod, config);
+        bindRotationControls(panel, chartDom, items, activePeriod, nextPeriod => {
             activePeriod = nextPeriod;
-            renderRotationPanel(panel, chartDom, items, theme, activePeriod);
+            renderRotationPanel(panel, chartDom, items, config, activePeriod);
         });
-        renderRotationPanel(panel, chartDom, items, theme, activePeriod);
+        renderRotationPanel(panel, chartDom, items, config, activePeriod);
     } catch (e) {
         setRotationStatus(indicatorId, '加载失败', 'error');
         const insight = document.getElementById(insightId);
@@ -938,7 +962,7 @@ function normalizeRotationItems(payload) {
         ret_60d: Number(item.ret_60d || 0),
     })).filter(item => item.name !== '--');
 }
-function bindRotationControls(panel, chart, items, theme, activePeriod, onPeriodChange) {
+function bindRotationControls(panel, chart, items, activePeriod, onPeriodChange) {
     const buttons = panel.querySelectorAll('.rotation-controls button[data-period]');
     buttons.forEach(button => {
         button.onclick = () => {
@@ -948,10 +972,10 @@ function bindRotationControls(panel, chart, items, theme, activePeriod, onPeriod
         };
     });
 }
-function renderRotationPanel(panel, chartDom, items, theme, periodKey) {
+function renderRotationPanel(panel, chartDom, items, config, periodKey) {
     const ranked = [...items].sort((a, b) => b[periodKey] - a[periodKey]);
-    const top = ranked.slice(0, 5);
-    const bottom = ranked.slice(-5).reverse();
+    const top = ranked.slice(0, 3);
+    const bottom = ranked.slice(-3).reverse();
     const positives = items.filter(item => item[periodKey] > 0).length;
     const breadth = Math.round((positives / Math.max(items.length, 1)) * 100);
     const marketRead = breadth >= 65 ? '强势扩散' : (breadth <= 35 ? '弱势收缩' : '结构分化');
@@ -961,7 +985,7 @@ function renderRotationPanel(panel, chartDom, items, theme, periodKey) {
     setPanelText(panel, 'laggard', bottom[0]?.name || '--');
     renderRankList(panel, 'top', top, periodKey);
     renderRankList(panel, 'bottom', bottom, periodKey);
-    renderSparklineTable(chartDom, ranked, theme, periodKey);
+    renderSparklineTable(chartDom, ranked, config, periodKey);
 }
 function setPanelText(panel, suffix, value) {
     const id = `${panel.dataset.rotationPanel}-${suffix}`;
@@ -975,12 +999,12 @@ function renderRankList(panel, suffix, rows, periodKey) {
     el.innerHTML = rows.map(item => {
         const val = item[periodKey];
         const cls = val >= 0 ? 'is-positive' : 'is-negative';
-        return `<li><span>${item.name}</span><strong class="${cls}">${formatPct(val)}</strong></li>`;
+        return `<li><span>${rotationEscape(item.name)}</span><strong class="${cls}">${formatPct(val)}</strong></li>`;
     }).join('');
 }
-function renderSparklineTable(chartDom, items, theme, periodKey) {
+function renderSparklineTable(chartDom, items, config, periodKey) {
     const cols = ['ret_5d', 'ret_20d', 'ret_60d'];
-    const colLabels = ['5D', '20D', '60D'];
+    const colLabels = ['5日', '20日', '60日'];
 
     // Calculate global max absolute return for proper cross-asset visual scaling within the panel
     const globalMaxAbs = Math.max(...items.flatMap(a => cols.map(k => Math.abs(Number(a[k]||0)))), 0.01);
@@ -989,9 +1013,9 @@ function renderSparklineTable(chartDom, items, theme, periodKey) {
         <table class="institutional-table" style="margin:0; width:100%;">
             <thead style="position:sticky; top:0; z-index:10; background:rgba(15,23,42,0.95); backdrop-filter:blur(8px); border-bottom:1px solid rgba(255,255,255,0.1);">
                 <tr>
-                    <th style="padding:12px 16px; text-align:left;">标的 / 板块</th>
-                    <th style="text-align:left;">动量信号</th>
-                    <th style="text-align:center;">趋势剖面 (5D / 60D)</th>
+                    <th style="padding:12px 16px; text-align:left;">${rotationEscape(config.tableNameLabel || '标的 / 板块')}</th>
+                    <th style="text-align:left;">${rotationEscape(config.tableSignalLabel || '机构信号')}</th>
+                    <th style="text-align:center;">${rotationEscape(config.tableTrendLabel || '趋势剖面（5日 / 20日 / 60日）')}</th>
                 </tr>
             </thead>
             <tbody>` +
@@ -1028,7 +1052,7 @@ function renderSparklineTable(chartDom, items, theme, periodKey) {
                 </div>`;
             }).join('');
             return `<tr style="background:${rowBg}; border-bottom:1px solid rgba(255,255,255,0.03);">
-                <td style="padding-left:16px; font-weight:700; color:var(--text-primary); font-size:0.85rem; letter-spacing:0.5px;">${a.name}</td>
+                <td style="padding-left:16px; font-weight:700; color:var(--text-primary); font-size:0.85rem; letter-spacing:0.5px;">${rotationEscape(a.name)}</td>
                 <td style="text-align:left;"><span style="background:${arrowBg}; color:${arrowColor}; border: 1px solid ${arrowColor}60; padding:4px 8px; border-radius:4px; font-size:0.65rem; font-weight:800; letter-spacing:1px; box-shadow: 0 0 10px ${arrowBg};">${arrow}</span></td>
                 <td style="padding-right:16px;">
                     <div style="display:flex; gap:16px; justify-content:center; align-items:flex-end; height:50px; margin-top:14px; margin-bottom:4px;">
@@ -1044,12 +1068,12 @@ function rotationColor(value, theme) {
     const v = Math.max(-12, Math.min(12, Number(value) || 0));
     const intensity = Math.min(1, Math.abs(v) / 8);
     const palettes = {
-        default: { pos: [22, 163, 74], neg: [220, 38, 38], neu: [71, 85, 105] },
+        sector: { pos: [22, 163, 74], neg: [220, 38, 38], neu: [71, 85, 105] },
         policy: { pos: [37, 99, 235], neg: [217, 119, 6], neu: [71, 85, 105] },
-        etf: { pos: [22, 163, 74], neg: [220, 38, 38], neu: [71, 85, 105] },
+        domestic: { pos: [5, 150, 105], neg: [220, 38, 38], neu: [71, 85, 105] },
         global: { pos: [14, 116, 144], neg: [185, 28, 28], neu: [71, 85, 105] },
     };
-    const p = palettes[theme] || palettes.default;
+    const p = palettes[theme] || palettes.sector;
     const base = v > 0 ? p.pos : (v < 0 ? p.neg : p.neu);
     const alpha = 0.38 + intensity * 0.52;
     return `rgba(${base[0]}, ${base[1]}, ${base[2]}, ${alpha})`;
@@ -1058,11 +1082,23 @@ function formatPct(value) {
     const n = Number(value) || 0;
     return `${n > 0 ? '+' : ''}${n.toFixed(2)}%`;
 }
-function buildRotationInsight(items, periodKey) {
+function buildRotationInsight(items, periodKey, config = {}) {
     const ranked = [...items].sort((a, b) => b[periodKey] - a[periodKey]);
     const top = ranked.slice(0, 3).map(item => item.name).join(', ');
     const bottom = ranked.slice(-3).reverse().map(item => item.name).join(', ');
-    return `近端领涨: ${top || '--'} | 领跌: ${bottom || '--'}`;
+    const positives = items.filter(item => item[periodKey] > 0).length;
+    const breadth = Math.round((positives / Math.max(items.length, 1)) * 100);
+    const stance = breadth >= 65 ? '扩散偏强' : (breadth <= 35 ? '防御收缩' : '结构分化');
+    return `${config.insightPrefix || '资产轮动'}近端强势：${top || '--'}；弱势：${bottom || '--'}。扩散度${breadth}%，当前状态：${stance}。`;
+}
+function rotationEscape(value) {
+    return String(value ?? '').replace(/[&<>"']/g, c => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;',
+    }[c]));
 }
 function setRotationStatus(indicatorId, text, status) {
     const el = document.getElementById(indicatorId);
@@ -1731,7 +1767,7 @@ async function initBacktest() {
                 dateSpan.innerText = state.date;
                 regimeSpan.innerText = state.regime;
                 regimeSpan.style.color = state.regime_color;
-                weightsSpan.innerText = `EQ ${state.w_spy}% | FI ${state.w_tlt}% | GLD ${state.w_gld}% | CASH ${state.w_cash}%`;
+                weightsSpan.innerText = `权益 ${state.w_spy}% | 固收 ${state.w_tlt}% | 黄金 ${state.w_gld}% | 现金 ${state.w_cash}%`;
 
                 banner.style.borderColor = state.regime_color + '40';
                 banner.style.backgroundColor = state.regime_color + '05';

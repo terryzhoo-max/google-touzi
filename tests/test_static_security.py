@@ -139,6 +139,111 @@ def test_frontend_sources_do_not_contain_common_mojibake_markers():
         assert marker not in scanned
 
 
+def test_dashboard_allocation_card_uses_chinese_visual_copy():
+    html = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
+    main_js = (ROOT / "static" / "main.js").read_text(encoding="utf-8")
+
+    alloc_start = html.index('id="dash-alloc"')
+    alloc_end = html.index("</div>", html.index('id="alloc-detail"', alloc_start))
+    alloc_markup = html[alloc_start:alloc_end]
+
+    assert "目标仓位分布" in alloc_markup
+    assert "基于宏观信号的建议配置" in alloc_markup
+    assert "TARGET ALLOCATION" not in alloc_markup
+    assert "权益资产" in main_js
+    assert "固收资产" in main_js
+    assert "黄金" in main_js
+    assert "现金" in main_js
+    assert "EQ " not in main_js
+
+
+def test_rotation_page_uses_chinese_institutional_titles():
+    html = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
+    main_js = (ROOT / "static" / "main.js").read_text(encoding="utf-8")
+
+    rotation_start = html.index('id="view-rotation"')
+    rotation_end = html.index('id="view-risk"', rotation_start)
+    rotation_html = html[rotation_start:rotation_end]
+
+    expected_titles = [
+        "资产轮动监控",
+        "A股行业轮动",
+        "政策主题动量",
+        "境内ETF资金流向",
+        "全球ETF轮动",
+    ]
+    for title in expected_titles:
+        assert title in rotation_html
+
+    expected_copy = [
+        "申万一级行业强弱与资金偏好",
+        "政策主题与高端制造动量跟踪",
+        "宽基ETF相对强弱与资金承接观察",
+        "美股、日股、港股与中概风险偏好",
+        "强势前三",
+        "弱势后三",
+    ]
+    combined = rotation_html + "\n" + main_js
+    for text in expected_copy:
+        assert text in combined
+
+    forbidden = [
+        "ASSET ROTATION HEATMAPS",
+        "A-SHARE SECTOR ROTATION",
+        "POLICY THEME MOMENTUM",
+        "DOMESTIC ETF FLOWS",
+        "GLOBAL ETF ROTATION",
+        "Top Strength",
+        "Bottom Weakness",
+    ]
+    for text in forbidden:
+        assert text not in rotation_html
+
+
+def test_stress_page_uses_chinese_institutional_risk_governance_copy():
+    html = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
+    stress_js = (ROOT / "static" / "js" / "panels" / "stress.js").read_text(encoding="utf-8")
+    historical_js = (ROOT / "static" / "js" / "panels" / "historical_scenarios.js").read_text(encoding="utf-8")
+
+    stress_start = html.index('id="view-stress"')
+    stress_end = html.index('id="view-institutional"', stress_start)
+    stress_html = html[stress_start:stress_end]
+
+    expected_copy = [
+        "极限压测与情景治理",
+        "历史危机复盘 / 黑天鹅冲击 / 回撤韧性 / 防御动作评估",
+        "当前组合最脆弱的压力来源",
+        "预计最大组合损失",
+        "评级越高代表压力下净值修复能力越强",
+        "情景损益分布",
+        "按组合损益从最不利到最有利排序",
+        "自定义冲击沙盘",
+        "机构假设输入",
+        "压力动作建议",
+        "冲击传导矩阵",
+        "组合损益",
+        "区域与风格暴露",
+    ]
+    combined = "\n".join([stress_html, stress_js, historical_js])
+    for text in expected_copy:
+        assert text in combined
+
+    forbidden = [
+        "INSTITUTIONAL STRESS GOVERNANCE",
+        "Historical Scenario Stress Testing",
+        "Black Swan Events / Drawdown VaR / Shock Propagation",
+        "SCENARIO IMPACT DISTRIBUTION",
+        "INTERACTIVE BLACK SWAN SANDBOX",
+        "SHOCK PROPAGATION MATRIX",
+        "Worst Case",
+        "Max Drawdown VaR",
+        "Resiliency Grade",
+        "PREDICTED PORTFOLIO LOSS",
+    ]
+    for text in forbidden:
+        assert text not in stress_html
+
+
 def test_ai_markdown_is_sanitized_before_inner_html():
     js = _frontend_js()
 

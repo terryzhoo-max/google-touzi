@@ -158,6 +158,18 @@ def _is_logic_error(value: Any) -> bool:
     return isinstance(status_code, int) and status_code >= 400
 
 
+def make_cache_key(base_key: str, kwargs: dict[str, Any]) -> str:
+    """Build a stable route cache key from dimensions that change payload semantics."""
+    parts = [base_key]
+    portfolio = kwargs.get("portfolio")
+    period = kwargs.get("period")
+    if portfolio:
+        parts.append(str(portfolio))
+    if period:
+        parts.append(str(period))
+    return "_".join(parts)
+
+
 from core.db_layer import save_api_cache, get_api_cache
 
 def cached(ttl: int, key: str):
@@ -171,9 +183,7 @@ def cached(ttl: int, key: str):
             if os.getenv("PYTEST_CURRENT_TEST"):
                 return fn(*args, **kwargs)
             
-            # Switcher portfolio key namespace isolation
-            portfolio = kwargs.get("portfolio")
-            actual_key = f"{key}_{portfolio}" if portfolio else key
+            actual_key = make_cache_key(key, kwargs)
             
             now = time.time()
             
@@ -216,9 +226,7 @@ def cached_async(ttl: int, key: str):
             if os.getenv("PYTEST_CURRENT_TEST"):
                 return await fn(*args, **kwargs)
             
-            # Switcher portfolio key namespace isolation
-            portfolio = kwargs.get("portfolio")
-            actual_key = f"{key}_{portfolio}" if portfolio else key
+            actual_key = make_cache_key(key, kwargs)
             
             now = time.time()
             fresh = _get_fresh(actual_key, now)

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AlphaCore 机构决策终端</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=18">
+    <link rel="stylesheet" href="styles.css?v=21">
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.6/dist/purify.min.js"></script>
@@ -85,7 +85,10 @@
                         <div class="regime-detail" id="regime-detail"></div>
                     </div>
                     <div class="glass-card" id="dash-alloc">
-                        <div class="dash-label">目标仓位分布 <span style="font-size:0.7em; color:var(--text-tertiary); margin-left:6px; font-weight:400;">TARGET ALLOCATION</span></div>
+                        <div class="dash-label dash-label-cn">
+                            <span class="dash-title-cn">目标仓位分布</span>
+                            <span class="dash-subtitle-cn">基于宏观信号的建议配置</span>
+                        </div>
                         <div class="alloc-bars" id="alloc-bars"></div>
                         <div class="alloc-detail" id="alloc-detail"></div>
                     </div>
@@ -219,10 +222,8 @@
             <div id="view-rotation" class="view-panel">
                 <div class="panel-header" style="display:flex; justify-content:space-between; align-items:flex-end; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 12px; margin-bottom: 20px;">
                     <div>
-                        <h2 class="rotation-title">资产轮动监控 <span>ASSET ROTATION HEATMAPS</span></h2>
-                        <div style="color:var(--text-tertiary); font-size:0.8rem; margin-top:6px; font-family:var(--font-mono); text-transform: uppercase;">
-                            跨资产 / 行业 / 政策主题 / ETF | Cross-Asset / Sectors / Policy Themes / ETFs
-                        </div>
+                        <h2 class="rotation-title">资产轮动监控</h2>
+                        <div class="rotation-subtitle">跨资产、行业、政策主题与ETF资金承接的机构级监控</div>
                     </div>
                     <div class="rotation-controls" id="global-rotation-controls" style="margin-bottom:0;">
                         <button class="is-active" data-action="set-rotation-period" data-period="ret_20d">T-20</button>
@@ -231,83 +232,95 @@
                     </div>
                 </div>
                 <div class="terminal-grid-2">
-                    <div class="glass-card" data-rotation-panel="sector-chart" style="display:flex; flex-direction:column;">
+                    <div class="glass-card" data-rotation-panel="sector-chart" data-rotation-theme="sector" style="display:flex; flex-direction:column;">
                         <div class="card-header">
-                            <h3>A股行业轮动 <span style="font-size:0.7em; color:var(--text-tertiary); font-weight:400; margin-left:8px; letter-spacing:1px;">A-SHARE SECTOR ROTATION</span></h3>
+                            <div>
+                                <h3>A股行业轮动</h3>
+                                <p class="rotation-panel-copy">申万一级行业强弱与资金偏好</p>
+                            </div>
                             <span id="sr-indicator" class="status-indicator"></span>
                         </div>
                         <div id="sr-insight" class="card-desc rotation-insight">--</div>
                         <div class="rotation-signal-strip">
                             <div><span>市场状态</span><strong id="sector-chart-market-read">--</strong></div>
                             <div><span>覆盖样本</span><strong id="sector-chart-coverage">--</strong></div>
-                            <div><span>领涨方向</span><strong id="sector-chart-leader">--</strong></div>
-                            <div><span>领跌方向</span><strong id="sector-chart-laggard">--</strong></div>
+                            <div><span>强势方向</span><strong id="sector-chart-leader">--</strong></div>
+                            <div><span>弱势方向</span><strong id="sector-chart-laggard">--</strong></div>
                         </div>
                         <div class="rotation-body">
                             <div id="sector-chart" class="chart-container rotation-chart"><div class="skeleton"></div></div>
                             <aside class="rotation-rank">
-                                <div><h4>Top Strength</h4><ol id="sector-chart-top"></ol></div>
-                                <div><h4>Bottom Weakness</h4><ol id="sector-chart-bottom"></ol></div>
+                                <div><h4>强势前三</h4><ol id="sector-chart-top"></ol></div>
+                                <div><h4>弱势后三</h4><ol id="sector-chart-bottom"></ol></div>
                             </aside>
                         </div>
                     </div>
-                    <div class="glass-card" data-rotation-panel="theme-chart" style="display:flex; flex-direction:column;">
+                    <div class="glass-card" data-rotation-panel="theme-chart" data-rotation-theme="policy" style="display:flex; flex-direction:column;">
                         <div class="card-header">
-                            <h3>政策主题动量 <span style="font-size:0.7em; color:var(--text-tertiary); font-weight:400; margin-left:8px; letter-spacing:1px;">POLICY THEME MOMENTUM</span></h3>
+                            <div>
+                                <h3>政策主题动量</h3>
+                                <p class="rotation-panel-copy">政策主题与高端制造动量跟踪</p>
+                            </div>
                             <span id="tr-indicator" class="status-indicator"></span>
                         </div>
                         <div id="tr-insight" class="card-desc rotation-insight">--</div>
                         <div class="rotation-signal-strip">
                             <div><span>市场状态</span><strong id="theme-chart-market-read">--</strong></div>
                             <div><span>覆盖样本</span><strong id="theme-chart-coverage">--</strong></div>
-                            <div><span>领涨方向</span><strong id="theme-chart-leader">--</strong></div>
-                            <div><span>领跌方向</span><strong id="theme-chart-laggard">--</strong></div>
+                            <div><span>强势方向</span><strong id="theme-chart-leader">--</strong></div>
+                            <div><span>弱势方向</span><strong id="theme-chart-laggard">--</strong></div>
                         </div>
                         <div class="rotation-body">
                             <div id="theme-chart" class="chart-container rotation-chart"><div class="skeleton"></div></div>
                             <aside class="rotation-rank">
-                                <div><h4>Top Strength</h4><ol id="theme-chart-top"></ol></div>
-                                <div><h4>Bottom Weakness</h4><ol id="theme-chart-bottom"></ol></div>
+                                <div><h4>强势前三</h4><ol id="theme-chart-top"></ol></div>
+                                <div><h4>弱势后三</h4><ol id="theme-chart-bottom"></ol></div>
                             </aside>
                         </div>
                     </div>
-                    <div class="glass-card" data-rotation-panel="domestic-etf-chart" style="display:flex; flex-direction:column;">
+                    <div class="glass-card" data-rotation-panel="domestic-etf-chart" data-rotation-theme="domestic" style="display:flex; flex-direction:column;">
                         <div class="card-header">
-                            <h3>境内ETF资金流向 <span style="font-size:0.7em; color:var(--text-tertiary); font-weight:400; margin-left:8px; letter-spacing:1px;">DOMESTIC ETF FLOWS</span></h3>
+                            <div>
+                                <h3>境内ETF资金流向</h3>
+                                <p class="rotation-panel-copy">宽基ETF相对强弱与资金承接观察</p>
+                            </div>
                             <span id="de-indicator" class="status-indicator"></span>
                         </div>
                         <div id="de-insight" class="card-desc rotation-insight">--</div>
                         <div class="rotation-signal-strip">
                             <div><span>市场状态</span><strong id="domestic-etf-chart-market-read">--</strong></div>
                             <div><span>覆盖样本</span><strong id="domestic-etf-chart-coverage">--</strong></div>
-                            <div><span>领涨方向</span><strong id="domestic-etf-chart-leader">--</strong></div>
-                            <div><span>领跌方向</span><strong id="domestic-etf-chart-laggard">--</strong></div>
+                            <div><span>强势方向</span><strong id="domestic-etf-chart-leader">--</strong></div>
+                            <div><span>弱势方向</span><strong id="domestic-etf-chart-laggard">--</strong></div>
                         </div>
                         <div class="rotation-body">
                             <div id="domestic-etf-chart" class="chart-container rotation-chart"><div class="skeleton"></div></div>
                             <aside class="rotation-rank">
-                                <div><h4>Top Strength</h4><ol id="domestic-etf-chart-top"></ol></div>
-                                <div><h4>Bottom Weakness</h4><ol id="domestic-etf-chart-bottom"></ol></div>
+                                <div><h4>强势前三</h4><ol id="domestic-etf-chart-top"></ol></div>
+                                <div><h4>弱势后三</h4><ol id="domestic-etf-chart-bottom"></ol></div>
                             </aside>
                         </div>
                     </div>
-                    <div class="glass-card" data-rotation-panel="global-etf-chart" style="display:flex; flex-direction:column;">
+                    <div class="glass-card" data-rotation-panel="global-etf-chart" data-rotation-theme="global" style="display:flex; flex-direction:column;">
                         <div class="card-header">
-                            <h3>全球ETF轮动 <span style="font-size:0.7em; color:var(--text-tertiary); font-weight:400; margin-left:8px; letter-spacing:1px;">GLOBAL ETF ROTATION</span></h3>
+                            <div>
+                                <h3>全球ETF轮动</h3>
+                                <p class="rotation-panel-copy">美股、日股、港股与中概风险偏好</p>
+                            </div>
                             <span id="ge-indicator" class="status-indicator"></span>
                         </div>
                         <div id="ge-insight" class="card-desc rotation-insight">--</div>
                         <div class="rotation-signal-strip">
                             <div><span>市场状态</span><strong id="global-etf-chart-market-read">--</strong></div>
                             <div><span>覆盖样本</span><strong id="global-etf-chart-coverage">--</strong></div>
-                            <div><span>领涨方向</span><strong id="global-etf-chart-leader">--</strong></div>
-                            <div><span>领跌方向</span><strong id="global-etf-chart-laggard">--</strong></div>
+                            <div><span>强势方向</span><strong id="global-etf-chart-leader">--</strong></div>
+                            <div><span>弱势方向</span><strong id="global-etf-chart-laggard">--</strong></div>
                         </div>
                         <div class="rotation-body">
                             <div id="global-etf-chart" class="chart-container rotation-chart"><div class="skeleton"></div></div>
                             <aside class="rotation-rank">
-                                <div><h4>Top Strength</h4><ol id="global-etf-chart-top"></ol></div>
-                                <div><h4>Bottom Weakness</h4><ol id="global-etf-chart-bottom"></ol></div>
+                                <div><h4>强势前三</h4><ol id="global-etf-chart-top"></ol></div>
+                                <div><h4>弱势后三</h4><ol id="global-etf-chart-bottom"></ol></div>
                             </aside>
                         </div>
                     </div>
@@ -391,12 +404,9 @@
             <div id="view-stress" class="view-panel">
                 <div class="panel-header stress-hero">
                     <div>
-                        <div class="stress-eyebrow">INSTITUTIONAL STRESS GOVERNANCE</div>
-                        <h2 class="stress-title">极端宏观情景压力测试 <span>Historical Scenario Stress Testing</span></h2>
-                        <div class="stress-subtitle">
-                            黑天鹅事件 / 回撤 VaR / 冲击传导 / 组合韧性评级
-                            <span>Black Swan Events / Drawdown VaR / Shock Propagation</span>
-                        </div>
+                        <div class="stress-eyebrow">压力治理看板</div>
+                        <h2 class="stress-title">极限压测与情景治理</h2>
+                        <div class="stress-subtitle">历史危机复盘 / 黑天鹅冲击 / 回撤韧性 / 防御动作评估</div>
                     </div>
                     <div style="display:flex; gap:10px; align-items:center;">
                         <div style="width:8px; height:8px; border-radius:50%; background-color:#ef4444; box-shadow:0 0 10px #ef4444; animation: pulse 1s infinite;"></div>
@@ -406,19 +416,22 @@
 
                 <!-- L1: Disaster KPIs -->
                 <div class="terminal-grid-3" style="margin-bottom:16px;">
-                    <div class="glass-card stress-kpi-card stress-scanline stress-kpi-danger" id="stress-worst-card">
-                        <div class="stress-kpi-label">最不利情景 <span>Worst Case</span></div>
+                    <div class="glass-card stress-kpi-card stress-kpi-danger" id="stress-worst-card">
+                        <div class="stress-kpi-label">最不利情景</div>
+                        <div class="stress-kpi-caption">当前组合最脆弱的压力来源</div>
                         <div style="display:flex; align-items:center; gap:12px;">
                             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-primary);"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
                             <div id="stress-worst-name" style="font-size:1.3rem; font-family:var(--font-mono); font-weight:800; color:var(--text-primary); text-shadow: 0 0 15px rgba(255,255,255,0.2);">--</div>
                         </div>
                     </div>
                     <div class="glass-card stress-kpi-card stress-kpi-danger" id="stress-drawdown-card">
-                        <div class="stress-kpi-label">极限回撤测算 <span>Max Drawdown VaR</span></div>
+                        <div class="stress-kpi-label">预计最大组合损失</div>
+                        <div class="stress-kpi-caption">按压力情景估算的尾部损益</div>
                         <div id="stress-max-drawdown" style="font-size:2rem; font-family:var(--font-mono); font-weight:800; color:#ef4444; text-shadow: 0 0 20px rgba(239,68,68,0.5);">--</div>
                     </div>
                     <div class="glass-card stress-kpi-card stress-kpi-neutral" id="stress-resiliency-card">
-                        <div class="stress-kpi-label">组合韧性评级 <span>Resiliency Grade</span></div>
+                        <div class="stress-kpi-label">组合韧性评级</div>
+                        <div class="stress-kpi-caption">评级越高代表压力下净值修复能力越强</div>
                         <div id="stress-resiliency-grade" style="font-size:2rem; font-family:var(--font-mono); font-weight:800; color:var(--text-primary); text-shadow: 0 0 15px rgba(255,255,255,0.2);">--</div>
                     </div>
                 </div>
@@ -426,7 +439,10 @@
                 <!-- L2: Global Shock ECharts -->
                 <div class="glass-card stress-module-card" style="margin-bottom:16px; min-height:350px; display:flex; flex-direction:column;">
                     <div class="card-header">
-                        <h3>宏观情景冲击分布 <span style="font-size:0.7em; color:var(--text-tertiary); font-weight:400; margin-left:8px; letter-spacing:1px;">SCENARIO IMPACT DISTRIBUTION</span></h3>
+                        <div>
+                            <h3>情景损益分布</h3>
+                            <p class="stress-module-copy">按组合损益从最不利到最有利排序</p>
+                        </div>
                     </div>
                     <div id="stress-impact-chart" class="chart-container" style="flex:1; width:100%;"><div class="skeleton"></div></div>
                 </div>
@@ -434,20 +450,21 @@
                 <!-- Custom Shock Sandbox -->
                 <div class="glass-card stress-module-card stress-sandbox-card" style="margin-bottom:16px;">
                     <div class="card-header">
-                        <h3 style="color:#ef4444; display:flex; align-items:center; gap:8px;">
+                        <h3 class="stress-module-title">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
-                            自定义黑天鹅冲击沙盘 <span style="font-size:0.7em; color:var(--text-tertiary); font-weight:400; letter-spacing:1px; margin-left:8px;">INTERACTIVE BLACK SWAN SANDBOX</span>
+                            自定义冲击沙盘
                         </h3>
                     </div>
                     <div class="terminal-grid-2" style="padding:16px; gap:24px; align-items: stretch;">
                         <div style="display:flex; flex-direction:column; gap:16px;">
+                            <div class="stress-assumption-label">机构假设输入</div>
                             <div style="font-size:0.75rem; color:var(--text-secondary); line-height:1.4;">
                                 拖动宏观因子冲击滑杆，模拟地缘风险、利率跳升、流动性危机或商品价格脉冲；系统按因子敏感度估算组合盈亏传导。
                             </div>
                             <!-- Slider 1 -->
                             <div>
                                 <div style="display:flex; justify-content:space-between; margin-bottom:6px; font-size:0.8rem; font-family:var(--font-mono);">
-                                    <span style="color:#fff;">权益资产冲击 (Equity Shock)</span>
+                                    <span style="color:#fff;">权益冲击</span>
                                     <span id="shock-val-equity" style="color:#00ffcc; font-weight:700;">0%</span>
                                 </div>
                                 <input type="range" id="slider-shock-equity" min="-50" max="20" value="0" style="width:100%; accent-color:#00ffcc;" oninput="document.getElementById('shock-val-equity').innerText = this.value + '%'">
@@ -455,7 +472,7 @@
                             <!-- Slider 2 -->
                             <div>
                                 <div style="display:flex; justify-content:space-between; margin-bottom:6px; font-size:0.8rem; font-family:var(--font-mono);">
-                                    <span style="color:#fff;">利率冲击 (Rate Shock)</span>
+                                    <span style="color:#fff;">利率冲击</span>
                                     <span id="shock-val-rate" style="color:#38bdf8; font-weight:700;">0%</span>
                                 </div>
                                 <input type="range" id="slider-shock-rate" min="-20" max="20" value="0" style="width:100%; accent-color:#38bdf8;" oninput="document.getElementById('shock-val-rate').innerText = this.value + '%'">
@@ -463,7 +480,7 @@
                             <!-- Slider 3 -->
                             <div>
                                 <div style="display:flex; justify-content:space-between; margin-bottom:6px; font-size:0.8rem; font-family:var(--font-mono);">
-                                    <span style="color:#fff;">波动率 / 流动性冲击 (VIX / Liquidity)</span>
+                                    <span style="color:#fff;">波动率冲击</span>
                                     <span id="shock-val-vol" style="color:#fb7185; font-weight:700;">0%</span>
                                 </div>
                                 <input type="range" id="slider-shock-vol" min="0" max="150" value="0" style="width:100%; accent-color:#fb7185;" oninput="document.getElementById('shock-val-vol').innerText = '+' + this.value + '%'">
@@ -471,7 +488,7 @@
                             <!-- Slider 4 -->
                             <div>
                                 <div style="display:flex; justify-content:space-between; margin-bottom:6px; font-size:0.8rem; font-family:var(--font-mono);">
-                                    <span style="color:#fff;">大宗商品 / 黄金冲击 (Commodity / Gold)</span>
+                                    <span style="color:#fff;">商品冲击</span>
                                     <span id="shock-val-commodity" style="color:#facc15; font-weight:700;">0%</span>
                                 </div>
                                 <input type="range" id="slider-shock-commodity" min="-30" max="30" value="0" style="width:100%; accent-color:#facc15;" oninput="document.getElementById('shock-val-commodity').innerText = this.value + '%'">
@@ -485,9 +502,11 @@
 
                         <div style="border-left: 1px solid rgba(255,255,255,0.05); padding-left:24px; display:flex; flex-direction:column; justify-content:space-between;">
                             <div class="glass-card" style="padding:16px; text-align:center; background:rgba(0,0,0,0.4); border:1px solid rgba(255,255,255,0.05); display:flex; flex-direction:column; justify-content:center; align-items:center; flex:1;">
-                                <div style="font-size:0.75rem; color:var(--text-tertiary); margin-bottom:8px; font-family:var(--font-mono);">预测组合损益 / PREDICTED PORTFOLIO LOSS</div>
+                                <div style="font-size:0.75rem; color:var(--text-tertiary); margin-bottom:8px;">预测组合损益</div>
                                 <div id="custom-shock-loss-display" style="font-size:3rem; font-family:var(--font-mono); font-weight:800; color:#10b981; text-shadow:0 0 15px rgba(16,185,129,0.3);">0.00%</div>
                                 <div id="custom-shock-status-badge" style="margin-top:10px; font-size:0.7rem; font-family:var(--font-mono); padding:3px 8px; border-radius:12px; background:rgba(16,185,129,0.15); color:#10b981; border:1px solid rgba(16,185,129,0.3);">组合安全</div>
+                                <div class="stress-action-label">压力动作建议</div>
+                                <div id="custom-shock-action" class="stress-action-value">观察</div>
                             </div>
 
                             <div id="custom-shock-asset-chart" style="width:100%; height:180px; margin-top:12px;"></div>
@@ -498,18 +517,21 @@
                 <!-- L3: Shock Propagation Matrix -->
                 <div class="glass-card stress-module-card" style="margin-bottom:16px;">
                     <div class="card-header" style="justify-content:space-between;">
-                        <h3>因子冲击传导矩阵 <span style="font-size:0.7em; color:var(--text-tertiary); font-weight:400; margin-left:8px; letter-spacing:1px;">SHOCK PROPAGATION MATRIX</span></h3>
+                        <div>
+                            <h3>冲击传导矩阵</h3>
+                            <p class="stress-module-copy">拆解情景对权益、利率、商品和区域风格敞口的传导路径</p>
+                        </div>
                     </div>
                     <div style="overflow-x:auto;">
                         <table class="institutional-table" style="margin:0; width:100%; white-space:nowrap; border-collapse:separate; border-spacing:0 4px;">
                             <thead style="position:sticky; top:0; z-index:1; background:rgba(15,23,42,0.85); backdrop-filter:blur(12px); box-shadow:0 4px 10px rgba(0,0,0,0.3);">
                                 <tr>
-                                    <th style="padding-left:16px;">情景事件 <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">SCENARIO EVENT</span></th>
-                                    <th style="text-align:right;">组合冲击 <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">PORTFOLIO IMPACT</span></th>
-                                    <th style="text-align:right;">权益冲击 <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">EQUITY SHOCK</span></th>
-                                    <th style="text-align:right;">利率冲击 <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">BOND SHOCK</span></th>
-                                    <th style="text-align:right;">黄金/商品 <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">GOLD / COMMODITY</span></th>
-                                    <th style="text-align:right; padding-right:16px;">区域/风格敞口 <span style="display:block; font-size:0.7em; color:var(--text-tertiary); font-weight:400;">REGION / STYLE</span></th>
+                                    <th style="padding-left:16px;">情景事件</th>
+                                    <th style="text-align:right;">组合损益</th>
+                                    <th style="text-align:right;">权益冲击</th>
+                                    <th style="text-align:right;">利率冲击</th>
+                                    <th style="text-align:right;">黄金/商品</th>
+                                    <th style="text-align:right; padding-right:16px;">区域与风格暴露</th>
                                 </tr>
                             </thead>
                             <tbody id="stress-ledger-body">
@@ -1121,16 +1143,16 @@
     <script src="js/core/portfolio.js?v=1"></script>
     <script src="js/core/status.js?v=1"></script>
     <script src="js/core/events.js?v=1"></script>
-    <script src="main.js?v=37"></script>
-    <script src="js/panels/custom_shock.js?v=2"></script>
+    <script src="main.js?v=39"></script>
+    <script src="js/panels/custom_shock.js?v=3"></script>
     <script src="js/panels/portfolio_workbench.js?v=1"></script>
     <script src="js/panels/risk.js?v=1"></script>
-    <script src="js/panels/stress.js?v=2"></script>
+    <script src="js/panels/stress.js?v=3"></script>
     <script src="js/panels/strategy.js?v=2"></script>
     <script src="js/panels/decision_hub.js?v=1"></script>
     <script src="js/panels/audit_trail.js?v=1"></script>
     <script src="js/panels/optimizers.js?v=1"></script>
-    <script src="js/panels/historical_scenarios.js?v=1"></script>
+    <script src="js/panels/historical_scenarios.js?v=2"></script>
     <script src="js/panels/execution_monitor.js?v=1"></script>
     <script src="js/panels/brinson_attribution.js?v=1"></script>
     <script src="js/panels/crisis_controls.js?v=1"></script>

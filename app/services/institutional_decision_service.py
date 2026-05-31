@@ -22,7 +22,7 @@ from core.what_if_engine import build_default_risk_reduction_adjustments, run_wh
 
 def run_historical_replication_analysis_wrapper(portfolio_snapshot: dict, benchmark, portfolio_name: str | None) -> dict:
     try:
-        from core.data_providers import fetch_yfinance_data
+        from core.market_data import fetch_yfinance_data
         from core.portfolio_opt import calculate_risk_parity_allocation
         from core.scenario_engine import run_historical_replication_analysis
 

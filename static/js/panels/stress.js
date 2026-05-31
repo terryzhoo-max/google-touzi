@@ -3,21 +3,21 @@ async function initStressTesting() {
     try {
         const statusEl = document.getElementById('stress-engine-status');
         if(statusEl) {
-            statusEl.innerText = '正在计算 VaR...';
-            statusEl.style.background = 'rgba(239,68,68,0.1)';
+            statusEl.innerText = '正在计算压力情景';
+            statusEl.style.background = 'rgba(245,158,11,0.12)';
         }
         const res = await fetchJsonWithRetry('/api/institutional/scenarios');
 
         if(statusEl) {
-            statusEl.innerText = '压力引擎在线';
-            statusEl.style.background = 'rgba(239,68,68,0.2)';
+            statusEl.innerText = '压力治理引擎在线';
+            statusEl.style.background = 'rgba(15,118,110,0.18)';
         }
         renderStressTesting(res);
     } catch (e) {
         console.error('Failed to init stress testing:', e);
         const statusEl = document.getElementById('stress-engine-status');
         if(statusEl) {
-            statusEl.innerText = '压力引擎异常';
+            statusEl.innerText = '压力治理引擎异常';
             statusEl.style.color = '#fff';
             statusEl.style.background = '#ef4444';
         }
@@ -42,11 +42,12 @@ function renderStressTesting(data) {
     if (resiliencyEl) {
         let grade = 'D';
         let color = '#ef4444';
-        if (lossPct >= -5.0) { grade = 'A'; color = '#10b981'; }
-        else if (lossPct >= -10.0) { grade = 'B'; color = '#f59e0b'; }
-        else if (lossPct >= -15.0) { grade = 'C'; color = '#f97316'; }
+        let note = '需立即降风险';
+        if (lossPct >= -5.0) { grade = 'A'; color = '#10b981'; note = '压力下韧性充足'; }
+        else if (lossPct >= -10.0) { grade = 'B'; color = '#f59e0b'; note = '可承受但需跟踪'; }
+        else if (lossPct >= -15.0) { grade = 'C'; color = '#f97316'; note = '建议降低尾部风险'; }
 
-        resiliencyEl.innerText = grade + '级';
+        resiliencyEl.innerHTML = `<span class="stress-grade-main">${grade}级</span><span class="stress-grade-note">${note}</span>`;
         resiliencyEl.style.color = color;
         resiliencyEl.style.textShadow = `0 0 15px ${color}`;
     }
@@ -66,8 +67,9 @@ function renderStressTesting(data) {
                     const p = params[0];
                     // Find the original scenario to get name_zh
                     const scenario = sortedScenarios.find(s => (s.name + ' | ' + s.name_zh) === p.name || s.name === p.name);
-                    const title = scenario ? ((scenario.name_zh || scenario.name) + ' <span style="font-size:0.8em; color:var(--text-tertiary); margin-left:8px; font-family:var(--font-mono);">' + scenario.name.toUpperCase() + '</span>') : p.name;
-                    return `<div class="hud-title">${title}</div><div class="hud-value">${p.value > 0 ? '+' : ''}${p.value}%</div>`;
+                    const title = scenario ? (scenario.name_zh || scenario.name) : p.name;
+                    const riskLevel = p.value <= -15 ? '红色预警' : p.value <= -8 ? '橙色关注' : '常规跟踪';
+                    return `<div class="hud-title">情景名称：${title}</div><div class="hud-value">组合损益：${p.value > 0 ? '+' : ''}${p.value}%</div><div class="hud-note">风险等级：${riskLevel}</div>`;
                 }
             },
             grid: { left: '15%', right: '10%', bottom: '10%', top: '5%', containLabel: true },
@@ -79,14 +81,14 @@ function renderStressTesting(data) {
             },
             yAxis: {
                 type: 'category',
-                data: sortedScenarios.map(s => s.name_zh ? `${s.name_zh} | ${s.name}` : s.name),
+                data: sortedScenarios.map(s => s.name_zh || s.name),
                 axisLabel: { color: '#e2e8f0', fontFamily: 'var(--font-sans)', fontSize: 11, fontWeight: 'bold' },
                 axisLine: { show: false },
                 axisTick: { show: false },
                 splitArea: { show: true, areaStyle: { color: ['rgba(255,255,255,0.02)', 'transparent'] } }
             },
             series: [{
-                name: '组合回撤',
+                name: '组合损益',
                 type: 'bar',
                 barWidth: '50%',
                 label: {
@@ -159,14 +161,14 @@ function renderStressTesting(data) {
         const pColor = pnlPct > 0 ? '#10b981' : '#f43f5e';
         const pSign = pnlPct > 0 ? '+' : '';
         const isWorst = (s.id === worst.id);
-        const rowClass = isWorst ? 'clickable-row pulsing-danger-row' : 'clickable-row';
+        const rowClass = isWorst ? 'clickable-row stress-priority-row' : 'clickable-row';
 
         html += `
             <tr class="${rowClass}" style="transition: background-color 0.2s ease;">
                 <td style="padding-left:16px;">
                     <div style="display:flex; flex-direction:column; gap:2px;">
                         <span style="font-weight:700; color:var(--text-primary); font-size:0.95rem;">${s.name_zh || s.name}</span>
-                        <span style="font-family:var(--font-mono); font-size:0.7rem; color:var(--text-tertiary); text-transform:uppercase; letter-spacing:0.5px;">${s.name}</span>
+                        <span style="font-size:0.7rem; color:var(--text-tertiary); letter-spacing:0;">${isWorst ? '风险重点行' : '压力情景'}</span>
                     </div>
                 </td>
                 <td style="text-align:right; font-family:var(--font-mono); font-weight:800; color:${pColor}; font-size:1.1rem; text-shadow:0 0 10px ${pColor}55;">

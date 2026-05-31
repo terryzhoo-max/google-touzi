@@ -18,7 +18,7 @@ def register_health_routes(app: FastAPI, *, settings, rate_limit_db) -> None:
         degraded = [
             k
             for k, v in ps.items()
-            if v.get("error_rate", 0) > 0.3 or circuit.get(k, {}).get("state") != "closed"
+            if v.get("error_rate", 0) > 0.3 or circuit.get(k, {"state": "closed"}).get("state") != "closed"
         ]
         diagnostics = build_runtime_diagnostics(settings, cwd=os.getcwd())
 

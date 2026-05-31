@@ -13,6 +13,7 @@ window.runCustomShockSimulation = async function() {
     }
     const lossEl = document.getElementById('custom-shock-loss-display');
     const statusEl = document.getElementById('custom-shock-status-badge');
+    const actionEl = document.getElementById('custom-shock-action');
     const commitBtn = document.getElementById('btn-commit-shock');
     if (lossEl) {
         lossEl.textContent = '...';
@@ -36,6 +37,7 @@ window.runCustomShockSimulation = async function() {
         const status = String(result.status || 'green').toLowerCase();
         const color = status === 'red' ? '#ef4444' : status === 'yellow' ? '#facc15' : '#10b981';
         const label = status === 'red' ? '压力阈值突破' : status === 'yellow' ? '观察区间' : '组合安全';
+        const action = status === 'red' ? '暂停再平衡，优先对冲或降仓' : status === 'yellow' ? '降低追涨仓位，保留对冲预算' : '观察，维持当前风险预算';
         if (lossEl) {
             lossEl.textContent = `${loss.toFixed(2)}%`;
             lossEl.style.color = color;
@@ -46,6 +48,12 @@ window.runCustomShockSimulation = async function() {
             statusEl.style.background = `${color}20`;
             statusEl.style.color = color;
             statusEl.style.borderColor = `${color}55`;
+        }
+        if (actionEl) {
+            actionEl.textContent = action;
+            actionEl.style.color = color;
+            actionEl.style.borderColor = `${color}55`;
+            actionEl.style.background = `${color}14`;
         }
         if (commitBtn) commitBtn.style.display = 'inline-block';
         const chartDom = document.getElementById('custom-shock-asset-chart');
@@ -113,6 +121,7 @@ window.resetCustomShock = function() {
     });
     const lossEl = document.getElementById('custom-shock-loss-display');
     const statusEl = document.getElementById('custom-shock-status-badge');
+    const actionEl = document.getElementById('custom-shock-action');
     const commitBtn = document.getElementById('btn-commit-shock');
     if (lossEl) {
         lossEl.textContent = '0.00%';
@@ -124,6 +133,12 @@ window.resetCustomShock = function() {
         statusEl.style.background = 'rgba(16,185,129,0.15)';
         statusEl.style.color = '#10b981';
         statusEl.style.borderColor = 'rgba(16,185,129,0.3)';
+    }
+    if (actionEl) {
+        actionEl.textContent = '观察';
+        actionEl.style.color = '#10b981';
+        actionEl.style.borderColor = 'rgba(16,185,129,0.3)';
+        actionEl.style.background = 'rgba(16,185,129,0.08)';
     }
     if (commitBtn) commitBtn.style.display = 'none';
     if (window.customShockChart) {
