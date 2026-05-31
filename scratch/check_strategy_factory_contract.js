@@ -2,6 +2,7 @@ const fs = require('fs');
 
 const strategy = fs.readFileSync('core/strategy_lab.py', 'utf8');
 const main = fs.readFileSync('static/main.js', 'utf8');
+const strategyPanel = fs.readFileSync('static/js/panels/strategy.js', 'utf8');
 
 const checks = [
   {
@@ -22,11 +23,11 @@ const checks = [
   },
   {
     name: 'frontend handles unavailable strategy backtest',
-    pass: /renderStrategyBacktestUnavailable/.test(main) && /data\.backtest\.error/.test(main),
+    pass: /renderStrategyBacktestUnavailable/.test(strategyPanel) && /data\.backtest\.error/.test(strategyPanel),
   },
   {
     name: 'frontend guards strategy engine arrays',
-    pass: /Array\.isArray\(eng\.details\)/.test(main) && /Array\.isArray\(eng\.holdings\)/.test(main),
+    pass: /Array\.isArray\(eng\.details\)/.test(strategyPanel) && /Array\.isArray\(eng\.holdings\)/.test(strategyPanel),
   },
 ];
 

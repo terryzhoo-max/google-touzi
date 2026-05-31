@@ -2,6 +2,8 @@ const fs = require('fs');
 
 const index = fs.readFileSync('static/index.html', 'utf8');
 const main = fs.readFileSync('static/main.js', 'utf8');
+const events = fs.readFileSync('static/js/core/events.js', 'utf8');
+const bootstrap = fs.readFileSync('static/js/core/bootstrap.js', 'utf8');
 const styles = fs.readFileSync('static/styles.css', 'utf8');
 
 const viewIds = [
@@ -35,19 +37,19 @@ const checks = [
           continue;
         }
         const id = (tag.match(/id="([^"]*)"/) || [])[1] || '';
-        const className = (tag.match(/class="([^"]*)"/) || [])[1] || '';
         if (viewIds.includes(id)) {
           const parent = stack[stack.length - 1];
           if (!parent || parent.name !== 'main') return false;
         }
-        stack.push({ name, id, className });
+        stack.push({ name, id });
       }
       return true;
     })(),
   },
   {
-    name: 'all nav clicks use router and prevent default',
-    pass: viewIds.every(id => index.includes(`onclick="return switchView('${id}')"`) || id === 'view-macro' && index.includes(`onclick="return switchView('view-macro')"`)),
+    name: 'all nav clicks use delegated router action',
+    pass: viewIds.every(id => index.includes(`data-action="switch-view" data-view="${id}"`)) &&
+      /'switch-view'[\s\S]{0,140}event\.preventDefault\(\)[\s\S]{0,140}switchView\(target\.dataset\.view\)/.test(events),
   },
   {
     name: 'strategy nav entry is present',
@@ -59,15 +61,16 @@ const checks = [
   },
   {
     name: 'hash route opens strategy view on refresh/direct link',
-    pass: /location\.hash/.test(main) && /hashchange/.test(main) && /switchView\(initialView/.test(main),
+    pass: /location\.hash/.test(main) && /switchView\(initialView/.test(main) && /hashchange/.test(bootstrap),
   },
   {
     name: 'nav clicks prevent default anchor-only fallback',
-    pass: /onclick="return switchView\('view-strategy'\)"/.test(index) && /return false;/.test(main),
+    pass: /data-action="switch-view" data-view="view-strategy"/.test(index) &&
+      /'switch-view'[\s\S]{0,140}event\.preventDefault\(\)/.test(events),
   },
   {
     name: 'strategy script cache version was bumped',
-    pass: /main\.js\?v=36/.test(index),
+    pass: /js\/panels\/strategy\.js\?v=2/.test(index),
   },
   {
     name: 'html has pre-main hash activation fallback',
@@ -75,7 +78,7 @@ const checks = [
   },
   {
     name: 'sidebar nav can scroll if viewport is short',
-    pass: /styles\.css\?v=17/.test(index) && /\.terminal-nav\s*\{[\s\S]*overflow-y:\s*auto/.test(styles),
+    pass: /styles\.css\?v=18/.test(index) && /\.terminal-nav\s*\{[\s\S]*overflow-y:\s*auto/.test(styles),
   },
   {
     name: 'main router writes explicit panel display state',

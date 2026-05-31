@@ -3,6 +3,33 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def _frontend_js() -> str:
+    files = [
+        ROOT / "static" / "main.js",
+        ROOT / "static" / "js" / "core" / "api.js",
+        ROOT / "static" / "js" / "core" / "dom.js",
+        ROOT / "static" / "js" / "core" / "charts.js",
+        ROOT / "static" / "js" / "core" / "portfolio.js",
+        ROOT / "static" / "js" / "core" / "status.js",
+        ROOT / "static" / "js" / "core" / "events.js",
+        ROOT / "static" / "js" / "core" / "bootstrap.js",
+        ROOT / "static" / "js" / "panels" / "custom_shock.js",
+        ROOT / "static" / "js" / "panels" / "portfolio_workbench.js",
+        ROOT / "static" / "js" / "panels" / "risk.js",
+        ROOT / "static" / "js" / "panels" / "stress.js",
+        ROOT / "static" / "js" / "panels" / "strategy.js",
+        ROOT / "static" / "js" / "panels" / "decision_hub.js",
+        ROOT / "static" / "js" / "panels" / "audit_trail.js",
+        ROOT / "static" / "js" / "panels" / "optimizers.js",
+        ROOT / "static" / "js" / "panels" / "historical_scenarios.js",
+        ROOT / "static" / "js" / "panels" / "execution_monitor.js",
+        ROOT / "static" / "js" / "panels" / "brinson_attribution.js",
+        ROOT / "static" / "js" / "panels" / "crisis_controls.js",
+        ROOT / "static" / "js" / "panels" / "cco_release.js",
+    ]
+    return "\n".join(path.read_text(encoding="utf-8") for path in files)
+
+
 def test_dompurify_is_loaded_before_app_script():
     html = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
 
@@ -12,8 +39,108 @@ def test_dompurify_is_loaded_before_app_script():
     assert dompurify_index < main_index
 
 
+def test_frontend_modules_load_in_dependency_order():
+    html = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
+
+    ordered_scripts = [
+        "js/core/namespace.js",
+        "js/core/state.js",
+        "js/core/api.js",
+        "js/core/dom.js",
+        "js/core/charts.js",
+        "js/core/portfolio.js",
+        "js/core/status.js",
+        "js/core/events.js",
+        "main.js",
+        "js/panels/custom_shock.js",
+        "js/panels/portfolio_workbench.js",
+        "js/panels/risk.js",
+        "js/panels/stress.js",
+        "js/panels/strategy.js",
+        "js/panels/decision_hub.js",
+        "js/panels/audit_trail.js",
+        "js/panels/optimizers.js",
+        "js/panels/historical_scenarios.js",
+        "js/panels/execution_monitor.js",
+        "js/panels/brinson_attribution.js",
+        "js/panels/crisis_controls.js",
+        "js/panels/cco_release.js",
+        "js/core/bootstrap.js",
+    ]
+    positions = [html.index(script) for script in ordered_scripts]
+
+    assert positions == sorted(positions)
+
+
+def test_static_html_uses_declarative_actions_not_inline_handlers():
+    html = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
+
+    assert " onclick=" not in html
+    assert " onchange=" not in html
+    assert " onsubmit=" not in html
+    assert 'data-action="switch-view"' in html
+    assert 'data-action="import-tdx"' in html
+    assert 'data-action="execute-simu-cli"' in html
+    assert 'data-action="submit-cco-force-release"' in html
+
+
+def test_generated_panel_templates_use_declarative_actions():
+    js = _frontend_js()
+
+    assert "onclick=" not in js
+    assert "onchange=" not in js
+    assert 'data-action="open-action-modal"' in js
+    assert 'data-action="sign-off-single-order"' in js
+    assert 'data-action="remove-simu-trade"' in js
+
+
+def test_freshness_indicator_uses_central_status_writer_without_mojibake():
+    html = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
+    main_js = (ROOT / "static" / "main.js").read_text(encoding="utf-8")
+    bootstrap_js = (ROOT / "static" / "js" / "core" / "bootstrap.js").read_text(encoding="utf-8")
+    status_js = (ROOT / "static" / "js" / "core" / "status.js").read_text(encoding="utf-8")
+    freshness_sources = "\n".join([main_js, bootstrap_js, status_js])
+
+    assert html.index("js/core/status.js") < html.index("js/core/events.js")
+    assert "function setFreshnessStatus" in status_js
+    assert "setFreshnessStatus({" in main_js
+    assert "app.status.setFreshnessStatus({" in bootstrap_js
+    assert "document.getElementById('freshness-indicator')" not in main_js
+    assert "document.getElementById('freshness-indicator')" not in bootstrap_js
+    assert "Healthy | cache hit" in main_js
+    assert "Degraded:" in main_js
+    assert "Circuit open:" in main_js
+    assert "Panels loaded" in bootstrap_js
+
+    for marker in ["\u951f", "\u95ff", "\u923f", "\u9983", "\ufffd"]:
+        assert marker not in freshness_sources
+
+
+def test_frontend_sources_do_not_contain_common_mojibake_markers():
+    html = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
+    scanned = html + "\n" + _frontend_js()
+
+    mojibake_markers = [
+        "\u951f",  # ?
+        "\u95ff",  # ?
+        "\u923f",  # ?
+        "\u9983",  # ?
+        "\ufffd",  # replacement character
+        "\u6722",  # ?
+        "\u51e2",  # ?
+        "\u6762",  # ?
+        "\u9722",  # ?
+        "\ue045",  # private-use residue from misdecoded Chinese names
+        "\ue161",  # private-use residue from misdecoded Chinese names
+        "\ufe3d",  # presentation-form residue from misdecoded Chinese names
+    ]
+
+    for marker in mojibake_markers:
+        assert marker not in scanned
+
+
 def test_ai_markdown_is_sanitized_before_inner_html():
-    js = (ROOT / "static" / "main.js").read_text(encoding="utf-8")
+    js = _frontend_js()
 
     assert "DOMPurify.sanitize" in js
     assert "ADD_ATTR: ['style']" not in js
@@ -22,7 +149,7 @@ def test_ai_markdown_is_sanitized_before_inner_html():
 
 def test_institutional_panel_static_contract():
     html = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
-    js = (ROOT / "static" / "main.js").read_text(encoding="utf-8")
+    js = _frontend_js()
 
     assert 'id="view-institutional"' in html
     assert 'id="audit-log-table-body"' in html
@@ -36,9 +163,43 @@ def test_institutional_panel_static_contract():
     assert "initInstitutionalDecision" in js
 
 
+def test_institutional_panel_uses_chinese_title_and_contains_all_static_modules():
+    html = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
+
+    institutional_start = html.index('id="view-institutional"')
+    portfolio_start = html.index('id="view-portfolio"')
+
+    assert "机构合规审计" in html[institutional_start:portfolio_start]
+    assert "组合治理、主动风险、交易审计" in html[institutional_start:portfolio_start]
+    assert "Brinson 业绩归因" in html[institutional_start:portfolio_start]
+
+
+def test_institutional_panel_static_text_has_no_visible_mojibake():
+    html = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
+    institutional_start = html.index('id="view-institutional"')
+    portfolio_start = html.index('id="view-portfolio"')
+    institutional_html = html[institutional_start:portfolio_start]
+
+    mojibake_fragments = [
+        "鍚",
+        "璺",
+        "瀹",
+        "鏃",
+        "瑁",
+        "涓",
+        "澶",
+        "缁",
+        "閰",
+        "浜",
+    ]
+
+    for fragment in mojibake_fragments:
+        assert fragment not in institutional_html
+
+
 def test_institutional_workbench_static_contract():
     html = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
-    js = (ROOT / "static" / "main.js").read_text(encoding="utf-8")
+    js = _frontend_js()
 
     required_ids = [
         "workbench-top-factor",
@@ -54,7 +215,7 @@ def test_institutional_workbench_static_contract():
 
 def test_allocation_model_panel_static_contract():
     html = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
-    js = (ROOT / "static" / "main.js").read_text(encoding="utf-8")
+    js = _frontend_js()
 
     # This tests the upgraded pre-trade simulation workbench (SIMU)
     required_ids = [
@@ -104,13 +265,14 @@ def test_start_script_supports_production_hardening_contract():
 
 
 def test_frontend_uses_safe_rendering_for_targeted_api_payloads():
-    js = (ROOT / "static" / "main.js").read_text(encoding="utf-8")
+    js = _frontend_js()
 
     assert "renderAlertList(list, d.active_warnings)" in js
-    assert "fi.textContent =" in js
+    assert "setFreshnessStatus({" in js
     assert "ins.textContent = corrData.insight" in js
     assert "renderScenarioGrid(grid, data.scenarios)" in js
     assert "list.innerHTML = d.active_warnings.map" not in js
+    assert "fi.textContent =" not in js
     assert "fi.innerHTML =" not in js
     assert "ins.innerHTML = corrData.insight" not in js
     assert "grid.innerHTML = data.scenarios.map" not in js

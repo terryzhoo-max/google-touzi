@@ -32,6 +32,7 @@ class Settings:
     QQ_MAIL_USER: str = os.getenv("QQ_MAIL_USER", "")
     QQ_MAIL_PASS: str = os.getenv("QQ_MAIL_PASS", "")
     DEEPSEEK_API_KEY: str = os.getenv("DEEPSEEK_API_KEY", "")
+    CCO_AUTH_KEY: str = os.getenv("CCO_AUTH_KEY", "AlphaCoreCCO2026")
 
     # Quantitative Thresholds
     TNX_LOOSE_THRESH: float = 3.8

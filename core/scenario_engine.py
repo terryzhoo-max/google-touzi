@@ -4,7 +4,7 @@ SCENARIO_SHOCKS = [
     {
         "id": "equity_liquidity_shock",
         "name": "Equity liquidity shock",
-        "name_zh": "权益流动性枯竭",
+        "name_zh": "???????",
         "macro_shocks": {"equity_beta": -0.15, "liquidity_sensitivity": -0.10},
         "theme_shocks": {},
         "region_shocks": {},
@@ -12,7 +12,7 @@ SCENARIO_SHOCKS = [
     {
         "id": "rate_shock",
         "name": "Rate shock",
-        "name_zh": "全球利率飙升",
+        "name_zh": "??????",
         "macro_shocks": {"rate_sensitivity": -0.30, "equity_beta": -0.08, "dollar_sensitivity": 0.10},
         "theme_shocks": {},
         "region_shocks": {},
@@ -20,7 +20,7 @@ SCENARIO_SHOCKS = [
     {
         "id": "risk_on",
         "name": "Risk-on recovery",
-        "name_zh": "避险情绪消退",
+        "name_zh": "??????",
         "macro_shocks": {"equity_beta": 0.10, "liquidity_sensitivity": 0.05, "dollar_sensitivity": -0.05},
         "theme_shocks": {},
         "region_shocks": {},
@@ -28,7 +28,7 @@ SCENARIO_SHOCKS = [
     {
         "id": "china_equity_shock",
         "name": "China equity shock",
-        "name_zh": "亚太权益震荡",
+        "name_zh": "??????",
         "macro_shocks": {},
         "theme_shocks": {"China equity": -0.15},
         "region_shocks": {"China": -0.12, "HongKong": -0.10},
@@ -36,7 +36,7 @@ SCENARIO_SHOCKS = [
     {
         "id": "us_tech_shock",
         "name": "US technology shock",
-        "name_zh": "北美科技股崩盘",
+        "name_zh": "???????",
         "macro_shocks": {"equity_beta": -0.05},
         "theme_shocks": {"US technology": -0.25},
         "region_shocks": {"US": -0.10},
@@ -44,7 +44,7 @@ SCENARIO_SHOCKS = [
     {
         "id": "technology_drawdown",
         "name": "Technology drawdown",
-        "name_zh": "核心科技估值杀跌",
+        "name_zh": "????????",
         "macro_shocks": {},
         "theme_shocks": {"semiconductor": -0.20, "China technology": -0.15, "US technology": -0.15},
         "region_shocks": {},
@@ -61,16 +61,16 @@ def _scenario_loss(
     loss = 0.0
     theme_shocks = theme_shocks or {}
     region_shocks = region_shocks or {}
-    
+
     for p in snapshot["positions"]:
         symbol = p["symbol"]
         weight = float(p["weight"])
-        
+
         # Pull beta/exposure from registry, fallback to asset_class heuristics
         registry = FACTOR_REGISTRY.get(symbol, {})
-        
+
         asset_loss = 0.0
-        
+
         # 1. Macro Factor transmission (Beta-adjusted)
         macro_exp = registry.get("macro", {})
         for factor, shock in macro_shocks.items():
@@ -80,9 +80,9 @@ def _scenario_loss(
                 beta = 1.0  # Default beta for unknown equity
             elif not macro_exp and factor == "equity_beta" and p.get("asset_class") == "gold":
                 beta = 0.4  # Default beta for unknown gold
-                
+
             asset_loss += beta * shock
-            
+
         # 2. Theme transmission
         theme_exp = registry.get("theme", {})
         for theme, shock in theme_shocks.items():
@@ -92,7 +92,7 @@ def _scenario_loss(
             elif not theme_exp and p.get("strategy") == "technology" and "semiconductor" in theme:
                 exposure = 1.0
             asset_loss += exposure * shock
-            
+
         # 3. Regional transmission
         region_exp = registry.get("region", {})
         for region, shock in region_shocks.items():
@@ -100,9 +100,9 @@ def _scenario_loss(
             if not region_exp and p.get("region") == region:
                 exposure = 1.0 # Default region exposure
             asset_loss += exposure * shock
-            
+
         loss += weight * asset_loss
-        
+
     return round(loss * 100, 2)
 
 
@@ -126,7 +126,7 @@ def run_portfolio_scenarios(snapshot: dict) -> dict:
 
     if not rows:
         return {"scenarios": [], "worst_scenario": None}
-        
+
     worst = min(rows, key=lambda row: row["portfolio_loss_pct"])
     return {
         "scenarios": rows,
@@ -141,9 +141,9 @@ def run_custom_shock_analysis(snapshot: dict, shocks: dict) -> dict:
         "liquidity_sensitivity": float(shocks.get("vol_shock", 0.0)) / 100.0,
         "inflation_sensitivity": float(shocks.get("commodity_shock", 0.0)) / 100.0,
     }
-    
+
     loss_pct = _scenario_loss(snapshot, macro_shocks, {}, {})
-    
+
     # Calculate per-asset contribution to loss
     asset_losses = []
     from core.factor_risk import FACTOR_REGISTRY
@@ -152,7 +152,7 @@ def run_custom_shock_analysis(snapshot: dict, shocks: dict) -> dict:
         weight = float(p["weight"])
         registry = FACTOR_REGISTRY.get(symbol, {})
         macro_exp = registry.get("macro", {})
-        
+
         asset_loss = 0.0
         for factor, shock in macro_shocks.items():
             beta = macro_exp.get(factor, 0.0)
@@ -161,7 +161,7 @@ def run_custom_shock_analysis(snapshot: dict, shocks: dict) -> dict:
             elif not macro_exp and factor == "equity_beta" and p.get("asset_class") == "gold":
                 beta = 0.4
             asset_loss += beta * shock
-            
+
         asset_losses.append({
             "symbol": symbol,
             "name": p["name"],
@@ -169,7 +169,7 @@ def run_custom_shock_analysis(snapshot: dict, shocks: dict) -> dict:
             "loss_contribution_pct": round(weight * asset_loss * 100, 4),
             "asset_loss_pct": round(asset_loss * 100, 2)
         })
-        
+
     return {
         "custom_loss_pct": loss_pct,
         "shocks": shocks,
@@ -185,10 +185,10 @@ def get_historical_crisis_factor_series(crisis_id: str, days: int = 30) -> list[
     """
     import math
     shocks_list = []
-    
+
     for t in range(days):
         x = t / (days - 1) if days > 1 else 0.0
-        
+
         if crisis_id == "lehman_2008":
             eq = -0.02 * math.sin(x * math.pi) - 0.015 * math.cos(x * 3 * math.pi) - 0.01
             liq = 0.04 * math.sin(x * math.pi) + 0.03 * math.cos(x * 2 * math.pi) + 0.02
@@ -215,7 +215,7 @@ def get_historical_crisis_factor_series(crisis_id: str, days: int = 30) -> list[
             inf = 0.015 * math.sin(x * math.pi) + 0.012
         else:
             eq = liq = dol = rat = inf = 0.0
-            
+
         shocks_list.append({
             "equity_beta": float(eq),
             "liquidity_sensitivity": float(liq),
@@ -223,7 +223,7 @@ def get_historical_crisis_factor_series(crisis_id: str, days: int = 30) -> list[
             "rate_sensitivity": float(rat),
             "inflation_sensitivity": float(inf)
         })
-        
+
     return shocks_list
 
 
@@ -232,7 +232,10 @@ def run_historical_replication_analysis(
     benchmark_weights: dict[str, float],
     risk_parity_weights: dict[str, float],
     vix: float = 20.0,
-    surprise_index: float = 0.0
+    surprise_index: float = 0.0,
+    defense_trigger_drawdown: float = -0.05,
+    defense_risk_cut_ratio: float = 0.50,
+    stabilization_days: int = 10
 ) -> dict:
     """
     Simulate the 30-day dynamic crisis NAV path and max drawdowns for four portfolios:
@@ -240,47 +243,47 @@ def run_historical_replication_analysis(
     2. Benchmark Portfolio
     3. Risk Parity Portfolio
     4. AI Blue-Team Defense Portfolio (Dynamic Game-Theoretic hedging)
-    
+
     Adjusts early-stage shock volatility based on current VIX / Surprise Index drift.
     """
     import math
     from core.factor_risk import FACTOR_REGISTRY
-    
+
     crises = {
         "lehman_2008": {
-            "name_zh": "2008 雷曼兄弟破产危机",
+            "name_zh": "2008 ????????",
             "name_en": "2008 Lehman Brothers Bankruptcy",
-            "narrative_zh": "2008年9月雷曼倒闭触发全球流动性休克。权益资产崩塌，恐慌指数（VIX）冲向历史峰值，避险资金推升美元走强，全球降息潮触发债市异动，大宗商品陷入通缩深渊。",
+            "narrative_zh": "?????????????????????????????????????",
             "narrative_en": "Lehman bankruptcy in Sept 2008 triggered global liquidity shock. Equities collapsed, VIX hit historic highs, flight-to-safety boosted USD, global rate cuts triggered bond rallies, and commodities plunged into deflation."
         },
         "covid_2020": {
-            "name_zh": "2020 新冠流动性危机海啸",
+            "name_zh": "2020 ???????",
             "name_en": "2020 COVID Liquidity Cash Freeze",
-            "narrative_zh": "2020年3月新冠疫情引发全球金融海啸。恐慌蔓延导致一切资产被无差别抛售（包含黄金流动性踩踏），美元现金极度紧缺，VIX创纪录剧震，债市收益率频繁异动。",
+            "narrative_zh": "??????????????????????????????????????",
             "narrative_en": "COVID pandemic in March 2020 sparked a global cash crunch. Volatility spikes triggered indiscriminate liquidation of all assets (including gold), USD surged, VIX hit record swings, and bond yields fluctuated wildly."
         },
         "taper_2013": {
-            "name_zh": "2013 锥子恐慌紧缩冲击",
+            "name_zh": "2013 ??????",
             "name_en": "2013 QE Taper Tantrum Shock",
-            "narrative_zh": "2013年5月美联储暗示缩减QE触发债市暴跌。10年美债收益率狂飙（Rate Shock），新兴市场股债双杀，美元指数强势走高，黄金遭遇阶段性熊市打击。",
+            "narrative_zh": "????????????????????????????",
             "narrative_en": "Fed hinting at tapering QE in May 2013 triggered a bond selloff. 10Y yields spiked, emerging markets assets plunged, USD strengthened, and gold suffered a severe correction."
         },
         "stagflation_1970": {
-            "name_zh": "1970s 全球大滞胀通胀危机",
+            "name_zh": "1970s ??????",
             "name_en": "1970s Global Stagflation Crisis",
-            "narrative_zh": "1970年代两次石油危机引发恶性输入型通胀。大宗商品与黄金暴涨（Inflation Shock），经济停滞导致股市长期磨底，固收类资产价值遭遇高通胀剧烈蚕食。",
+            "narrative_zh": "??????????????????????????????",
             "narrative_en": "Oil shocks in the 1970s triggered stagflation. Commodities and gold skyrocketed, economic stagnation weighed on equities, and fixed income purchasing power was severely eroded."
         }
     }
-    
+
     positions = portfolio_snapshot.get("positions", [])
     symbols = sorted(set(p["symbol"] for p in positions) | set(benchmark_weights.keys()) | set(risk_parity_weights.keys()))
-    
+
     symbol_betas = {}
     for sym in symbols:
         registry = FACTOR_REGISTRY.get(sym, {})
         symbol_betas[sym] = registry.get("macro", {})
-        
+
     def get_portfolio_daily_return(weights_dict: dict[str, float], factor_shocks: dict[str, float]) -> float:
         ret = 0.0
         for sym, w in weights_dict.items():
@@ -303,102 +306,111 @@ def run_historical_replication_analysis(
 
     results = {}
     days = 30
-    
+
     # Volatility-Adjusted Crisis Drift scale (normal VIX = 20)
     vix_scale = max(0.5, min(3.0, vix / 20.0))
-    
+
+    # Normalize defense parameters safely
+    norm_trigger = -abs(defense_trigger_drawdown)
+    if abs(norm_trigger) >= 1.0:
+        norm_trigger /= 100.0
+
+    norm_cut = abs(defense_risk_cut_ratio)
+    if norm_cut >= 1.0:
+        norm_cut /= 100.0
+
     for cid, info in crises.items():
         shocks = get_historical_crisis_factor_series(cid, days=days)
         dates = [f"D{t+1}" for t in range(days)]
-        
+
         nav_port = 1.0
         nav_bench = 1.0
         nav_rp = 1.0
         nav_blue = 1.0
-        
+
         path_port = [1.0]
         path_bench = [1.0]
         path_rp = [1.0]
         path_blue = [1.0]
-        
+
         peak_port = 1.0
         peak_bench = 1.0
         peak_rp = 1.0
         peak_blue = 1.0
-        
+
         max_dd_port = 0.0
         max_dd_bench = 0.0
         max_dd_rp = 0.0
         max_dd_blue = 0.0
-        
+
         w_port = {p["symbol"]: float(p["weight"]) for p in positions}
         w_bench = dict(benchmark_weights)
         w_rp = dict(risk_parity_weights)
-        
+
         # AI Blue-Team defense state variables
         defense_active = False
         defense_day = -1
         w_blue = dict(w_port)
-        
+
         for t in range(days):
             shock_t = dict(shocks[t])
             # Apply VIX drift calibration to early phase (first 10 days)
             if t < 10:
                 for k in shock_t:
                     shock_t[k] *= vix_scale
-                    
+
             ret_port = get_portfolio_daily_return(w_port, shock_t)
             ret_bench = get_portfolio_daily_return(w_bench, shock_t)
             ret_rp = get_portfolio_daily_return(w_rp, shock_t)
-            
+
             # AI Blue-Team Shielding Game-Theoretic Loop
             current_drawdown = (nav_blue / peak_blue) - 1.0
-            
-            # Trigger Shielding when drawdown exceeds -5%
-            if not defense_active and current_drawdown < -0.05:
+
+            # Trigger Shielding when drawdown exceeds trigger threshold
+            if not defense_active and current_drawdown < norm_trigger:
                 defense_active = True
                 defense_day = t
-                
-                # Active Defensive Allocation: slash risk exposures by 50%
+
+                # Active Defensive Allocation: slash risk exposures by cut ratio
                 risk_sum = sum(w for sym, w in w_port.items() if sym != "CASH")
-                w_blue = {sym: (w * 0.5 if sym != "CASH" else w) for sym, w in w_port.items()}
-                w_blue["CASH"] = w_blue.get("CASH", 0.0) + (risk_sum * 0.5)
-                
-            # De-escalate and restore allocation after 10 days of stabilization
-            elif defense_active and t > defense_day + 10:
+                w_blue = {sym: (w * (1.0 - norm_cut) if sym != "CASH" else w) for sym, w in w_port.items()}
+                w_blue["CASH"] = w_blue.get("CASH", 0.0) + (risk_sum * norm_cut)
+
+            # De-escalate and restore allocation after stabilization_days of stabilization
+            elif defense_active and t > defense_day + stabilization_days:
                 defense_active = False
                 w_blue = dict(w_port)
-                
+
             ret_blue = get_portfolio_daily_return(w_blue, shock_t)
-            
+
             nav_port *= (1.0 + ret_port)
             nav_bench *= (1.0 + ret_bench)
             nav_rp *= (1.0 + ret_rp)
             nav_blue *= (1.0 + ret_blue)
-            
+
             path_port.append(round(nav_port, 4))
             path_bench.append(round(nav_bench, 4))
             path_rp.append(round(nav_rp, 4))
             path_blue.append(round(nav_blue, 4))
-            
+
             peak_port = max(peak_port, nav_port)
             peak_bench = max(peak_bench, nav_bench)
             peak_rp = max(peak_rp, nav_rp)
             peak_blue = max(peak_blue, nav_blue)
-            
+
             dd_port = (nav_port / peak_port) - 1.0
             dd_bench = (nav_bench / peak_bench) - 1.0
             dd_rp = (nav_rp / peak_rp) - 1.0
             dd_blue = (nav_blue / peak_blue) - 1.0
-            
+
             max_dd_port = min(max_dd_port, dd_port)
             max_dd_bench = min(max_dd_bench, dd_bench)
             max_dd_rp = min(max_dd_rp, dd_rp)
             max_dd_blue = min(max_dd_blue, dd_blue)
-            
+
         reduction_alpha = max_dd_port - max_dd_rp
         survival_alpha = max_dd_blue - max_dd_port
-        
+
         results[cid] = {
             "name_zh": info["name_zh"],
             "name_en": info["name_en"],
@@ -418,7 +430,7 @@ def run_historical_replication_analysis(
                 "survival_alpha_pct": round(survival_alpha * 100, 2)
             }
         }
-        
+
     return results
 
 def run_global_risk_net(portfolio_snapshots: list[dict]) -> dict:
@@ -458,7 +470,7 @@ def run_global_risk_net(portfolio_snapshots: list[dict]) -> dict:
 
     # Run joint scenario shocks
     joint_scenarios = run_portfolio_scenarios(global_snapshot)
-    
+
     # Calculate each portfolio's contribution to global risk under joint scenarios
     portfolio_contributions = []
     for snap in portfolio_snapshots:

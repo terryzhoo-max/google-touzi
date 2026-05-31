@@ -17,7 +17,8 @@ htmlcov/
 *.db
 *.sqlite
 *.sqlite3
-!data/institutional_portfolio.json  # Keep specific seeded config databases if needed
+# Keep seeded portfolio input files under version control.
+!data/institutional_portfolio.json
 !data/tactical_hedged_portfolio.json
 
 # 3. Web UI / Browser Automation Scratch & Profiles

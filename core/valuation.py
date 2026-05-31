@@ -1,5 +1,5 @@
 """
-Valuation Thermometer — PE/PB percentile ranking for major indices.
+Valuation Thermometer - PE/PB percentile ranking for major indices.
 Data: Tushare index_dailybasic or daily_basic for index-level valuation.
 Shows where current valuation stands in 10-year history.
 
@@ -10,7 +10,9 @@ Broad ETFs: 恒生ETF(510900.SH), 标普500ETF(513500.SH), 纳指ETF(513100.SH),
 
 import datetime
 import time
+
 import pandas as pd
+
 from core.data_providers import _tushare_items
 
 _last_ok: dict = {"data": None, "ts": 0, "errors": 0}
@@ -35,20 +37,30 @@ COLORS = ["#22c55e", "#4ade80", "#a3e635", "#fbbf24", "#f97316", "#ef4444"]
 
 def _percentile_color(pct: float) -> str:
     """Map percentile to a thermometer color."""
-    if pct < 10:   return COLORS[0]
-    if pct < 25:   return COLORS[1]
-    if pct < 50:   return COLORS[2]
-    if pct < 70:   return COLORS[3]
-    if pct < 90:   return COLORS[4]
+    if pct < 10:
+        return COLORS[0]
+    if pct < 25:
+        return COLORS[1]
+    if pct < 50:
+        return COLORS[2]
+    if pct < 70:
+        return COLORS[3]
+    if pct < 90:
+        return COLORS[4]
     return COLORS[5]
 
 
 def _signal(pct: float) -> str:
-    if pct < 10:  return "极度低估"
-    if pct < 25:  return "低估"
-    if pct < 50:  return "合理偏低"
-    if pct < 70:  return "合理偏高"
-    if pct < 90:  return "高估"
+    if pct < 10:
+        return "极度低估"
+    if pct < 25:
+        return "低估"
+    if pct < 50:
+        return "合理偏低"
+    if pct < 70:
+        return "合理偏高"
+    if pct < 90:
+        return "高估"
     return "泡沫区间"
 
 
@@ -165,7 +177,9 @@ def get_valuation() -> dict:
     }
 
     if len(result_indices) >= 2:
-        _last_ok["data"] = result; _last_ok["ts"] = time.time(); _last_ok["errors"] = 0
+        _last_ok["data"] = result
+        _last_ok["ts"] = time.time()
+        _last_ok["errors"] = 0
         return result
     _last_ok["errors"] = _last_ok.get("errors", 0) + 1
     if _last_ok["data"] is not None:
