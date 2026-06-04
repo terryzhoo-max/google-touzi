@@ -58,11 +58,28 @@ function normalizeStrategyValue(value) {
         .replace('PLACEHOLDER (model inactive)', '模型待接入')
         .replace('PLACEHOLDER', '待接入')
         .replace('NOT LIVE', '未实盘')
+        .replace('PAPER ONLY', '仅纸面跟踪')
+        .replace('UNAVAILABLE', '不可用')
+        .replace('PAPER_OBSERVE', '纸面观察')
+        .replace('HIGH_BETA_WATCH', '高Beta观察')
+        .replace('BLOCKED', '已阻断')
         .replace('UNKNOWN', '未知')
         .replace('ERROR', '异常')
         .replace('HIGH', '高')
+        .replace('MEDIUM', '中')
         .replace('LOW', '低')
-        .replace('vs 200MA', '相对200日均线');
+        .replace('vs 200MA', '相对200日均线')
+        .replace('rebalance_required', '需要再平衡')
+        .replace('no_action', '无需交易')
+        .replace('blocked', '已阻断');
+}
+
+function formatStrategyPercent(value, fallback) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return strategyEscape(fallback || '--');
+    const pct = numeric * 100;
+    const sign = pct > 0 ? '+' : '';
+    return `${sign}${pct.toFixed(1)}%`;
 }
 
 function renderStrategyBacktestUnavailable(metricsContainer, chartDom, message) {
@@ -115,6 +132,10 @@ function renderStrategyEngines(container, engines) {
         'PLACEHOLDER - NOT TRADEABLE': '模型待接入，不可交易',
         'BULLISH ON GOLD': '黄金偏多',
         'NEUTRAL ON GOLD': '黄金中性',
+        BULLISH_ON_GOLD: '黄金防御增配',
+        NEUTRAL_ON_GOLD: '黄金中性',
+        WATCH_GOLD_HEDGE: '黄金观察仓',
+        EXTREME_GOLD_HEDGE: '极端避险防御',
         NO_SIGNAL: '暂无信号'
     };
     const descMap = {
@@ -122,7 +143,8 @@ function renderStrategyEngines(container, engines) {
         'Policy barbell allocation using configured broad, dividend, and 15th FYP theme weights.': '用核心宽基/红利底仓承载稳定收益，以政策主题作为卫星弹性。',
         '200-day SMA trend filter. Liquidates assets in structural bear markets.': '以200日均线识别结构性熊市，触发底仓降风险动作。',
         'Shorts Broad A-share ETF to isolate pure policy alpha of 15th FYP.': '通过宽基贝塔对冲隔离政策主题 alpha，当前作为待接入模块展示。',
-        'Monitors systemic panic (VIX) and monetary cycles to dynamically allocate to Gold.': '监测VIX与黄金趋势，在系统性压力升高时提高避险资产权重。'
+        'Monitors systemic panic (VIX) and monetary cycles to dynamically allocate to Gold.': '监测VIX与黄金趋势，在系统性压力升高时提高避险资产权重。',
+        'Monitors systemic panic (VIX), gold trend, and execution guards before allocating to Gold.': '综合VIX压力、黄金趋势与交易约束评分，分层决定黄金ETF防御仓位。'
     };
     const labelMap = {
         'A-Share Vol (30d)': 'A股30日波动率',
@@ -141,19 +163,46 @@ function renderStrategyEngines(container, engines) {
         'Thematic Beta': '主题Beta',
         'Hedge Ratio': '对冲比例',
         'Alpha Capture': 'Alpha捕获',
+        'Gold Hedge Score': '黄金避险评分',
         'VIX Panic Index': 'VIX恐慌指数',
+        'VIX 10d Change': 'VIX十日变化',
         'Gold Trend (60MA)': '黄金60日趋势',
         'Systemic Hedge Need': '系统性对冲需求',
-        'Allocation Target': '配置目标'
+        'Signal Confidence': '信号置信度',
+        'Allocation Target': '配置目标',
+        'Portfolio Vol': '组合波动率',
+        'A-Share Risk Contribution': 'A股风险贡献',
+        'Overseas Risk Contribution': '海外风险贡献',
+        'Execution State': '执行状态',
+        'Max Single Trade': '单笔上限',
+        'Max Total Trade': '总换手上限'
     };
-    const actionMap = { BUY: '买入/增配', HOLD: '持有', LIQUIDATE: '清仓/降配', NEUTRAL: '中性' };
+    const actionMap = { BUY: '买入/增配', REDUCE: '减配', HOLD: '持有', LIQUIDATE: '清仓/降配', NEUTRAL: '中性', BLOCKED: '禁止自动交易' };
 
-    container.innerHTML = engines.map(eng => {
+        Object.assign(modeMap, {
+            paper: '纸面跟踪',
+            blocked: '风控阻断'
+        });
+        Object.assign(signalMap, {
+            'PAPER HEDGE - NOT TRADEABLE': '纸面跟踪，不可交易',
+            'BETA HEDGE BLOCKED': '贝塔对冲已阻断'
+        });
+        Object.assign(labelMap, {
+            'Downside Beta': '下跌Beta',
+            'Net Beta': '净Beta',
+            'Model Confidence': '模型置信度'
+        });
+        Object.assign(actionMap, {
+            PAPER_HEDGE: '纸面对冲'
+        });
+
+        container.innerHTML = engines.map(eng => {
         const status = String(eng.status || 'unknown');
         const badgeColor = status === 'active' ? '#10b981' : (status === 'standby' ? '#f59e0b' : '#ef4444');
         const signalColor = safeStrategyColor(eng.color, '#38bdf8');
         const details = Array.isArray(eng.details) ? eng.details : [];
         const holdings = Array.isArray(eng.holdings) ? eng.holdings : [];
+        const executionPlan = Array.isArray(eng.execution_plan) ? eng.execution_plan : [];
         const dataQuality = eng.data_quality || {};
         const isDegraded = dataQuality.status && dataQuality.status !== 'ok';
         const isTradeable = eng.tradeable !== false;
@@ -162,6 +211,7 @@ function renderStrategyEngines(container, engines) {
         const translatedSignal = signalMap[eng.signal] || eng.signal || '暂无信号';
         const translatedDesc = descMap[eng.description] || eng.description || '';
         const engineName = STRATEGY_ENGINE_NAME_MAP[eng.id] || eng.name;
+        const policyHash = String(eng.strategy_policy_hash || eng.policy_hash || '');
         const qualityHtml = (isDegraded || !isTradeable) ? `
             <div class="strategy-quality-row">
                 <span>${isTradeable ? '降级运行' : '禁止交易'}</span>
@@ -175,8 +225,42 @@ function renderStrategyEngines(container, engines) {
                 <strong style="color:${safeStrategyColor(d.color, '#e2e8f0')}">${strategyEscape(normalizeStrategyValue(d.value))}</strong>
             </div>
         `).join('');
+        const policyHtml = policyHash ? `
+            <div class="strategy-policy-row">
+                <span>policy hash</span>
+                <strong title="${strategyEscape(policyHash)}">${strategyEscape(policyHash.slice(0, 12))}</strong>
+            </div>
+        ` : '';
+        const executionReviewHtml = executionPlan.length ? `
+            <div class="strategy-execution-box">
+                <div class="strategy-holdings-title">执行前审查 <span>PRE-TRADE REVIEW</span></div>
+                <div class="strategy-execution-grid">
+                    <div class="strategy-execution-head">资产</div>
+                    <div class="strategy-execution-head">目标</div>
+                    <div class="strategy-execution-head">当前</div>
+                    <div class="strategy-execution-head">偏离</div>
+                    <div class="strategy-execution-head">单笔</div>
+                    ${executionPlan.map(item => {
+                        const holding = holdings.find(h => h.symbol === item.symbol) || {};
+                        const holdingName = STRATEGY_SYMBOL_NAME_MAP[item.symbol] || holding.name || item.symbol;
+                        const actionColor = item.action === 'BUY' ? '#10b981' : (item.action === 'REDUCE' || item.action === 'LIQUIDATE' ? '#ef4444' : '#64748b');
+                        const actionText = actionMap[item.action] || item.action || '持有';
+                        return `
+                            <div class="strategy-execution-asset">
+                                <span>${strategyEscape(holdingName)}</span>
+                                <small>${strategyEscape(item.symbol)}</small>
+                            </div>
+                            <strong>${formatStrategyPercent(item.target_weight, holding.weight)}</strong>
+                            <strong>${formatStrategyPercent(item.current_weight)}</strong>
+                            <strong>${formatStrategyPercent(item.drift_weight)}</strong>
+                            <strong style="color:${actionColor};">${strategyEscape(actionText)} ${formatStrategyPercent(item.trade_weight)}</strong>
+                        `;
+                    }).join('')}
+                </div>
+            </div>
+        ` : '';
         const holdingsHtml = holdings.map(h => {
-            const actColor = h.action === 'BUY' ? '#10b981' : (h.action === 'LIQUIDATE' ? '#ef4444' : '#64748b');
+            const actColor = h.action === 'BUY' ? '#10b981' : (h.action === 'BLOCKED' ? '#f59e0b' : (h.action === 'REDUCE' || h.action === 'LIQUIDATE' ? '#ef4444' : '#64748b'));
             const actZH = actionMap[h.action] || h.action;
             const holdingName = STRATEGY_SYMBOL_NAME_MAP[h.symbol] || h.name;
             return `
@@ -205,6 +289,8 @@ function renderStrategyEngines(container, engines) {
                 <div class="strategy-engine-desc">${strategyEscape(translatedDesc)}</div>
                 ${qualityHtml}
                 <div class="strategy-detail-stack">${detailsHtml}</div>
+                ${policyHtml}
+                ${executionReviewHtml}
                 <div class="strategy-holdings-box">
                     <div class="strategy-holdings-title">目标配置比例 <span>TARGET ALLOCATION</span></div>
                     ${holdingsHtml}

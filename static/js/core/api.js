@@ -1,6 +1,10 @@
 (function (app) {
     const originalFetch = window.fetch.bind(window);
     let globalRiskNetCache = null;
+    let auditTrailResponse = null;
+    let auditTrailResponseAt = 0;
+    let auditTrailResponseInflight = null;
+    const AUDIT_TRAIL_RESPONSE_TTL_MS = 10000;
 
     function resetGlobalRiskNetCache() {
         globalRiskNetCache = null;
@@ -37,9 +41,46 @@
         return new Request(urlObj.toString(), input);
     }
 
+    function isAuditTrailRequest(input, init) {
+        const method = init && init.method ? String(init.method).toUpperCase() : "GET";
+        if (method !== "GET") return false;
+        const urlStr = typeof input === 'string' ? input : input.url;
+        return new URL(urlStr, window.location.origin).pathname === '/api/audit_trail';
+    }
+
+    function auditLimitFromRequest(input) {
+        const urlStr = typeof input === 'string' ? input : input.url;
+        const urlObj = new URL(urlStr, window.location.origin);
+        return Number(urlObj.searchParams.get('limit') || 50);
+    }
+
+    async function fetchAuditTrailResponse(input, init) {
+        const now = Date.now();
+        if (auditTrailResponse && now - auditTrailResponseAt < AUDIT_TRAIL_RESPONSE_TTL_MS) {
+            return new Response(JSON.stringify(auditTrailResponse), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        if (!auditTrailResponseInflight) {
+            if (window.fetchAuditTrail) {
+                auditTrailResponseInflight = window.fetchAuditTrail(auditLimitFromRequest(input));
+            } else {
+                auditTrailResponseInflight = originalFetch(input, init).then(resp => resp.json());
+            }
+        }
+        const data = await auditTrailResponseInflight.finally(() => {
+            auditTrailResponseInflight = null;
+        });
+        auditTrailResponse = data;
+        auditTrailResponseAt = Date.now();
+        return new Response(JSON.stringify(data), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+
     async function portfolioAwareFetch(input, init) {
         const urlStr = typeof input === 'string' ? input : input.url;
         const currentPortfolio = app.state ? app.state.getCurrentPortfolio() : window.currentPortfolio;
+
+        if (isAuditTrailRequest(input, init)) {
+            return fetchAuditTrailResponse(input, init);
+        }
 
         if (currentPortfolio === 'ALL') {
             if (urlStr.includes('/api/institutional/portfolio') && !urlStr.includes('/portfolios') && !urlStr.includes('/portfolio_raw')) {

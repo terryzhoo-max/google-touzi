@@ -59,6 +59,43 @@ def test_health_endpoint_does_not_degrade_unused_provider_without_circuit(monkey
     assert payload["degraded_sources"] == []
 
 
+def test_health_endpoint_degrades_when_fred_circuit_is_open(monkeypatch):
+    import app.routes.health as health_routes
+
+    monkeypatch.setattr(
+        health_routes,
+        "get_provider_stats",
+        lambda: {
+            "fred": {
+                "calls": 10,
+                "hit_ratio": 0.7,
+                "error_rate": 0.1,
+                "last_ok_secs_ago": 120,
+                "last_error": "Too Many Requests",
+                "avg_ms": 200.0,
+            }
+        },
+    )
+    monkeypatch.setattr(
+        health_routes,
+        "get_circuit_state",
+        lambda: {"fred": {"state": "open", "failures": 5, "opened_at": 123.0}},
+    )
+    monkeypatch.setattr(
+        health_routes,
+        "build_runtime_diagnostics",
+        lambda settings, cwd: {"status": "healthy"},
+    )
+
+    response = client.get("/api/health")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "degraded"
+    assert payload["degraded_sources"] == ["fred"]
+    assert payload["circuit"]["fred"]["state"] == "open"
+
+
 def test_institutional_decision_endpoint_returns_ticket():
     response = client.get("/api/institutional/decision")
 
@@ -258,12 +295,12 @@ def test_institutional_attribution_endpoint_respects_period_parameter():
 def test_historical_scenarios_endpoint_uses_market_data_vix(monkeypatch):
     import core.market_data
 
-    def fake_fetch_yfinance_data(ticker_symbol, cache_key):
+    def fake_fetch_market_data(ticker_symbol, cache_key):
         assert ticker_symbol == "^VIX"
         assert cache_key == "vix"
         return {"data": [21.5]}
 
-    monkeypatch.setattr(core.market_data, "fetch_yfinance_data", fake_fetch_yfinance_data)
+    monkeypatch.setattr(core.market_data, "fetch_market_data", fake_fetch_market_data)
 
     response = client.get(
         "/api/institutional/scenarios/historical"

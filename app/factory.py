@@ -21,6 +21,22 @@ DEFAULT_ROUTE_TIMEOUTS = {
     "/api/macro/valuation": 30,
 }
 
+POLLING_RATE_LIMIT_PATHS = {
+    "/api/audit_trail",
+}
+
+
+def _rate_limit_bucket(client_ip: str, path: str) -> tuple[str, str]:
+    if path in POLLING_RATE_LIMIT_PATHS:
+        return (client_ip, path)
+    return (client_ip, "core")
+
+
+def _rate_limit_cap(path: str, base_limit: int) -> int:
+    if path in POLLING_RATE_LIMIT_PATHS:
+        return max(base_limit * 5, 60)
+    return base_limit
+
 
 def create_app(*, lifespan: Callable, settings, route_timeouts: dict[str, int] | None = None) -> FastAPI:
     app = FastAPI(title="AlphaCore Quant Data Engine", lifespan=lifespan)
@@ -45,18 +61,20 @@ def create_app(*, lifespan: Callable, settings, route_timeouts: dict[str, int] |
         if not request.url.path.startswith("/api/"):
             return await call_next(request)
 
-        client_ip = request.client.host
+        client_ip = request.client.host if request.client else "unknown"
+        bucket = _rate_limit_bucket(client_ip, request.url.path)
+        limit = _rate_limit_cap(request.url.path, settings.MAX_REQUESTS_PER_MINUTE)
         now = time.time()
-        rate_limit_db[client_ip] = [t for t in rate_limit_db[client_ip] if now - t < 60]
+        rate_limit_db[bucket] = [t for t in rate_limit_db[bucket] if now - t < 60]
 
-        if len(rate_limit_db[client_ip]) >= settings.MAX_REQUESTS_PER_MINUTE:
+        if len(rate_limit_db[bucket]) >= limit:
             return JSONResponse(
                 status_code=429,
                 content={"detail": "Too Many Requests. Institutional API rate guard triggered."},
                 headers={"Retry-After": "30"},
             )
 
-        rate_limit_db[client_ip].append(now)
+        rate_limit_db[bucket].append(now)
         return await call_next(request)
 
     @app.middleware("http")

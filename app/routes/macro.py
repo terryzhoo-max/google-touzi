@@ -14,7 +14,7 @@ from core.global_assets import get_global_assets
 from core.llm_agent import generate_llm_insight
 from core.margin_monitor import get_margin_data
 from core.market_breadth import get_market_breadth
-from core.market_data import fetch_yfinance_data
+from core.market_data import fetch_market_data
 from core.portfolio_manager import get_portfolio_summary
 from core.portfolio_opt import run_efficient_frontier
 from core.quant_engine import calculate_asset_allocation, calculate_correlation_matrix, run_montecarlo_sim
@@ -28,8 +28,8 @@ from core.yield_curve import get_yield_curve
 
 async def build_decision_payload() -> dict:
     vix_data, tnx_data, yc_data, corr_data = await asyncio.gather(
-        asyncio.to_thread(fetch_yfinance_data, "^VIX", "vix"),
-        asyncio.to_thread(fetch_yfinance_data, "^TNX", "tnx"),
+        asyncio.to_thread(fetch_market_data, "^VIX", "vix"),
+        asyncio.to_thread(fetch_market_data, "^TNX", "tnx"),
         asyncio.to_thread(get_yield_curve, 60),
         asyncio.to_thread(calculate_correlation_matrix),
     )
@@ -98,12 +98,12 @@ def register_macro_routes(app: FastAPI) -> None:
     @router.get("/api/macro/erp")
     @cached(ttl=ROUTE_TTL["erp"], key="erp")
     def get_erp_data():
-        return fetch_yfinance_data("^TNX", "tnx")
+        return fetch_market_data("^TNX", "tnx")
 
     @router.get("/api/macro/spread")
     @cached(ttl=ROUTE_TTL["spread"], key="spread")
     def get_spread_data():
-        return fetch_yfinance_data("^VIX", "vix")
+        return fetch_market_data("^VIX", "vix")
 
     @router.get("/api/macro/decision")
     @cached_async(ttl=ROUTE_TTL["decision"], key="decision")

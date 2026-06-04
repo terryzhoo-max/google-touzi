@@ -7,7 +7,7 @@ derived from actual ETF price data during those periods.
 """
 
 import numpy as np
-from core.market_data import DATA_CACHE, fetch_yfinance_data, fetch_tushare_csi300_history
+from core.market_data import DATA_CACHE, fetch_tushare_csi300_history
 from core.config import settings
 
 # ── Scenario Definitions ────────────────────────────────────────

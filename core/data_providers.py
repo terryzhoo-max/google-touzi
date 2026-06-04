@@ -1,6 +1,6 @@
 """
 Unified data abstraction layer for AlphaCore.
-Replaces yfinance with multi-provider architecture:
+Multi-provider architecture:
   VIX  → FRED VIXCLS (primary) / AKShare (fallback)
   DXY  → Tushare fx_daily USDOLLAR.FXCM (primary) / FRED DTWEXBGS (fallback)
   10Y  → FRED DGS10
@@ -13,6 +13,7 @@ import urllib.request
 import json
 import time
 import datetime
+import threading
 import pandas as pd
 
 from core.config import settings
@@ -22,6 +23,17 @@ FRED_BASE = "https://api.stlouisfed.org/fred/series/observations"
 TUSHARE_BASE = "https://api.tushare.pro"
 
 _last_request_time: dict[str, float] = {}
+_provider_inflight: set[str] = set()
+_fred_lock = threading.Lock()
+_last_log_time: dict[str, float] = {}
+_LOG_THROTTLE_S = 30
+
+
+def _log_throttled(key: str, message: str, interval_s: float = _LOG_THROTTLE_S):
+    now = time.time()
+    if now - _last_log_time.get(key, 0) >= interval_s:
+        _last_log_time[key] = now
+        print(message)
 
 # ── L2 provider cache + health stats ────────────────────────────
 _provider_cache: dict[str, tuple[float, object]] = {}
@@ -73,6 +85,16 @@ def _circuit_record(source: str, success: bool):
             cb["state"] = "open"
             cb["opened_at"] = time.time()
             print(f"[circuit] {source} OPEN — {CIRCUIT_FAIL_THRESH} consecutive failures")
+
+def _circuit_open_now(source: str):
+    cb = _circuit.get(source)
+    if not cb:
+        return
+    cb["state"] = "open"
+    cb["failures"] = max(cb.get("failures", 0), CIRCUIT_FAIL_THRESH)
+    cb["opened_at"] = time.time()
+    _log_throttled(f"{source}:rate-limit-open", f"[circuit] {source} OPEN - rate limit guard")
+
 
 def get_circuit_state() -> dict:
     return {k: dict(v) for k, v in _circuit.items()}
@@ -141,7 +163,19 @@ def _akshare_fallback_enabled() -> bool:
     return bool(getattr(settings, "ENABLE_AKSHARE_FALLBACK", False))
 
 
-def _http_get(url: str, timeout: float = 10.0, retries: int = 3) -> bytes:
+def _is_rate_limit_error(exc: Exception) -> bool:
+    code = getattr(exc, "code", None)
+    if code == 429:
+        return True
+    return "too many requests" in str(exc).lower()
+
+
+def _http_get(
+    url: str,
+    timeout: float = 10.0,
+    retries: int = 3,
+    stop_on_rate_limit: bool = False,
+) -> bytes:
     """HTTP GET with exponential backoff retry."""
     last_err = None
     for attempt in range(retries):
@@ -151,6 +185,8 @@ def _http_get(url: str, timeout: float = 10.0, retries: int = 3) -> bytes:
                 return resp.read()
         except Exception as e:
             last_err = e
+            if stop_on_rate_limit and _is_rate_limit_error(e):
+                raise
             if attempt < retries - 1:
                 wait = 2 ** attempt
                 print(f"[data_providers] HTTP retry {attempt+1}/{retries} in {wait}s …")
@@ -175,64 +211,95 @@ def _http_post(url: str, body: bytes, timeout: float = 10.0, retries: int = 2) -
 
 
 def _fred_series(series_id: str, limit: int = 60) -> pd.Series:
-    """Fetch a FRED series.  L2-cached per (series_id, limit)."""
-    cache_key = f"fred:{series_id}:{limit}"
-    now = time.time()
+    """Fetch a FRED series. L2-cached per (series_id, limit).
 
-    # L2 cache check — FRED macro data uses shorter TTL
-    if cache_key in _provider_cache:
+    FRED requests are serialized instead of dropped when another FRED probe is
+    already running, so multi-series consumers like yield curve and Fed monitor
+    do not receive synthetic empty series during startup fanout.
+    """
+    cache_key = f"fred:{series_id}:{limit}"
+
+    def cached_value(now: float):
+        if cache_key not in _provider_cache:
+            return None
         ts, val = _provider_cache[cache_key]
         if now - ts < MACRO_CACHE_TTL:
             _provider_stats["fred"]["hits"] += 1
             return val
+        return None
+
+    now = time.time()
+    cached = cached_value(now)
+    if cached is not None:
+        return cached
 
     if not _circuit_allow("fred"):
         if cache_key in _provider_cache:
-            print(f"[circuit] FRED open — serving stale cache")
+            _log_throttled("fred:open:stale", "[circuit] FRED open - serving stale cache")
             return _provider_cache[cache_key][1]
-        print(f"[circuit] FRED open — no cache available, returning empty series")
-        return pd.Series(dtype=float, name=series_id)
-    _rate_limit("fred", 1.0)
-    _provider_stats["fred"]["calls"] += 1
-    t0 = time.time()
-    url = (
-        f"{FRED_BASE}?series_id={series_id}"
-        f"&api_key={settings.FRED_API_KEY}"
-        f"&file_type=json&limit={limit}&sort_order=desc"
-    )
-    try:
-        body = _http_get(url, timeout=15.0, retries=3)
-        data = json.loads(body.decode("utf-8"))
-        observations = data.get("observations", [])
-        dates: list[str] = []
-        values: list[float] = []
-        for obs in reversed(observations):
-            if obs["value"] != ".":
-                try:
-                    val = float(obs["value"])
-                    if not pd.isna(val):
-                        dates.append(obs["date"])
-                        values.append(val)
-                except (ValueError, TypeError):
-                    continue
-        result = pd.Series(values, index=pd.to_datetime(dates), name=series_id).dropna()
-        _provider_stats["fred"]["last_ok"] = now
-        _provider_stats["fred"]["avg_ms"] = round(
-            (_provider_stats["fred"]["avg_ms"] * (_provider_stats["fred"]["calls"] - 1) + (time.time() - t0) * 1000)
-            / _provider_stats["fred"]["calls"], 1)
-        _provider_cache[cache_key] = (now, result)
-        _circuit_record("fred", True)
-        return result
-    except Exception as e:
-        _provider_stats["fred"]["errors"] += 1
-        _provider_stats["fred"]["last_err"] = str(e)[:120]
-        _circuit_record("fred", False)
-        if cache_key in _provider_cache:
-            print(f"[data_providers] FRED error — serving stale cache")
-            return _provider_cache[cache_key][1]
-        print(f"[data_providers] FRED error — no cache available, returning empty series")
+        _log_throttled("fred:open:no-cache", "[circuit] FRED open - no cache available, returning empty series")
         return pd.Series(dtype=float, name=series_id)
 
+    with _fred_lock:
+        now = time.time()
+        cached = cached_value(now)
+        if cached is not None:
+            return cached
+
+        if not _circuit_allow("fred"):
+            if cache_key in _provider_cache:
+                _log_throttled("fred:open:stale", "[circuit] FRED open - serving stale cache")
+                return _provider_cache[cache_key][1]
+            _log_throttled("fred:open:no-cache", "[circuit] FRED open - no cache available, returning empty series")
+            return pd.Series(dtype=float, name=series_id)
+
+        _provider_inflight.add(cache_key)
+        _rate_limit("fred", 1.0)
+        _provider_stats["fred"]["calls"] += 1
+        t0 = time.time()
+        url = (
+            f"{FRED_BASE}?series_id={series_id}"
+            f"&api_key={settings.FRED_API_KEY}"
+            f"&file_type=json&limit={limit}&sort_order=desc"
+        )
+        try:
+            body = _http_get(url, timeout=15.0, retries=3, stop_on_rate_limit=True)
+            data = json.loads(body.decode("utf-8"))
+            observations = data.get("observations", [])
+            dates: list[str] = []
+            values: list[float] = []
+            for obs in reversed(observations):
+                if obs["value"] != ".":
+                    try:
+                        val = float(obs["value"])
+                        if not pd.isna(val):
+                            dates.append(obs["date"])
+                            values.append(val)
+                    except (ValueError, TypeError):
+                        continue
+            result = pd.Series(values, index=pd.to_datetime(dates), name=series_id).dropna()
+            ok_time = time.time()
+            _provider_stats["fred"]["last_ok"] = ok_time
+            _provider_stats["fred"]["avg_ms"] = round(
+                (_provider_stats["fred"]["avg_ms"] * (_provider_stats["fred"]["calls"] - 1) + (ok_time - t0) * 1000)
+                / _provider_stats["fred"]["calls"], 1)
+            _provider_cache[cache_key] = (ok_time, result)
+            _circuit_record("fred", True)
+            return result
+        except Exception as e:
+            _provider_stats["fred"]["errors"] += 1
+            _provider_stats["fred"]["last_err"] = str(e)[:120]
+            if _is_rate_limit_error(e):
+                _circuit_open_now("fred")
+            else:
+                _circuit_record("fred", False)
+            if cache_key in _provider_cache:
+                print("[data_providers] FRED error - serving stale cache")
+                return _provider_cache[cache_key][1]
+            print("[data_providers] FRED error - no cache available, returning empty series")
+            return pd.Series(dtype=float, name=series_id)
+        finally:
+            _provider_inflight.discard(cache_key)
 
 def _tushare_items(api_name: str, params: dict, fields: str) -> list:
     """Generic Tushare API call. L2-cached per API, params, and fields."""

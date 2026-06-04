@@ -1237,6 +1237,103 @@ main {
     background: rgba(0,0,0,0.12);
 }
 
+#view-portfolio .pnl-attribution-card {
+    position: relative;
+    overflow: hidden;
+    background:
+        linear-gradient(180deg, rgba(15,23,42,0.92), rgba(15,23,42,0.68)),
+        radial-gradient(circle at 88% 18%, rgba(16,185,129,0.10), transparent 28%),
+        var(--bg-surface);
+}
+
+#view-portfolio .pnl-attribution-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    border-top: 1px solid rgba(16,185,129,0.34);
+    background: linear-gradient(90deg, rgba(16,185,129,0.10), transparent 42%, rgba(244,63,94,0.08));
+    opacity: 0.85;
+}
+
+.pnl-attribution-card > * {
+    position: relative;
+    z-index: 1;
+}
+
+.pnl-attribution-quality {
+    flex: 0 0 auto;
+    padding: 3px 7px;
+    border: 1px solid rgba(16,185,129,0.28);
+    border-radius: 999px;
+    color: var(--success);
+    background: rgba(16,185,129,0.08);
+    font-family: var(--font-mono);
+    font-size: 0.58rem;
+    font-weight: 800;
+    letter-spacing: 0.7px;
+    line-height: 1.25;
+    text-align: right;
+    white-space: nowrap;
+}
+
+.pnl-attribution-quality[data-state="warn"] {
+    border-color: rgba(245,158,11,0.34);
+    color: #f59e0b;
+    background: rgba(245,158,11,0.08);
+}
+
+.pnl-attribution-summary {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    margin: 2px 0 10px;
+}
+
+.pnl-attribution-metric {
+    min-width: 0;
+    padding: 8px 10px;
+    border: 1px solid rgba(148,163,184,0.12);
+    border-radius: 6px;
+    background: rgba(2,6,23,0.34);
+}
+
+.pnl-attribution-metric span,
+.pnl-attribution-metric small {
+    display: block;
+    color: var(--text-tertiary);
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+}
+
+.pnl-attribution-metric strong {
+    display: block;
+    margin: 3px 0 1px;
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 0.96rem;
+    font-weight: 900;
+    white-space: nowrap;
+}
+
+.pnl-attribution-metric.is-positive strong {
+    color: var(--success);
+    text-shadow: 0 0 12px rgba(16,185,129,0.28);
+}
+
+.pnl-attribution-metric.is-negative strong {
+    color: var(--danger);
+    text-shadow: 0 0 12px rgba(244,63,94,0.24);
+}
+
+@media (max-width: 760px) {
+    .pnl-attribution-summary {
+        grid-template-columns: 1fr;
+    }
+}
+
 /* Institutional Rotation Panels */
 .rotation-title {
     color: #fff;
@@ -3287,6 +3384,27 @@ details.panel-group .institutional-panel:first-of-type {
     font-size: 0.64rem;
 }
 
+.strategy-policy-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    margin-left: 8px;
+    padding: 6px 8px;
+    border: 1px solid rgba(148,163,184,0.12);
+    border-radius: 5px;
+    background: rgba(15,23,42,0.34);
+    color: var(--text-tertiary);
+    font-family: var(--font-mono);
+    font-size: 0.64rem;
+}
+
+.strategy-policy-row strong {
+    color: var(--text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .strategy-detail-stack {
     display: flex;
     flex-direction: column;
@@ -3310,6 +3428,62 @@ details.panel-group .institutional-panel:first-of-type {
 .strategy-detail-row strong {
     font-family: var(--font-mono);
     text-align: right;
+}
+
+.strategy-execution-box {
+    margin-left: 8px;
+    padding: 10px;
+    border: 1px solid rgba(168,85,247,0.18);
+    border-radius: 6px;
+    background: rgba(15,23,42,0.32);
+}
+
+.strategy-execution-grid {
+    display: grid;
+    grid-template-columns: minmax(112px, 1.4fr) repeat(4, minmax(58px, 0.8fr));
+    gap: 7px 8px;
+    align-items: center;
+}
+
+.strategy-execution-head {
+    color: var(--text-tertiary);
+    font-family: var(--font-mono);
+    font-size: 0.58rem;
+    font-weight: 800;
+    letter-spacing: 0.6px;
+}
+
+.strategy-execution-grid strong {
+    min-width: 0;
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    text-align: right;
+    white-space: nowrap;
+}
+
+.strategy-execution-asset {
+    min-width: 0;
+}
+
+.strategy-execution-asset span,
+.strategy-execution-asset small {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.strategy-execution-asset span {
+    color: var(--text-secondary);
+    font-size: 0.72rem;
+    font-weight: 700;
+}
+
+.strategy-execution-asset small {
+    color: var(--text-tertiary);
+    font-family: var(--font-mono);
+    font-size: 0.58rem;
 }
 
 .strategy-holdings-box {
@@ -3350,6 +3524,19 @@ details.panel-group .institutional-panel:first-of-type {
     display: flex;
     flex-direction: column;
     gap: 2px;
+}
+
+@media (max-width: 760px) {
+    .strategy-execution-grid {
+        grid-template-columns: minmax(92px, 1fr) repeat(2, minmax(52px, 0.7fr));
+    }
+
+    .strategy-execution-head:nth-child(4),
+    .strategy-execution-head:nth-child(5),
+    .strategy-execution-grid .strategy-execution-asset + strong + strong + strong,
+    .strategy-execution-grid .strategy-execution-asset + strong + strong + strong + strong {
+        display: none;
+    }
 }
 
 .strategy-holding-row span {

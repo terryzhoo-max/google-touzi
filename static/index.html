@@ -703,9 +703,27 @@
                             </div>
                             <div id="chart-port-allocation" class="chart-container" style="height: 250px;"></div>
                         </div>
-                        <div class="glass-card">
+                        <div class="glass-card pnl-attribution-card">
                             <div class="card-header">
                                 <h3>头部盈亏归因 <span style="font-size:0.7em; color:var(--text-tertiary); font-weight:400; margin-left:8px; letter-spacing:1px;">TOP P&L CONTRIBUTORS</span></h3>
+                                <span id="port-attr-quality" class="pnl-attribution-quality">P&L FEED: --</span>
+                            </div>
+                            <div class="pnl-attribution-summary" aria-label="Portfolio P&L attribution summary">
+                                <div class="pnl-attribution-metric">
+                                    <span>净贡献</span>
+                                    <strong id="port-attr-net">--</strong>
+                                    <small>NET</small>
+                                </div>
+                                <div class="pnl-attribution-metric is-positive">
+                                    <span>盈利贡献</span>
+                                    <strong id="port-attr-positive">--</strong>
+                                    <small>GAIN</small>
+                                </div>
+                                <div class="pnl-attribution-metric is-negative">
+                                    <span>亏损拖累</span>
+                                    <strong id="port-attr-negative">--</strong>
+                                    <small>DRAG</small>
+                                </div>
                             </div>
                             <div id="chart-port-attribution" class="chart-container" style="height: 250px;"></div>
                         </div>
@@ -1137,23 +1155,23 @@
     </script>
     <script src="js/core/namespace.js?v=1"></script>
     <script src="js/core/state.js?v=1"></script>
-    <script src="js/core/api.js?v=1"></script>
+    <script src="js/core/api.js?v=2"></script>
     <script src="js/core/dom.js?v=1"></script>
     <script src="js/core/charts.js?v=1"></script>
     <script src="js/core/portfolio.js?v=1"></script>
     <script src="js/core/status.js?v=1"></script>
     <script src="js/core/events.js?v=1"></script>
-    <script src="main.js?v=39"></script>
+    <script src="main.js?v=40"></script>
     <script src="js/panels/custom_shock.js?v=3"></script>
     <script src="js/panels/portfolio_workbench.js?v=1"></script>
     <script src="js/panels/risk.js?v=1"></script>
     <script src="js/panels/stress.js?v=3"></script>
     <script src="js/panels/strategy.js?v=2"></script>
     <script src="js/panels/decision_hub.js?v=1"></script>
-    <script src="js/panels/audit_trail.js?v=1"></script>
+    <script src="js/panels/audit_trail.js?v=4"></script>
     <script src="js/panels/optimizers.js?v=1"></script>
     <script src="js/panels/historical_scenarios.js?v=2"></script>
-    <script src="js/panels/execution_monitor.js?v=1"></script>
+    <script src="js/panels/execution_monitor.js?v=3"></script>
     <script src="js/panels/brinson_attribution.js?v=1"></script>
     <script src="js/panels/crisis_controls.js?v=1"></script>
     <script src="js/panels/cco_release.js?v=1"></script>
@@ -1268,20 +1286,20 @@
                     <input type="number" id="cco-order-price" step="0.001" style="width:100%; box-sizing:border-box; background:#18181f; border:1px solid rgba(255,255,255,0.15); color:#fff; padding:6px; border-radius:4px; outline:none;">
                 </div>
                 <div>
-                    <label style="display:block; margin-bottom:4px; color:var(--text-tertiary);">鎵ц绠楁硶</label>
+                    <label style="display:block; margin-bottom:4px; color:var(--text-tertiary);">执行算法</label>
                     <select id="cco-order-algo" style="width:100%; box-sizing:border-box; background:#18181f; border:1px solid rgba(255,255,255,0.15); color:#fff; padding:6px; border-radius:4px; outline:none;">
-                        <option value="DIRECT">DIRECT 鐩磋繛闄愪环</option>
-                        <option value="TWAP">TWAP 鍐板北鎷嗗崟</option>
+                        <option value="DIRECT">DIRECT 直连限价</option>
+                        <option value="TWAP">TWAP 时间加权拆单</option>
                     </select>
                 </div>
                 <div>
-                    <label style="display:block; margin-bottom:4px; color:#ef4444; font-weight:700;">CCO 鐙珛鍚堣鏍￠獙瀵嗛挜</label>
+                    <label style="display:block; margin-bottom:4px; color:#ef4444; font-weight:700;">CCO 独立合规校验密钥</label>
                     <input type="password" id="cco-auth-key" placeholder="Enter compliance officer authorization key" style="width:100%; box-sizing:border-box; background:#18181f; border:1px solid #ef4444; color:#fff; padding:8px; border-radius:4px; outline:none; font-weight:bold; letter-spacing:2px;">
                 </div>
             </div>
             <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:20px;">
-                <button data-action="close-cco-release-modal" style="padding:6px 12px; background:rgba(255,255,255,0.1); color:#fff; border:none; border-radius:4px; cursor:pointer;">鍙栨秷</button>
-                <button data-action="submit-cco-force-release" style="padding:6px 16px; background:#ef4444; color:#fff; border:none; border-radius:4px; font-weight:700; cursor:pointer; box-shadow:0 0 10px rgba(239,68,68,0.3);">鎺堟潈閲婃斁</button>
+                <button data-action="close-cco-release-modal" style="padding:6px 12px; background:rgba(255,255,255,0.1); color:#fff; border:none; border-radius:4px; cursor:pointer;">取消</button>
+                <button data-action="submit-cco-force-release" style="padding:6px 16px; background:#ef4444; color:#fff; border:none; border-radius:4px; font-weight:700; cursor:pointer; box-shadow:0 0 10px rgba(239,68,68,0.3);">授权释放</button>
             </div>
         </div>
     </div>

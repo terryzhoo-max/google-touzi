@@ -10,6 +10,10 @@ from core.review_scheduler import build_review_queue, build_review_summary, list
 from core.review_scoring import score_review
 
 
+AUDIT_TRAIL_CACHE_TTL_S = 10
+_audit_trail_cache: dict[tuple[int, str | None], tuple[float, dict]] = {}
+
+
 def register_audit_routes(app: FastAPI, *, build_payload: Callable[[str | None], dict]) -> None:
     router = APIRouter()
 
@@ -18,8 +22,19 @@ def register_audit_routes(app: FastAPI, *, build_payload: Callable[[str | None],
         try:
             from core.db_layer import get_recent_trades
 
-            trades = get_recent_trades(limit=limit, portfolio_id=portfolio)
-            return {"status": "success", "trades": trades}
+            now = time.time()
+            cache_key = (limit, portfolio)
+            cached = _audit_trail_cache.get(cache_key)
+            if cached and now - cached[0] < AUDIT_TRAIL_CACHE_TTL_S:
+                payload = cached[1]
+            else:
+                trades = get_recent_trades(limit=limit, portfolio_id=portfolio)
+                payload = {"status": "success", "trades": trades}
+                _audit_trail_cache[cache_key] = (now, payload)
+            return JSONResponse(
+                content=payload,
+                headers={"Cache-Control": "private, max-age=10, stale-while-revalidate=20"},
+            )
         except Exception as exc:
             return JSONResponse(status_code=500, content={"error": str(exc)})
 

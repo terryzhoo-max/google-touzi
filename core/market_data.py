@@ -17,61 +17,9 @@ DATA_CACHE = {
 
 
 def fetch_fred_10y():
-    """Fetch 10-Year Treasury Constant Maturity Rate from FRED"""
-    now = time.time()
-    if now - DATA_CACHE["tnx"]["timestamp"] < settings.CACHE_TTL and DATA_CACHE["tnx"]["data"] is not None:
-        return DATA_CACHE["tnx"]["data"]
-        
-    try:
-        url = f"https://api.stlouisfed.org/fred/series/observations?series_id=DGS10&api_key={settings.FRED_API_KEY}&file_type=json&limit=30&sort_order=desc"
-        req = urllib.request.Request(url)
-        with urllib.request.urlopen(req, timeout=10) as response:
-            data = json.loads(response.read().decode("utf-8"))
-            
-        observations = data.get("observations", [])
-        # FRED sorts desc, we want asc for chart
-        observations.reverse()
-        
-        dates = []
-        values = []
-        for obs in observations:
-            if obs["value"] != ".": # FRED uses "." for missing data
-                dates.append(obs["date"])
-                values.append(float(obs["value"]))
-                
-        if not values:
-            raise Exception("FRED API returned no valid float observations.")
-            
-        current_val = values[-1]
-        
-        # Signal Generation
-        if current_val < settings.TNX_LOOSE_THRESH:
-            signal_state = "宽松周期 (利好权益)"
-            signal_color = "#4ade80" # Green
-            action_insight = f"量化信号：美债基准利率为 {current_val}%，全球流动性宽裕，分子端盈利预期上修，利好成长股与新兴市场资产。"
-        elif settings.TNX_LOOSE_THRESH <= current_val < settings.TNX_TIGHT_THRESH:
-            signal_state = "中性震荡"
-            signal_color = "#00F0FF" # Cyan
-            action_insight = f"量化信号：美债收益率为 {current_val}%，处于中性均衡区间，长久期资产估值承压，重点关注高股息与红利低波策略。"
-        else:
-            signal_state = "紧缩高压 (杀估值警戒)"
-            signal_color = "#ef4444" # Red
-            action_insight = f"量化信号：美债飙升至 {current_val}% 警戒线以上！无风险利率对所有权益资产估值形成巨大压制，建议清仓劣质资产。"
+    """Fetch 10-Year Treasury Constant Maturity Rate through the unified provider."""
+    return fetch_macro_indicator("^TNX", "tnx")
 
-        result = {
-            "dates": dates,
-            "data": values,
-            "signal_state": signal_state,
-            "signal_color": signal_color,
-            "action_insight": action_insight
-        }
-        
-        DATA_CACHE["tnx"]["data"] = result
-        DATA_CACHE["tnx"]["timestamp"] = now
-        return result
-    except Exception as e:
-        print(f"FRED API Error: {e}")
-        return fetch_macro_indicator("^TNX", "tnx")
 
 def fetch_tushare_csi300():
     """Fetch CSI 300 Index (沪深300) from Tushare"""
@@ -261,7 +209,16 @@ async def background_data_fetcher():
             await asyncio.to_thread(fetch_macro_indicator, "DX-Y.NYB", "dxy")
             await asyncio.to_thread(fetch_tushare_csi300)
             # selectively invalidate only routes whose source data was refreshed
-            for rk in ("erp", "spread", "yield_curve", "decision", "signals", "allocation"):
+            for rk in (
+                "erp",
+                "spread",
+                "yield_curve",
+                "decision",
+                "signals",
+                "allocation",
+                "fed_prob",
+                "global_assets_v4",
+            ):
                 invalidate(rk)
             # evaluate alert rules against fresh data
             try:
@@ -284,8 +241,7 @@ async def background_data_fetcher():
             except asyncio.TimeoutError:
                 pass
 
-# Wrapper to maintain compatibility with core.quant_engine expectations
-def fetch_yfinance_data(ticker_symbol: str, cache_key: str):
+def fetch_market_data(ticker_symbol: str, cache_key: str):
     if cache_key == "tnx":
         return fetch_fred_10y()
     return fetch_macro_indicator(ticker_symbol, cache_key)

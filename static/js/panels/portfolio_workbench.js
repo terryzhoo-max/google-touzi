@@ -66,6 +66,44 @@ async function handleTDXUpload(event) {
 function formatCny(value, options = {}) {
     return `\u00a5${Number(value || 0).toLocaleString(undefined, options)}`;
 }
+function formatCompactCny(value) {
+    const num = Number(value || 0);
+    const abs = Math.abs(num);
+    const sign = num > 0 ? '+' : (num < 0 ? '-' : '');
+    if (abs >= 100000000) return `${sign}\u00a5${(abs / 100000000).toFixed(2)}亿`;
+    if (abs >= 10000) return `${sign}\u00a5${(abs / 10000).toFixed(2)}万`;
+    return `${sign}\u00a5${abs.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+}
+function firstFiniteNumber(values) {
+    for (const value of values) {
+        if (value === null || value === undefined || value === '') continue;
+        const normalized = typeof value === 'string' ? value.replace(/[,％%]/g, '') : value;
+        const num = Number(normalized);
+        if (Number.isFinite(num)) return num;
+    }
+    return null;
+}
+function resolvePositionPnl(pos) {
+    const directPnl = firstFiniteNumber([
+        pos.float_pnl,
+        pos.unrealized_pnl,
+        pos.unrealized_profit,
+        pos.pnl_abs,
+        pos.profit_loss,
+        pos.floating_pnl,
+        pos.position_pnl
+    ]);
+    if (directPnl !== null) return { value: directPnl, source: 'direct' };
+
+    const marketValue = firstFiniteNumber([pos.market_value]);
+    const costBasis = firstFiniteNumber([pos.cost_basis]);
+    const costLooksLikeTotalBasis = marketValue !== null && costBasis !== null && costBasis > marketValue * 0.05 && costBasis < marketValue * 20;
+    if (costLooksLikeTotalBasis) {
+        return { value: marketValue - costBasis, source: 'derived' };
+    }
+
+    return { value: null, source: 'missing' };
+}
 function assetClassLabel(assetClass) {
     const key = String(assetClass || 'unknown').toUpperCase();
     const labels = {
@@ -268,51 +306,191 @@ async function initPortfolioLedger() {
             let attrChart = echarts.getInstanceByDom(attrChartDom);
             if (!attrChart) attrChart = echarts.init(attrChartDom);
 
-            // Filter out cash and sort by absolute PnL
-            const sortedByPnl = [...positions].filter(p => p.asset_class !== 'cash')
-                .sort((a,b) => Math.abs(b.float_pnl || 0) - Math.abs(a.float_pnl || 0))
-                .slice(0, 5);
+            const pnlAttributionRows = [...positions]
+                .filter(p => String(p.asset_class || '').toLowerCase() !== 'cash')
+                .map(p => {
+                    const pnl = resolvePositionPnl(p);
+                    return {
+                        symbol: p.symbol || '--',
+                        name: p.name || p.symbol || '--',
+                        label: p.name ? `${p.symbol} ${p.name}` : (p.symbol || '--'),
+                        value: pnl.value,
+                        pnlSource: pnl.source,
+                        pnlPct: firstFiniteNumber([p.pnl_pct, p.pnl_percent, p.unrealized_pnl_pct]),
+                        marketValue: firstFiniteNumber([p.market_value]) || 0
+                    };
+                });
 
+            const fullBookPnlRows = pnlAttributionRows.filter(row => row.value !== null);
+            const missingPnlCount = pnlAttributionRows.length - fullBookPnlRows.length;
+            const pnlMaterialityFloor = Math.max(1, totalMv * 0.000001);
+            const attributableRows = fullBookPnlRows
+                .filter(row => Math.abs(row.value) >= pnlMaterialityFloor)
+                .sort((a, b) => Math.abs(b.value) - Math.abs(a.value))
+                .slice(0, 6);
+
+            const netContribution = fullBookPnlRows.reduce((sum, row) => sum + row.value, 0);
+            const positiveContribution = fullBookPnlRows.reduce((sum, row) => sum + Math.max(row.value, 0), 0);
+            const negativeContribution = fullBookPnlRows.reduce((sum, row) => sum + Math.min(row.value, 0), 0);
+            const fullBookAbsContribution = fullBookPnlRows.reduce((sum, row) => sum + Math.abs(row.value), 0);
+            const topAbsContribution = attributableRows.reduce((sum, row) => sum + Math.abs(row.value), 0);
+            const maxAbsContribution = Math.max(pnlMaterialityFloor, ...attributableRows.map(row => Math.abs(row.value)));
+            const hasGain = attributableRows.some(row => row.value > 0);
+            const hasLoss = attributableRows.some(row => row.value < 0);
+            const axisLimit = maxAbsContribution * 1.18;
+
+            const netEl = document.getElementById('port-attr-net');
+            const posEl = document.getElementById('port-attr-positive');
+            const negEl = document.getElementById('port-attr-negative');
+            const qualityEl = document.getElementById('port-attr-quality');
+
+            if (!fullBookPnlRows.length) {
+                if (netEl) {
+                    netEl.textContent = 'N/A';
+                    netEl.style.color = 'var(--text-tertiary)';
+                }
+                if (posEl) posEl.textContent = 'N/A';
+                if (negEl) negEl.textContent = 'N/A';
+                if (qualityEl) {
+                    qualityEl.textContent = 'P&L DATA GAP';
+                    qualityEl.dataset.state = 'warn';
+                }
+                attrChart.clear();
+                attrChart.setOption({
+                    graphic: {
+                        type: 'text',
+                        left: 'center',
+                        top: 'middle',
+                        style: {
+                            text: 'P&L DATA GAP · FLOATING P&L FIELD MISSING',
+                            fill: '#f59e0b',
+                            font: '700 12px var(--font-mono)'
+                        }
+                    }
+                });
+                return;
+            }
+
+            if (netEl) {
+                netEl.textContent = formatCompactCny(netContribution);
+                netEl.style.color = netContribution > 0 ? 'var(--success)' : (netContribution < 0 ? 'var(--danger)' : 'var(--text-tertiary)');
+            }
+            if (posEl) posEl.textContent = formatCompactCny(positiveContribution);
+            if (negEl) negEl.textContent = formatCompactCny(negativeContribution);
+            if (qualityEl) {
+                const coverage = fullBookAbsContribution > 0 ? (topAbsContribution / fullBookAbsContribution * 100) : 0;
+                qualityEl.textContent = attributableRows.length
+                    ? `TOP ${attributableRows.length} / COVER ${coverage.toFixed(0)}%${missingPnlCount ? ` / ${missingPnlCount} GAP` : ''}`
+                    : 'BELOW MATERIALITY';
+                qualityEl.dataset.state = missingPnlCount ? 'warn' : 'ok';
+            }
+
+            if (!attributableRows.length) {
+                attrChart.clear();
+                attrChart.setOption({
+                    graphic: {
+                        type: 'text',
+                        left: 'center',
+                        top: 'middle',
+                        style: {
+                            text: 'BELOW MATERIALITY · NO POSITION EXCEEDS P&L THRESHOLD',
+                            fill: '#64748b',
+                            font: '700 12px var(--font-mono)'
+                        }
+                    }
+                });
+                return;
+            }
+
+            attrChart.clear();
             attrChart.setOption({
                 tooltip: {
                     className: 'terminal-hud-tooltip',
                     trigger: 'axis',
-                    axisPointer: {type:'shadow'},
+                    axisPointer: { type: 'line', lineStyle: { color: 'rgba(226,232,240,0.3)', type: 'dashed' } },
                     formatter: function(params) {
                         const p = params[0];
-                        return `<div class="hud-title">${p.name}</div><div class="hud-value" style="color:${p.value >= 0 ? '#10b981' : '#f43f5e'}">${p.value >= 0 ? '+' : ''}${p.value.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</div>`;
+                        const d = p.data || {};
+                        const color = p.value > 0 ? '#10b981' : '#f43f5e';
+                        const impactShare = fullBookAbsContribution > 0 ? (Math.abs(p.value) / fullBookAbsContribution * 100).toFixed(1) : '0.0';
+                        const pctLine = d.pnlPct !== null ? `P&L ${d.pnlPct > 0 ? '+' : ''}${d.pnlPct.toFixed(2)}%` : `MV ${formatCompactCny(d.marketValue)}`;
+                        return `<div class="hud-title" style="border-bottom-color:${color};">${d.symbol || p.name} ${d.name || ''}</div>
+                                <div class="hud-value" style="color:${color};">${formatCompactCny(p.value)}</div>
+                                <div style="margin-top:8px; color:var(--text-tertiary); font-family:var(--font-mono); font-size:0.72rem;">
+                                    ${p.value > 0 ? 'GAIN CONTRIBUTION' : 'LOSS DRAG'} / ${impactShare}% OF BOOK IMPACT · ${pctLine}
+                                </div>`;
                     }
                 },
-                grid: { left: '10%', right: '10%', bottom: '5%', top: '5%', containLabel: true },
+                grid: { left: '3%', right: '8%', bottom: '6%', top: '9%', containLabel: true },
                 xAxis: {
                     type: 'value',
-                    splitLine: { show: true, lineStyle: { color: 'rgba(255,255,255,0.05)', type: 'dashed' } },
-                    axisLabel: { color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)', fontSize: 10 },
-                    axisLine: { show: true, lineStyle: { color: 'rgba(255,255,255,0.3)', width: 2 } }
+                    min: hasGain && hasLoss ? -axisLimit : (hasLoss ? -axisLimit : 0),
+                    max: hasGain && hasLoss ? axisLimit : (hasGain ? axisLimit : 0),
+                    splitNumber: 4,
+                    splitLine: { show: true, lineStyle: { color: 'rgba(148,163,184,0.08)', type: 'dashed' } },
+                    axisLabel: {
+                        color: 'var(--text-tertiary)',
+                        fontFamily: 'var(--font-mono)',
+                        fontSize: 10,
+                        formatter: value => value === 0 ? 'ZERO P&L' : formatCompactCny(value).replace('\u00a5', '')
+                    },
+                    axisLine: { show: true, lineStyle: { color: 'rgba(226,232,240,0.18)', width: 1 } }
                 },
                 yAxis: {
                     type: 'category',
-                    data: sortedByPnl.map(p => p.name ? `${p.symbol} ${p.name}` : p.symbol).reverse(),
-                    axisLabel: { color: '#e2e8f0', fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 'bold' },
+                    data: attributableRows.map(row => row.label).reverse(),
+                    axisLabel: {
+                        color: '#e2e8f0',
+                        fontFamily: 'var(--font-mono)',
+                        fontSize: 11,
+                        fontWeight: 700,
+                        width: 112,
+                        overflow: 'truncate'
+                    },
                     axisLine: { show: false },
                     axisTick: { show: false }
                 },
                 series: [{
                     name: 'P&L',
                     type: 'bar',
-                    barWidth: '45%',
-                    data: sortedByPnl.map(p => {
-                        const val = p.float_pnl || 0;
+                    barWidth: 14,
+                    label: {
+                        show: true,
+                        color: '#cbd5e1',
+                        fontFamily: 'var(--font-mono)',
+                        fontSize: 10,
+                        formatter: params => formatCompactCny(params.value)
+                    },
+                    markLine: {
+                        symbol: 'none',
+                        silent: true,
+                        label: {
+                            formatter: 'ZERO',
+                            color: 'rgba(148,163,184,0.75)',
+                            fontFamily: 'var(--font-mono)',
+                            fontSize: 9
+                        },
+                        lineStyle: { color: 'rgba(226,232,240,0.34)', width: 1 },
+                        data: [{ xAxis: 0 }]
+                    },
+                    data: attributableRows.map(row => {
+                        const val = row.value;
                         return {
                             value: val,
+                            symbol: row.symbol,
+                            name: row.name,
+                            pnlPct: row.pnlPct,
+                            pnlSource: row.pnlSource,
+                            marketValue: row.marketValue,
+                            label: { position: val > 0 ? 'right' : 'left' },
                             itemStyle: {
-                                borderRadius: 3,
+                                borderRadius: val > 0 ? [0, 4, 4, 0] : [4, 0, 0, 4],
                                 color: new echarts.graphic.LinearGradient(1, 0, 0, 0, [
-                                    { offset: 0, color: val >= 0 ? 'rgba(16,185,129,0.9)' : 'rgba(244,63,94,0.3)' },
-                                    { offset: 1, color: val >= 0 ? 'rgba(16,185,129,0.3)' : 'rgba(244,63,94,0.9)' }
+                                    { offset: 0, color: val > 0 ? 'rgba(16,185,129,0.95)' : 'rgba(244,63,94,0.20)' },
+                                    { offset: 1, color: val > 0 ? 'rgba(16,185,129,0.22)' : 'rgba(244,63,94,0.95)' }
                                 ]),
-                                shadowBlur: 10,
-                                shadowColor: val >= 0 ? 'rgba(16,185,129,0.4)' : 'rgba(244,63,94,0.4)'
+                                shadowBlur: 12,
+                                shadowColor: val > 0 ? 'rgba(16,185,129,0.36)' : 'rgba(244,63,94,0.36)'
                             }
                         };
                     }).reverse()

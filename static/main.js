@@ -722,17 +722,17 @@ async function initEfficientFrontier() {
         if (data.error) throw new Error(data.error);
         const ind = document.getElementById('ef-indicator');
         const ins = document.getElementById('ef-insight');
-        if (ind) { ind.innerText = '鍓嶆部璁＄畻瀹屾垚'; ind.style.color = '#a78bfa'; ind.style.borderColor = '#a78bfa'; }
+        if (ind) { ind.innerText = '前沿计算完成'; ind.style.color = '#a78bfa'; ind.style.borderColor = '#a78bfa'; }
         if (ins) ins.innerText = data.insight;
         const option = {
             backgroundColor: 'transparent',
-            tooltip: { trigger: 'item', formatter: p => `${p.seriesName}<br/>鏀剁泭: ${p.value[0]}%  |  娉㈠姩: ${p.value[1]}%` },
+            tooltip: { trigger: 'item', formatter: p => `${p.seriesName}<br/>收益: ${p.value[0]}%  |  波动: ${p.value[1]}%` },
             grid: { left: '8%', right: '5%', top: '5%', bottom: '8%' },
             xAxis: { name: 'Annualized Volatility (%)', nameTextStyle: { color: '#94a3b8' }, axisLabel: { color: '#94a3b8', formatter: '{value}%' }, splitLine: { lineStyle: { color: 'rgba(255,255,255,0.05)' } } },
             yAxis: { name: 'Annualized Return (%)', nameTextStyle: { color: '#94a3b8' }, axisLabel: { color: '#94a3b8', formatter: '{value}%' }, splitLine: { lineStyle: { color: 'rgba(255,255,255,0.05)' } } },
             series: [
                 {
-                    name: '闅忔満缁勫悎', type: 'scatter',
+                    name: '随机组合', type: 'scatter',
                     symbolSize: 4,
                     itemStyle: { color: 'rgba(148,163,184,0.3)' },
                     data: data.random_portfolios.map(p => [p.ret, p.vol]),
@@ -745,7 +745,7 @@ async function initEfficientFrontier() {
                     label: { show: true, formatter: 'GMV', position: 'top', color: '#fbbf24', fontSize: 12 },
                 },
                 {
-                    name: '鍒囩嚎缁勫悎', type: 'scatter',
+                    name: '切线组合', type: 'scatter',
                     symbolSize: 16, symbol: 'triangle',
                     itemStyle: { color: '#4ade80' },
                     data: [[data.tangency.ret, data.tangency.vol]],
@@ -781,7 +781,7 @@ async function initScenarioTest() {
         renderScenarioGrid(grid, data.scenarios);
     } catch (e) {
         console.error("Scenario test failed:", e);
-        ind.innerText = '鎺ㄦ紨澶辫触';
+        ind.innerText = '推演失败';
         ind.style.color = '#ef4444';
     }
 }
@@ -798,7 +798,7 @@ async function initMonteCarloChart() {
         const ind = document.getElementById('mc-indicator');
         const ins = document.getElementById('mc-insight');
         if (ind && ins) {
-            ind.innerText = "鎺ㄦ紨瀹屾垚 (1000 Paths)";
+            ind.innerText = "推演完成 (1000 Paths)";
             ind.style.color = mcData.color;
             ind.style.borderColor = mcData.color;
             ind.style.boxShadow = `0 0 10px ${mcData.color}40`;
@@ -1738,7 +1738,7 @@ async function initGenAI() {
     } catch (e) {
         console.error("Gen-AI failed:", e);
         tw.innerText = "LLM connection timed out. Check network or API key.";
-        ind.innerText = "鎺ㄦ紨澶辫触";
+        ind.innerText = "推演失败";
         ind.style.color = "#ef4444";
     }
 }
@@ -1796,14 +1796,14 @@ async function initBacktest() {
         document.getElementById('bt-mdd').innerText = data.metrics.strat_mdd + "%";
         document.getElementById('bt-sharpe').innerText = data.metrics.strat_sharpe;
 
-        ind.innerText = "18 骞村叏閲忓洖娴嬪凡瀹屾垚";
+        ind.innerText = "18 年全量回测已完成";
         ind.className = "status-indicator live";
 
         const option = {
             backgroundColor: 'transparent',
             tooltip: { trigger: 'axis', axisPointer: { type: 'cross' } },
             legend: {
-                data: ['AlphaCore 瀵瑰啿绛栫暐', 'Benchmark (SPY)'],
+                data: ['AlphaCore 对冲策略', 'Benchmark (SPY)'],
                 textStyle: { color: '#94a3b8' },
                 top: 0
             },
@@ -1824,7 +1824,7 @@ async function initBacktest() {
             },
             series: [
                 {
-                    name: 'AlphaCore 瀵瑰啿绛栫暐',
+                    name: 'AlphaCore 对冲策略',
                     type: 'line',
                     data: data.strat_eq,
                     itemStyle: { color: '#00F0FF' },

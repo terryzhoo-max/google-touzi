@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 import time
 from core.db import trigger_emergency_alert
-from core.market_data import DATA_CACHE, fetch_yfinance_data, fetch_tushare_csi300_history
+from core.market_data import DATA_CACHE, fetch_tushare_csi300_history
 from core.data_providers import get_us_etf_history, get_vix_history
 from core.config import settings
 from core.alert_state import set_alert, clear_alert

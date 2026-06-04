@@ -152,8 +152,11 @@ def _serve_stale(key: str) -> Any | None:
 
 
 def _is_logic_error(value: Any) -> bool:
-    if isinstance(value, dict) and bool(value.get("error")):
-        return True
+    if isinstance(value, dict):
+        if bool(value.get("error")):
+            return True
+        if value.get("dates") == ["Error"] and value.get("data") == [0.0]:
+            return True
     status_code = getattr(value, "status_code", None)
     return isinstance(status_code, int) and status_code >= 400
 
@@ -288,6 +291,10 @@ def invalidate(key: str | None = None):
     """Clear specific or all cached route results."""
     import sqlite3
     from core.db_layer import DB_PATH
+    if key:
+        _store.pop(key, None)
+    else:
+        _store.clear()
     conn = sqlite3.connect(DB_PATH, timeout=10.0)
     cursor = conn.cursor()
     if key:

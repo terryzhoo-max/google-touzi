@@ -341,6 +341,41 @@ def test_allocation_model_panel_static_contract():
     assert "resetSimuSandbox" in js
 
 
+def test_strategy_panel_maps_production_blocked_action():
+    js = (ROOT / "static" / "js" / "panels" / "strategy.js").read_text(encoding="utf-8")
+
+    assert "BLOCKED:" in js
+    assert "h.action === 'BLOCKED'" in js
+
+
+def test_portfolio_pnl_attribution_uses_institutional_visual_logic():
+    html = (ROOT / "static" / "index.html").read_text(encoding="utf-8")
+    js = (ROOT / "static" / "js" / "panels" / "portfolio_workbench.js").read_text(encoding="utf-8")
+    css = (ROOT / "static" / "styles.css").read_text(encoding="utf-8")
+
+    assert 'class="glass-card pnl-attribution-card"' in html
+    assert 'id="port-attr-net"' in html
+    assert 'id="port-attr-positive"' in html
+    assert 'id="port-attr-negative"' in html
+
+    assert "pnlAttributionRows" in js
+    assert "resolvePositionPnl" in js
+    assert "fullBookPnlRows" in js
+    assert "pnlMaterialityFloor" in js
+    assert "attributableRows" in js
+    assert "netContribution" in js
+    assert "positiveContribution" in js
+    assert "negativeContribution" in js
+    assert "axisPointer: { type: 'line'" in js
+    assert "ZERO P&L" in js
+    assert "P&L DATA GAP" in js
+    assert "BELOW MATERIALITY" in js
+    assert "Number(p.float_pnl || 0)" not in js
+
+    assert ".pnl-attribution-card" in css
+    assert ".pnl-attribution-summary" in css
+
+
 def test_data_engine_uses_lifespan_instead_of_deprecated_on_event():
     source = (ROOT / "data_engine.py").read_text(encoding="utf-8")
 
@@ -381,3 +416,23 @@ def test_frontend_uses_safe_rendering_for_targeted_api_payloads():
     assert "fi.innerHTML =" not in js
     assert "ins.innerHTML = corrData.insight" not in js
     assert "grid.innerHTML = data.scenarios.map" not in js
+
+
+def test_strategy_card_renders_institutional_execution_review():
+    strategy_js = (ROOT / "static" / "js" / "panels" / "strategy.js").read_text(encoding="utf-8")
+    css = (ROOT / "static" / "styles.css").read_text(encoding="utf-8")
+
+    assert "formatStrategyPercent" in strategy_js
+    assert "execution_plan" in strategy_js
+    assert "target_weight" in strategy_js
+    assert "current_weight" in strategy_js
+    assert "drift_weight" in strategy_js
+    assert "trade_weight" in strategy_js
+    assert "执行前审查" in strategy_js
+    assert "目标" in strategy_js
+    assert "当前" in strategy_js
+    assert "偏离" in strategy_js
+    assert "单笔" in strategy_js
+    assert "policy hash" in strategy_js.lower()
+    assert ".strategy-execution-grid" in css
+    assert ".strategy-policy-row" in css

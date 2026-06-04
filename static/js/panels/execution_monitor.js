@@ -118,8 +118,11 @@ window.syncExecutionMonitor = function() {
     const container = document.getElementById('algo-executions-container');
     if (!container) return;
 
-    fetch('/api/audit_trail?limit=15')
-    .then(r => r.json())
+    const auditTrailRequest = window.fetchAuditTrail
+        ? window.fetchAuditTrail(15)
+        : fetch('/api/audit_trail?limit=15').then(r => r.json());
+
+    auditTrailRequest
     .then(data => {
         if (!data || !data.trades) {
             container.innerHTML = `<div style="text-align:center; padding:20px; color:var(--text-tertiary);">Failed to sync execution status.</div>`;
@@ -214,6 +217,31 @@ window.syncExecutionMonitor = function() {
     }).catch(e => {
         console.error("Execution monitor sync failed", e);
     });
+};
+window.renderExecutionMonitorFromAuditTrail = function(trades) {
+    const container = document.getElementById('algo-executions-container');
+    if (!container || !Array.isArray(trades)) return;
+
+    const activeAlgos = trades.filter(t => t.execution_algo === 'TWAP' || t.status === 'PENDING' || t.status === 'EXECUTING');
+    if (activeAlgos.length === 0) {
+        container.innerHTML = `
+            <div style="text-align:center; padding:30px; color:var(--text-tertiary); font-family:var(--font-mono); font-size:0.85rem; letter-spacing:1px;">
+                No active algorithmic trades.
+            </div>
+        `;
+        return;
+    }
+
+    container.innerHTML = activeAlgos.map(tx => `
+        <div style="border-bottom:1px solid rgba(255,255,255,0.05); padding:14px 8px; display:flex; justify-content:space-between; align-items:center;">
+            <div style="display:flex; align-items:center; gap:10px;">
+                <strong style="font-family:var(--font-mono); color:#fff; font-size:0.9rem;">${tx.symbol}</strong>
+                <span style="color:${tx.side === 'BUY' ? '#22c55e' : '#ef4444'}; font-weight:700; font-size:0.75rem;">${tx.side || tx.action || 'ORDER'}</span>
+                <span style="font-family:var(--font-mono); font-size:0.75rem; color:var(--text-tertiary);">${tx.execution_algo || 'MANUAL'}</span>
+            </div>
+            <span style="font-family:var(--font-mono); font-size:0.75rem; color:var(--text-secondary);">${tx.status || 'UNKNOWN'}</span>
+        </div>
+    `).join('');
 };
 window.signOffSingleOrder = async function(idx) {
     if (!window.proposedOrdersData || !window.proposedOrdersData[idx]) return;
@@ -333,7 +361,6 @@ window.pollGatewayHeartbeat = function() {
 };
 // Start custom heartbeat and monitor polling on startup
 setInterval(window.pollGatewayHeartbeat, 3000);
-setInterval(window.syncExecutionMonitor, 2000);
 
 // =========================================================================
 // P1 & P2 & P3: New Institutional Extension Functions
