@@ -53,12 +53,12 @@ def parse_tdx_export(file_path: str) -> dict:
             try:
                 symbol = parts[0]
                 name = parts[1]
-                quantity = float(parts[2])
+                quantity = float(parts[3]) if len(parts) > 3 else float(parts[2])
                 market_value = float(parts[10])
                 
                 # Additional PnL fields
                 try:
-                    current_price = float(parts[5])
+                    current_price = float(parts[9]) if len(parts) > 9 else float(parts[5])
                 except (IndexError, ValueError):
                     current_price = market_value / quantity if quantity > 0 else 0.0
                     
